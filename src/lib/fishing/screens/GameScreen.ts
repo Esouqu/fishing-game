@@ -16,14 +16,7 @@ import {
   type WaterZone,
 } from "../config";
 import type { CatchRecord, SessionResult } from "../types";
-import {
-  clamp,
-  formatMultiplier,
-  formatScore,
-  lerp,
-  pickWeighted,
-  randRange,
-} from "../utils";
+import { clamp, formatScore, lerp, pickWeighted, randRange } from "../utils";
 import { Screen } from "../ui/Screen";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
@@ -257,10 +250,7 @@ export class GameScreen extends Screen {
     }
     if (this.combo > 0) {
       const next = comboMultiplier(this.combo);
-      setText(
-        this.comboText,
-        `Серия ${this.combo} (${formatMultiplier(next)})`,
-      );
+      setText(this.comboText, `Серия ${this.combo} (x${next})`);
       this.comboText.style.fill = C.gold;
     } else {
       setText(this.comboText, "Серия 0");
