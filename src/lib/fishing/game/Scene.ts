@@ -769,7 +769,7 @@ export class LakeScene extends Container {
       jump.t += dt / jump.duration;
       if (jump.t >= 1) {
         if (jump.hold) {
-          jump.sprite.position.set(SCENE.anglerX, SCENE.anglerY - 54);
+          jump.sprite.position.set(SCENE.anglerX, SCENE.anglerY - 84);
           jump.sprite.scale.set(1.6);
           jump.sprite.rotation = 0;
           jump.sprite.alpha = 1;
@@ -784,7 +784,7 @@ export class LakeScene extends Container {
       const t = jump.t;
       const arc = Math.sin(Math.PI * Math.min(1, t));
       jump.sprite.x = lerp(jump.fromX, SCENE.anglerX, t);
-      jump.sprite.y = lerp(jump.fromY, SCENE.anglerY - 54, t) - arc * 46;
+      jump.sprite.y = lerp(jump.fromY, SCENE.anglerY - 84, t) - arc * 46;
       jump.sprite.rotation = Math.sin(t * Math.PI * 3) * 0.25 + jump.spin * t;
       jump.sprite.alpha = jump.hold ? 1 : t > 0.85 ? (1 - t) / 0.15 : 1;
       return true;
@@ -796,7 +796,7 @@ export class LakeScene extends Container {
     this.heldFishTime += dt;
     this.heldFish.x = SCENE.anglerX + Math.sin(this.heldFishTime * 1.7) * 1.2;
     this.heldFish.y =
-      SCENE.anglerY - 54 + Math.sin(this.heldFishTime * 3.4) * 2;
+      SCENE.anglerY - 84 + Math.sin(this.heldFishTime * 3.4) * 2;
     this.heldFish.rotation = Math.sin(this.heldFishTime * 2.2) * 0.06;
   }
 }
