@@ -35,7 +35,7 @@ export class MenuScreen extends Screen {
     this.addChild(this.backdrop);
 
     const glow = new Graphics();
-    glow.rect(0, 0, VIEW.width, 88).fill({ color: C.ink, alpha: 0.32 });
+    glow.rect(0, 0, VIEW.width, 96).fill({ color: C.ink, alpha: 0.32 });
     this.addChild(glow);
 
     const titleShadow = makeText("ТИХАЯ ЗАВОДЬ", {
@@ -77,7 +77,7 @@ export class MenuScreen extends Screen {
       TABLE_Y -
         PANEL_Y +
         leaderboardTableHeight(rows, TABLE_ROW_H, TABLE_FONT) +
-        8,
+        10,
     );
     const panel = new Graphics();
     drawPanel(panel, PANEL_X, PANEL_Y, PANEL_W, panelH, {
@@ -123,8 +123,8 @@ export class MenuScreen extends Screen {
       () => this.game.showHelp(),
     ];
 
-    const gap = 7;
-    const buttonHeight = 26;
+    const gap = 8;
+    const buttonHeight = 28;
     const x = 28;
     const width = 190;
     // Start the stack flush with the leaderboard panel top.
