@@ -175,7 +175,7 @@ export class Leaderboard {
   submit(name: string, result: SessionResult): LeaderboardStanding {
     const entry: LeaderboardEntry = {
       id: `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      name: name.trim() || "Рыбак",
+      name: (name.trim() || "Рыбак").slice(0, 12),
       score: Math.round(result.score),
       caught: result.caught,
       best: result.bestFish?.name ?? "—",
@@ -204,7 +204,6 @@ export class Leaderboard {
 
 interface SettingsData {
   muted?: boolean;
-  lastName?: string;
 }
 
 export class SettingsStore {
@@ -225,9 +224,6 @@ export class SettingsStore {
       const record = parsed as Record<string, unknown>;
       const data: SettingsData = {};
       if (typeof record.muted === "boolean") data.muted = record.muted;
-      if (typeof record.lastName === "string") {
-        data.lastName = record.lastName.slice(0, 12);
-      }
       return data;
     } catch {
       return {};
@@ -248,15 +244,6 @@ export class SettingsStore {
 
   set muted(value: boolean) {
     this.data.muted = value;
-    this.write();
-  }
-
-  get lastName(): string {
-    return this.data.lastName ?? "";
-  }
-
-  set lastName(value: string) {
-    this.data.lastName = value.slice(0, 12);
     this.write();
   }
 }

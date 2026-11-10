@@ -1,7 +1,7 @@
 import { Graphics, Sprite } from "pixi.js";
 import type { Game } from "../Game";
 import { C } from "../config";
-import type { SessionResult } from "../types";
+import type { LeaderboardStanding, SessionResult } from "../types";
 import { formatMultiplier, formatScore } from "../utils";
 import { Screen } from "../ui/Screen";
 import { Backdrop } from "../ui/Backdrop";
@@ -15,7 +15,11 @@ export class ResultsScreen extends Screen {
   private readonly focus = new FocusGroup();
   private readonly buttons: Button[] = [];
 
-  constructor(game: Game, result: SessionResult) {
+  constructor(
+    game: Game,
+    result: SessionResult,
+    standing?: LeaderboardStanding,
+  ) {
     super();
     this.game = game;
     this.backdrop = new Backdrop(game.assets);
@@ -39,8 +43,8 @@ export class ResultsScreen extends Screen {
     title.position.set(240, 30);
     this.addChild(title);
 
-    const rank = game.leaderboard.previewRank(result.score);
-    const qualifies = rank <= 10;
+    const rank = standing?.rank ?? game.leaderboard.previewRank(result.score);
+    const qualifies = standing?.inTop ?? rank <= 10;
     const rankText = qualifies
       ? `ТЫ В ТОП-10 · МЕСТО ${rank}`
       : `МЕСТО ${rank} · ДО ТОП-10 НЕ ХВАТИЛО`;
@@ -154,40 +158,26 @@ export class ResultsScreen extends Screen {
       this.addChild(empty);
     }
 
-    if (qualifies) {
-      const save = new Button({
-        label: "ЗАПИСАТЬ ИМЯ",
-        width: 136,
-        height: 24,
-        variant: "primary",
-        size: 11,
-        onClick: () => game.showNameEntry(result),
-      });
-      save.position.set(54, 196);
-      this.addChild(save);
-      this.buttons.push(save);
-    }
-
     const again = new Button({
       label: "ЕЩЁ РАЗ",
-      width: 120,
+      width: 136,
       height: 24,
-      variant: qualifies ? "secondary" : "primary",
+      variant: "primary",
       size: 11,
       onClick: () => game.startGame(),
     });
-    again.position.set(qualifies ? 198 : 118, 196);
+    again.position.set(98, 196);
     this.addChild(again);
     this.buttons.push(again);
 
     const menu = new Button({
       label: "В МЕНЮ",
-      width: 100,
+      width: 136,
       height: 24,
       size: 11,
       onClick: () => game.showMenu(),
     });
-    menu.position.set(qualifies ? 326 : 260, 196);
+    menu.position.set(246, 196);
     this.addChild(menu);
     this.buttons.push(menu);
 

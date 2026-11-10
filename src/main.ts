@@ -10,10 +10,15 @@ declare global {
 
 const host = document.getElementById("game");
 
+// Stand-in for the host application's player store. In a real embed, pass the
+// signed-in nickname here and it will be saved with every session result.
+const playerName = "Рыбак";
+
 if (host) {
   void createFishingGame({
     container: host,
     storagePrefix: "quiet-cove",
+    playerName,
     onScore: (result) => {
       console.info(
         `[quiet-cove] session finished: ${result.score} points, ${result.caught}/${result.casts} fish`,

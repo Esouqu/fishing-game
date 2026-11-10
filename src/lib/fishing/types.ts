@@ -55,7 +55,7 @@ export interface FishingGameOptions {
   muted?: boolean;
   /** Open the menu or jump straight into a session. */
   startScreen?: StartScreen;
-  /** Default player name for the name entry screen. */
+  /** Nickname saved with the result in the local leaderboard. */
   playerName?: string;
   /** Called when the player presses "Выход" in the menu (if provided). */
   onExit?: () => void;

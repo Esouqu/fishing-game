@@ -52,6 +52,11 @@ interface Floater {
 }
 
 const CAST_LABEL = "УДЕРЖИВАЙ — СИЛА ЗАБРОСА";
+
+/** Shared cast/streak block, centred in the top HUD. */
+const HUD_INFO_WIDTH = 188;
+const HUD_INFO_LEFT = VIEW.width / 2 - HUD_INFO_WIDTH / 2;
+const HUD_INFO_RIGHT = VIEW.width / 2 + HUD_INFO_WIDTH / 2;
 const WAIT_LABEL = "ЖДЁМ ПОКЛЁВКИ";
 const FIGHT_LABEL = "УДЕРЖИВАЙ — ЗОНА ВВЕРХ";
 
@@ -59,6 +64,7 @@ export class GameScreen extends Screen {
   private readonly game: Game;
   private readonly scene: LakeScene;
   private readonly hud = new Container();
+  private readonly castInfo = new Container();
   private readonly fx = new Container();
   private readonly fightDim = new Graphics();
   private readonly inputCatcher: Graphics;
@@ -167,24 +173,27 @@ export class GameScreen extends Screen {
     this.scoreValue.position.set(36, 3);
     this.hud.addChild(this.scoreValue);
 
+    this.castInfo.position.set(HUD_INFO_LEFT, 0);
+    this.hud.addChild(this.castInfo);
+
     this.castLabel = makeText("ЗАБРОС 0/10", {
       size: 7,
       color: C.steelPale,
       letterSpacing: 0.5,
     });
-    this.castLabel.position.set(120, 2);
-    this.hud.addChild(this.castLabel);
+    this.castLabel.position.set(0, 2);
+    this.castInfo.addChild(this.castLabel);
 
-    this.hud.addChild(this.dots);
+    this.castInfo.addChild(this.dots);
 
     this.comboText = makeText("КОМБО —", {
       size: 10,
       weight: 700,
       color: C.steelPale,
-      align: "center",
+      align: "right",
     });
-    this.comboText.position.set(248, 6);
-    this.hud.addChild(this.comboText);
+    this.comboText.position.set(HUD_INFO_WIDTH, 1);
+    this.castInfo.addChild(this.comboText);
     this.hud.addChild(this.perfectPips);
 
     this.soundButton = new Button({
@@ -266,7 +275,7 @@ export class GameScreen extends Screen {
     const g = this.dots;
     g.clear();
     for (let i = 0; i < CASTS_PER_SESSION; i += 1) {
-      const x = 128 + i * 10;
+      const x = i * 10;
       const y = 12;
       const outcome = this.outcomes[i];
       g.rect(x, y, 6, 6).fill({ color: 0x232a44 });
@@ -292,7 +301,7 @@ export class GameScreen extends Screen {
     }
 
     const left = this.minigame!.slipsLeft;
-    const x = 336;
+    const x = HUD_INFO_RIGHT + 8;
     const y = 8;
     g.clear();
     for (let i = 0; i < 2; i += 1) {
@@ -661,7 +670,9 @@ export class GameScreen extends Screen {
       bestMultiplier: this.bestMultiplier,
       date: Date.now(),
     };
-    this.game.showResults(result);
+    const name = this.game.options.playerName || "Рыбак";
+    const standing = this.game.submitScore(name, result);
+    this.game.showResults(result, true, standing);
   }
 
   // ------------------------------------------------------------------- FX

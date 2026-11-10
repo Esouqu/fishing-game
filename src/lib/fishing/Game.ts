@@ -19,7 +19,6 @@ import { HelpScreen } from "./screens/HelpScreen";
 import { LeaderboardScreen } from "./screens/LeaderboardScreen";
 import { GameScreen } from "./screens/GameScreen";
 import { ResultsScreen } from "./screens/ResultsScreen";
-import { NameEntryScreen } from "./screens/NameEntryScreen";
 
 export interface LeaderboardViewOptions {
   highlightId?: string;
@@ -301,19 +300,17 @@ export class Game implements FishingGameInstance {
     this.screens.show(new GameScreen(this));
   }
 
-  showResults(result: SessionResult, notify = true): void {
+  showResults(
+    result: SessionResult,
+    notify = true,
+    standing?: LeaderboardStanding,
+  ): void {
     if (notify) this.options.onScore?.(result);
-    this.screens.show(new ResultsScreen(this, result));
-  }
-
-  showNameEntry(result: SessionResult): void {
-    this.screens.show(new NameEntryScreen(this, result));
+    this.screens.show(new ResultsScreen(this, result, standing));
   }
 
   submitScore(name: string, result: SessionResult): LeaderboardStanding {
-    const standing = this.leaderboard.submit(name, result);
-    this.settings.lastName = standing.entry.name;
-    return standing;
+    return this.leaderboard.submit(name, result);
   }
 
   exit(): void {
