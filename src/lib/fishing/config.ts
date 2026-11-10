@@ -13,8 +13,6 @@ export function comboMultiplier(streak: number): number {
 }
 
 export const PERFECT_MULTIPLIER = 1.5;
-export const CHEST_CHANCE = 0.1;
-export const CHEST_BONUS = 150;
 export const START_PROGRESS = 0.35;
 
 /** Rosy-42 (+3 blues) palette used by the Tiny Coast Pack. */
@@ -280,4 +278,11 @@ export const TIMING = {
   castFlight: 0.5,
   resultHold: 1.7,
   escapedHold: 1.35,
+  /** Random pause between the cast landing and the bite. */
+  waitMin: 2.4,
+  waitMax: 5,
+  /** Random lead time before the bite when the bobber starts twitching. */
+  nibbleLeadMin: 0.5,
+  nibbleLeadMax: 0.9,
+  nibbleDuration: 0.34,
 } as const;

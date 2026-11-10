@@ -43,10 +43,9 @@ const SECTIONS: Array<{ title: string; y: number; lines: Line[] }> = [
         y: 170,
         bullet: true,
       },
-      { text: "СУНДУК — редкая находка, +150 очков", y: 185, bullet: true },
       {
         text: "ДАЛЬШЕ ОТ БЕРЕГА — РЕЖЕ, НО ДОРОЖЕ РЫБА",
-        y: 199,
+        y: 184,
         bullet: true,
       },
     ],

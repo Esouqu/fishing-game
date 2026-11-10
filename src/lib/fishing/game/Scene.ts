@@ -1,11 +1,4 @@
-import {
-  AnimatedSprite,
-  Container,
-  Graphics,
-  Sprite,
-  Text,
-  Texture,
-} from "pixi.js";
+import { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { AssetBag } from "../assets";
 import { C, SCENE, TIMING, VIEW, zoneForPower } from "../config";
 import { clamp, easeOutCubic, lerp, randRange } from "../utils";
@@ -103,8 +96,6 @@ export class LakeScene extends Container {
   private anglerFrames: number[] = [10];
   private anglerFps = 10;
 
-  private chestSprite: AnimatedSprite | null = null;
-  private chestLife = 0;
   private nibbleTime = 0;
 
   /** Called when a cast bobber hits the water. */
@@ -454,7 +445,7 @@ export class LakeScene extends Container {
   /** Small fake dip shortly before the real bite — anticipation, not a prompt. */
   showNibble(): void {
     if (this.phase !== "waiting") return;
-    this.nibbleTime = 0.34;
+    this.nibbleTime = TIMING.nibbleDuration;
     this.spawnSplash(this.bobberBaseX, this.bobberBaseY + 3, 2, 0.25);
   }
 
@@ -505,21 +496,6 @@ export class LakeScene extends Container {
     this.setAngler([10], 8);
   }
 
-  showChest(): void {
-    const chest = new AnimatedSprite(this.assets.chest);
-    chest.anchor.set(0.5, 1);
-    chest.animationSpeed = 0.22;
-    const x = SCENE.anglerX + 30;
-    const y = SCENE.anglerY - 2;
-    chest.position.set(x, y);
-    chest.scale.set(1.7);
-    chest.play();
-    this.addChild(chest);
-    this.chestSprite = chest;
-    this.chestLife = 1.6;
-    this.spawnSplash(x, y - 10, 4, 0.4);
-  }
-
   resetCast(): void {
     this.phase = "idle";
     this.previewG.clear();
@@ -533,11 +509,6 @@ export class LakeScene extends Container {
     this.clearHeldFish();
     for (const jump of this.jumps) jump.sprite.destroy();
     this.jumps = [];
-    this.chestLife = 0;
-    if (this.chestSprite) {
-      this.chestSprite.destroy();
-      this.chestSprite = null;
-    }
   }
 
   private clearHeldFish(): void {
@@ -603,7 +574,6 @@ export class LakeScene extends Container {
     this.updateParticles(dt);
     this.updateJumps(dt);
     this.updateHeldFish(dt);
-    this.updateChest(dt);
   }
 
   private updateAngler(dt: number): void {
@@ -658,14 +628,15 @@ export class LakeScene extends Container {
     for (const whirl of this.whirls) {
       const angle = this.time * whirl.spin + whirl.phase;
       for (let i = 0; i < 3; i += 1) {
+        const radius = whirl.radius * (0.45 + i * 0.17);
         const start = angle + (i * Math.PI * 2) / 3;
-        g.arc(
-          whirl.x,
-          whirl.y,
-          whirl.radius * (0.45 + i * 0.17),
-          start,
-          start + 0.72,
-        ).stroke({
+        // `arc()` connects the current path to the arc start, which produced a
+        // stray diagonal line across the lake. Move to the start point first.
+        g.moveTo(
+          whirl.x + Math.cos(start) * radius,
+          whirl.y + Math.sin(start) * radius,
+        );
+        g.arc(whirl.x, whirl.y, radius, start, start + 0.72).stroke({
           width: 1,
           color: C.cream,
           alpha: whirl.alpha,
@@ -708,9 +679,9 @@ export class LakeScene extends Container {
       const bob = Math.sin(this.time * 3.1) * 1.2;
       const nibble =
         this.nibbleTime > 0
-          ? Math.sin((0.34 - this.nibbleTime) * 46) *
+          ? Math.sin((TIMING.nibbleDuration - this.nibbleTime) * 46) *
             1.8 *
-            (this.nibbleTime / 0.34)
+            (this.nibbleTime / TIMING.nibbleDuration)
           : 0;
       const biteDip =
         this.phase === "bite" ? Math.sin(this.time * 26) * 2 + 3 : 0;
@@ -827,16 +798,5 @@ export class LakeScene extends Container {
     this.heldFish.y =
       SCENE.anglerY - 54 + Math.sin(this.heldFishTime * 3.4) * 2;
     this.heldFish.rotation = Math.sin(this.heldFishTime * 2.2) * 0.06;
-  }
-
-  private updateChest(dt: number): void {
-    if (!this.chestSprite) return;
-    this.chestLife -= dt;
-    this.chestSprite.y -= dt * 8;
-    this.chestSprite.alpha = clamp(this.chestLife / 0.6);
-    if (this.chestLife <= 0) {
-      this.chestSprite.destroy();
-      this.chestSprite = null;
-    }
   }
 }

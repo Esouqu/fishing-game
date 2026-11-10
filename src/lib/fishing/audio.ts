@@ -227,16 +227,6 @@ export class AudioKit {
     });
   }
 
-  chest(): void {
-    [659, 784, 988, 1319].forEach((note, index) => {
-      this.tone(note, 0.12, {
-        volume: 0.11,
-        delay: index * 0.06,
-        type: "square",
-      });
-    });
-  }
-
   newRecord(): void {
     [523, 784, 1046, 1568].forEach((note, index) => {
       this.tone(note, 0.22, {

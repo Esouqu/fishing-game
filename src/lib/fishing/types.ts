@@ -8,7 +8,6 @@ export interface CatchRecord {
   perfect: boolean;
   /** Combo multiplier applied to this catch. */
   multiplier: number;
-  chest: boolean;
 }
 
 export interface SessionResult {

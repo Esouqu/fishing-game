@@ -121,7 +121,7 @@ export class Minigame extends Container {
     }
 
     // Green zone movement.
-    this.zoneVel += (this.hold ? -2.7 : 1.2) * dt;
+    this.zoneVel += (this.hold ? -2.7 : 2.5) * dt;
     this.zoneVel *= Math.max(0, 1 - 5.2 * dt);
     this.zonePos += this.zoneVel * dt;
     const half = this.fish.zone / 2;

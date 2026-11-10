@@ -3,8 +3,6 @@ import type { Game } from "../Game";
 import {
   C,
   CASTS_PER_SESSION,
-  CHEST_BONUS,
-  CHEST_CHANCE,
   DEFAULT_WATER_ZONE,
   FISH,
   PERFECT_MULTIPLIER,
@@ -19,7 +17,6 @@ import {
 } from "../config";
 import type { CatchRecord, SessionResult } from "../types";
 import {
-  chance,
   clamp,
   formatMultiplier,
   formatScore,
@@ -98,11 +95,11 @@ export class GameScreen extends Screen {
   private chargeSoundTimer = 0;
   private reelTimer = 0;
   private nibblePlayed = false;
+  private nibbleLead: number = TIMING.nibbleLeadMax;
 
   private fish: FishSpecies | null = null;
   private castZone: WaterZone = DEFAULT_WATER_ZONE;
   private minigame: Minigame | null = null;
-  private chestSoundTimer = -1;
   private readonly floaters: Floater[] = [];
 
   private score = 0;
@@ -222,7 +219,8 @@ export class GameScreen extends Screen {
       color: C.cream,
       align: "center",
     });
-    this.statusText.position.set(240, 238);
+    this.statusText.anchor.set(0.5, 1);
+    this.statusText.position.set(SCENE.anglerX, SCENE.anglerY - 68);
     this.statusText.style.stroke = { color: C.ink, width: 2.5 };
     this.hud.addChild(this.statusText);
 
@@ -457,7 +455,8 @@ export class GameScreen extends Screen {
     this.scene.setCastPreview(null);
     this.game.audio.cast();
     this.scene.playCast(this.charge);
-    this.waitTimer = randRange(1.1, 3.1) - this.charge * 0.12;
+    this.waitTimer = randRange(TIMING.waitMin, TIMING.waitMax);
+    this.nibbleLead = randRange(TIMING.nibbleLeadMin, TIMING.nibbleLeadMax);
     this.chargeSoundTimer = 0;
     this.reelTimer = 0;
     this.nibblePlayed = false;
@@ -533,7 +532,6 @@ export class GameScreen extends Screen {
     const points = Math.round(
       fish.points * multiplier * (perfect ? PERFECT_MULTIPLIER : 1),
     );
-    const chest = chance(CHEST_CHANCE);
 
     this.combo += 1;
     this.bestStreak = Math.max(this.bestStreak, this.combo);
@@ -549,17 +547,9 @@ export class GameScreen extends Screen {
       points,
       perfect,
       multiplier,
-      chest,
     };
     this.catches.push(record);
     this.outcomes[this.castsUsed - 1] = "caught";
-
-    if (chest) {
-      this.score += CHEST_BONUS;
-      this.scorePunch = 0.22;
-      this.scene.showChest();
-      this.chestSoundTimer = 0.4;
-    }
 
     this.phase = "resolve";
     this.resolveTimer = TIMING.resultHold;
@@ -607,7 +597,7 @@ export class GameScreen extends Screen {
     this.addFloater(
       reason.replace("…", ""),
       SCENE.anglerX,
-      SCENE.anglerY - 64,
+      SCENE.anglerY - 94,
       C.red,
       12,
       1.3,
@@ -686,24 +676,12 @@ export class GameScreen extends Screen {
     this.addFloater(
       `${record.name.toUpperCase()}  +${record.points}${multiplier}${perfect}`,
       ax,
-      ay - 78,
+      ay - 94,
       record.perfect ? C.yellow : C.gold,
       13,
       1.6,
       -14,
     );
-
-    if (record.chest) {
-      this.addFloater(
-        `СУНДУК +${CHEST_BONUS}`,
-        ax + 38,
-        ay - 58,
-        C.gold,
-        9,
-        1.5,
-        -18,
-      );
-    }
   }
 
   private addFloater(
@@ -825,14 +803,6 @@ export class GameScreen extends Screen {
     this.updateScore(dt);
     this.updatePerfectPips();
 
-    if (this.chestSoundTimer > 0) {
-      this.chestSoundTimer -= dt;
-      if (this.chestSoundTimer <= 0) {
-        this.game.audio.chest();
-        this.chestSoundTimer = -1;
-      }
-    }
-
     if (this.finished) return;
 
     if (this.phase === "charging") {
@@ -854,7 +824,7 @@ export class GameScreen extends Screen {
     } else if (this.phase === "waiting") {
       this.waitTimer -= dt;
       this.updateWaitingStatus();
-      if (this.waitTimer <= 0.55 && !this.nibblePlayed) {
+      if (this.waitTimer <= this.nibbleLead && !this.nibblePlayed) {
         this.nibblePlayed = true;
         this.scene.showNibble();
         this.game.audio.nibble();

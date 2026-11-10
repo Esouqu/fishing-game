@@ -6,7 +6,6 @@ export interface AssetBag {
   fontLoaded: boolean;
   /** 4x4 character sheet, row-major, 32px frames. */
   angler: Texture[];
-  chest: Texture[];
   tree: Texture;
   bush: Texture;
   rock: Texture;
@@ -73,7 +72,7 @@ function frame(
   });
 }
 
-type FallbackKind = "fish" | "person" | "plant" | "rock" | "chest";
+type FallbackKind = "fish" | "person" | "plant" | "rock";
 
 function fallbackTexture(
   color: number,
@@ -119,11 +118,6 @@ function fallbackTexture(
     rect(3, 7, 10, 7, hex);
     rect(5, 5, 6, 3, hex);
     rect(3, 12, 10, 2, dark);
-  } else if (kind === "chest") {
-    rect(2, 6, 12, 8, hex);
-    rect(2, 4, 12, 3, dark);
-    rect(7, 8, 2, 3, "#f0b541");
-    rect(2, 6, 12, 1, "#ffee83");
   }
   return Texture.from(canvas);
 }
@@ -150,11 +144,6 @@ export async function loadGameAssets(
       key: "angler",
       url: `${base}/angler.png`,
       fallback: () => fallbackTexture(0xe64539, 32, "person"),
-    },
-    {
-      key: "chest",
-      url: `${base}/chest.png`,
-      fallback: () => fallbackTexture(0xab5130, 16, "chest"),
     },
     {
       key: "tree",
@@ -204,15 +193,6 @@ export async function loadGameAssets(
     for (let index = 0; index < 16; index += 1) angler.push(anglerSheet);
   }
 
-  const chestSheet = loaded.get("chest") ?? Texture.WHITE;
-  const chest: Texture[] = [];
-  if (chestSheet.width >= 96) {
-    for (let i = 0; i < 6; i += 1)
-      chest.push(frame(chestSheet, i * 16, 0, 16, 16));
-  } else {
-    chest.push(chestSheet);
-  }
-
   const fish: Record<string, Texture> = {};
   for (const fishItem of fishList) {
     fish[fishItem.id] = loaded.get(`fish:${fishItem.id}`) ?? Texture.WHITE;
@@ -222,7 +202,6 @@ export async function loadGameAssets(
     base,
     fontLoaded,
     angler,
-    chest,
     tree: loaded.get("tree") ?? Texture.WHITE,
     bush: loaded.get("bush") ?? Texture.WHITE,
     rock: loaded.get("rock") ?? Texture.WHITE,

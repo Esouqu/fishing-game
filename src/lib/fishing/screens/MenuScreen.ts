@@ -139,7 +139,8 @@ export class MenuScreen extends Screen {
     const buttonHeight = 26;
     const x = 28;
     const width = 190;
-    let y = 108;
+    // Start the stack flush with the leaderboard panel top.
+    let y = PANEL_Y;
 
     for (let i = 0; i < labels.length; i += 1) {
       const button = new Button({
@@ -184,25 +185,6 @@ export class MenuScreen extends Screen {
       this.addChild(exit);
       this.buttons.push(exit);
     }
-
-    const tipY = hasExit ? 244 : 214;
-    const tip = makeText("СОВЕТ · ДАЛЬШЕ ОТ БЕРЕГА — РЕЖЕ, НО ДОРОЖЕ", {
-      size: 7,
-      color: C.steelPale,
-      letterSpacing: 0.2,
-    });
-    tip.position.set(x + 2, tipY);
-    tip.alpha = 0.78;
-    this.addChild(tip);
-
-    const footer = makeText("10 ЗАБРОСОВ · ОДИН УЛОВ", {
-      size: 7,
-      color: C.steelPale,
-      letterSpacing: 0.4,
-    });
-    footer.position.set(x + 2, hasExit ? 256 : 236);
-    footer.alpha = 0.5;
-    this.addChild(footer);
 
     this.focus.setItems(this.buttons);
     this.focus.onMove = () => this.game.audio.hover();

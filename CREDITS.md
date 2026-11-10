@@ -3,7 +3,7 @@
 ## Tiny Coast Pack
 
 - Author: **Vryell** ([@Vryell](https://twitter.com/Vryell))
-- Used for: angler sprite, water details, chest, tree, bush, rock.
+- Used for: angler sprite, water details, tree, bush, rock.
 - License: free for commercial and non-commercial games and personal projects; modification allowed; credit is appreciated but not required.
 - Restrictions: do not resell, repackage or redistribute the asset (even modified).
 - The original pack is **not** included in this repository. Run `pnpm assets` with your own copy of `assetspacks/Tiny Coast Pack` to generate `public/assets/fishing`.
