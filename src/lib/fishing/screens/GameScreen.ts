@@ -138,6 +138,9 @@ export class GameScreen extends Screen {
     this.buildHud();
     this.addChild(this.hud);
     this.addChild(this.fx);
+    // Purely visual layers (minigame frame, floaters) must never intercept
+    // pointer events meant for the input catcher.
+    this.fx.eventMode = "none";
     this.buildPause();
     this.addChild(this.pauseOverlay);
 
@@ -151,10 +154,12 @@ export class GameScreen extends Screen {
     const bar = new Graphics();
     bar.rect(0, 0, VIEW.width, 24).fill({ color: C.ink, alpha: 0.82 });
     bar.rect(0, 23, VIEW.width, 1).fill({ color: C.steel, alpha: 0.45 });
+    bar.eventMode = "none";
     this.hud.addChild(bar);
 
     const scoreLabel = makeText("ОЧКИ", { size: 7, color: C.steelPale });
     scoreLabel.position.set(8, 8);
+    scoreLabel.eventMode = "none";
     this.hud.addChild(scoreLabel);
 
     this.scoreValue = makeText("0", {
@@ -163,9 +168,11 @@ export class GameScreen extends Screen {
       color: C.cream,
     });
     this.scoreValue.position.set(36, 3);
+    this.scoreValue.eventMode = "none";
     this.hud.addChild(this.scoreValue);
 
     this.castInfo.position.set(HUD_INFO_LEFT, 0);
+    this.castInfo.eventMode = "none";
     this.hud.addChild(this.castInfo);
 
     this.castLabel = makeText("ЗАБРОС 0/10", {
@@ -188,6 +195,7 @@ export class GameScreen extends Screen {
     this.comboText.position.set(HUD_ATTEMPT_START + HUD_ATTEMPT_SPAN, 2);
     this.castInfo.addChild(this.comboText);
     this.hud.addChild(this.perfectPips);
+    this.perfectPips.eventMode = "none";
 
     this.soundButton = new Button({
       width: 18,
@@ -218,6 +226,7 @@ export class GameScreen extends Screen {
     this.statusText.anchor.set(0.5, 0);
     this.statusText.position.set(SCENE.anglerX, 126);
     this.statusText.style.stroke = { color: C.ink, width: 2.5 };
+    this.statusText.eventMode = "none";
     this.hud.addChild(this.statusText);
 
     this.powerLabel = makeText("СИЛА", {
@@ -229,7 +238,9 @@ export class GameScreen extends Screen {
     this.powerLabel.style.stroke = { color: C.ink, width: 2.5 };
     this.powerLabel.position.set(166, 205);
     this.powerLabel.visible = false;
+    this.powerLabel.eventMode = "none";
     this.hud.addChild(this.powerLabel);
+    this.powerBar.eventMode = "none";
     this.hud.addChild(this.powerBar);
 
     this.biteText = makeText("КЛЮЁТ! ЖМИ!", {
@@ -242,7 +253,9 @@ export class GameScreen extends Screen {
     this.biteText.position.set(240, 126);
     this.biteText.style.stroke = { color: C.ink, width: 4 };
     this.biteText.visible = false;
+    this.biteText.eventMode = "none";
     this.hud.addChild(this.biteText);
+    this.reactionBar.eventMode = "none";
     this.hud.addChild(this.reactionBar);
   }
 
