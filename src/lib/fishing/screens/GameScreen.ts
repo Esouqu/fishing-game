@@ -219,8 +219,8 @@ export class GameScreen extends Screen {
       color: C.cream,
       align: "center",
     });
-    this.statusText.anchor.set(0.5, 1);
-    this.statusText.position.set(SCENE.anglerX, SCENE.anglerY - 54);
+    this.statusText.anchor.set(0.5, 0);
+    this.statusText.position.set(SCENE.anglerX, 126);
     this.statusText.style.stroke = { color: C.ink, width: 2.5 };
     this.hud.addChild(this.statusText);
 
