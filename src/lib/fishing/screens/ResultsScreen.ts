@@ -184,7 +184,6 @@ export class ResultsScreen extends Screen {
       label: "В МЕНЮ",
       width: 100,
       height: 24,
-      variant: "ghost",
       size: 11,
       onClick: () => game.showMenu(),
     });

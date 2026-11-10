@@ -156,7 +156,6 @@ export class NameEntryScreen extends Screen {
       width: 50,
       height: 20,
       size: 9,
-      variant: "ghost",
       onClick: () => this.toggleLayout(),
     });
     this.layoutButton.position.set(218, 174);
@@ -167,7 +166,6 @@ export class NameEntryScreen extends Screen {
       width: 70,
       height: 20,
       size: 9,
-      variant: "ghost",
       onClick: () => this.back(),
     });
     back.position.set(368, 174);
@@ -185,24 +183,24 @@ export class NameEntryScreen extends Screen {
     const hint = makeText(
       "ПЕЧАТАЙ НА КЛАВИАТУРЕ · ENTER — АКТИВИРОВАТЬ КНОПКУ",
       {
-        size: 7,
+        size: 8,
         color: C.steelPale,
         align: "center",
         letterSpacing: 0.4,
       },
     );
     hint.position.set(240, 202);
-    hint.alpha = 0.8;
+    hint.alpha = 0.85;
     this.addChild(hint);
 
     const footer = makeText("ИМЯ СОХРАНИТСЯ В ТАБЛИЦЕ ЛИДЕРОВ", {
-      size: 7,
+      size: 8,
       color: C.steelPale,
       align: "center",
       letterSpacing: 0.4,
     });
-    footer.position.set(240, 226);
-    footer.alpha = 0.55;
+    footer.position.set(240, 224);
+    footer.alpha = 0.65;
     this.addChild(footer);
 
     this.refreshName();

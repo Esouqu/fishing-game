@@ -1,4 +1,4 @@
-import { Container, Graphics, Rectangle, Sprite, Text } from "pixi.js";
+import { Container, Graphics, Rectangle, Text } from "pixi.js";
 import type { Game } from "../Game";
 import {
   C,
@@ -8,6 +8,7 @@ import {
   DEFAULT_WATER_ZONE,
   FISH,
   PERFECT_MULTIPLIER,
+  SCENE,
   TIMING,
   VIEW,
   WATER_ZONE_MARKERS,
@@ -95,9 +96,6 @@ export class GameScreen extends Screen {
   private fish: FishSpecies | null = null;
   private castZone: WaterZone = DEFAULT_WATER_ZONE;
   private minigame: Minigame | null = null;
-  private catchCard: Container | null = null;
-  private cardTimer = 0;
-  private cardAge = 0;
   private chestSoundTimer = -1;
   private readonly floaters: Floater[] = [];
 
@@ -226,7 +224,7 @@ export class GameScreen extends Screen {
       letterSpacing: 0.5,
     });
     this.powerLabel.style.stroke = { color: C.ink, width: 2.5 };
-    this.powerLabel.position.set(166, 251);
+    this.powerLabel.position.set(166, 205);
     this.powerLabel.visible = false;
     this.hud.addChild(this.powerLabel);
     this.hud.addChild(this.powerBar);
@@ -238,7 +236,7 @@ export class GameScreen extends Screen {
       align: "center",
       letterSpacing: 1,
     });
-    this.biteText.position.set(240, 38);
+    this.biteText.position.set(240, 126);
     this.biteText.style.stroke = { color: C.ink, width: 4 };
     this.biteText.visible = false;
     this.hud.addChild(this.biteText);
@@ -312,6 +310,7 @@ export class GameScreen extends Screen {
   private setStatus(text: string, color: number = C.cream): void {
     setText(this.statusText, text);
     this.statusText.style.fill = color;
+    this.statusText.visible = true;
   }
 
   // ------------------------------------------------------------------ pause
@@ -381,7 +380,6 @@ export class GameScreen extends Screen {
       label: "В МЕНЮ",
       width: 170,
       height: 24,
-      variant: "ghost",
       size: 11,
       onClick: () => this.game.showMenu(),
     });
@@ -484,6 +482,9 @@ export class GameScreen extends Screen {
     this.biteText.visible = true;
     this.biteText.scale.set(1);
     this.setStatus("КЛЮЁТ! ЖМИ!", C.gold);
+    // The big prompt above the angler already carries this moment; hide the
+    // bottom duplicate so the bite reads as a single focal beat.
+    this.statusText.visible = false;
   }
 
   private hookFish(): void {
@@ -567,10 +568,7 @@ export class GameScreen extends Screen {
     this.updatePerfectPips();
     this.scene.catchFish(this.game.assets.fish[fish.id]);
     this.game.audio.catchFish(perfect);
-
-    const bobber = this.scene.bobberPosition;
-    this.addFloater(`+${points}`, bobber.x, bobber.y - 14, C.gold, 16);
-    this.showCatchCard(record);
+    this.showCatchFeedback(record);
     this.setStatus(
       perfect ? "ИДЕАЛЬНЫЙ УЛОВ!" : "ХОРОШИЙ УЛОВ!",
       perfect ? C.yellow : C.green,
@@ -597,13 +595,14 @@ export class GameScreen extends Screen {
     this.reactionBar.clear();
     this.powerBar.clear();
     this.powerLabel.visible = false;
-    const bobber = this.scene.bobberPosition;
     this.addFloater(
       reason.replace("…", ""),
-      bobber.x,
-      bobber.y - 14,
+      SCENE.anglerX,
+      SCENE.anglerY - 64,
       C.red,
       12,
+      1.3,
+      -24,
     );
     this.setStatus(
       brokenStreak >= 2 ? `СЕРИЯ ${brokenStreak} ПРЕРВАНА` : reason,
@@ -619,7 +618,6 @@ export class GameScreen extends Screen {
       this.minigame.destroy({ children: true });
       this.minigame = null;
     }
-    this.clearCatchCard();
     this.updatePerfectPips();
     this.fish = null;
     this.biteText.visible = false;
@@ -668,82 +666,33 @@ export class GameScreen extends Screen {
 
   // ------------------------------------------------------------------- FX
 
-  private showCatchCard(record: CatchRecord): void {
-    this.clearCatchCard();
+  private showCatchFeedback(record: CatchRecord): void {
+    const ax = SCENE.anglerX;
+    const ay = SCENE.anglerY;
+    const multiplier = record.multiplier > 1 ? ` ×${record.multiplier}` : "";
+    const perfect = record.perfect ? " · ИДЕАЛЬНО" : "";
 
-    const card = new Container();
-    card.position.set(240, 96);
+    this.addFloater(
+      `${record.name.toUpperCase()}  +${record.points}${multiplier}${perfect}`,
+      ax,
+      ay - 78,
+      record.perfect ? C.yellow : C.gold,
+      13,
+      1.6,
+      -14,
+    );
 
-    const panel = new Graphics();
-    drawPanel(panel, -100, -32, 200, 64, {
-      fill: C.panel,
-      alpha: 0.96,
-      shadow: true,
-    });
-    card.addChild(panel);
-
-    const texture = this.game.assets.fish[record.fishId];
-    if (texture) {
-      const icon = new Sprite(texture);
-      icon.anchor.set(0.5);
-      icon.scale.set(2);
-      icon.position.set(-74, 2);
-      card.addChild(icon);
+    if (record.chest) {
+      this.addFloater(
+        `СУНДУК +${CHEST_BONUS}`,
+        ax + 38,
+        ay - 58,
+        C.gold,
+        9,
+        1.5,
+        -18,
+      );
     }
-
-    const name = makeText(record.name.toUpperCase(), {
-      size: 13,
-      weight: 800,
-      color: C.cream,
-    });
-    name.position.set(-48, -24);
-    card.addChild(name);
-
-    const points = makeText(`+${record.points}`, {
-      size: 16,
-      weight: 800,
-      color: C.yellow,
-      align: "right",
-    });
-    points.position.set(92, -24);
-    card.addChild(points);
-
-    const parts: string[] = [];
-    if (record.multiplier > 1) parts.push(`КОМБО ×${record.multiplier}`);
-    if (record.perfect) parts.push("ИДЕАЛЬНО ×1.5");
-    if (record.chest) parts.push(`СУНДУК +${CHEST_BONUS}`);
-    if (parts.length === 0) parts.push(record.latin.toUpperCase());
-
-    const subtitle = makeText(parts.join(" · "), {
-      size: 8,
-      weight: 600,
-      color: record.chest ? C.gold : record.perfect ? C.cyan : C.steelPale,
-    });
-    subtitle.position.set(-48, 0);
-    card.addChild(subtitle);
-
-    this.fx.addChild(card);
-    this.catchCard = card;
-    this.cardTimer = 1.8;
-    this.cardAge = 0;
-  }
-
-  private clearCatchCard(): void {
-    if (!this.catchCard) return;
-    this.fx.removeChild(this.catchCard);
-    this.catchCard.destroy({ children: true });
-    this.catchCard = null;
-  }
-
-  private updateCard(dt: number): void {
-    if (!this.catchCard) return;
-    this.cardTimer -= dt;
-    this.cardAge += dt;
-    const grow = Math.min(1, this.cardAge / 0.14);
-    this.catchCard.scale.set(0.94 + grow * 0.06);
-    this.catchCard.alpha =
-      this.cardTimer < 0.35 ? Math.max(0, this.cardTimer / 0.35) : 1;
-    if (this.cardTimer <= 0) this.clearCatchCard();
   }
 
   private addFloater(
@@ -752,6 +701,8 @@ export class GameScreen extends Screen {
     y: number,
     color: number,
     size = 14,
+    life = 1.1,
+    vy = -28,
   ): void {
     const text = makeText(value, {
       size,
@@ -763,7 +714,7 @@ export class GameScreen extends Screen {
     text.position.set(x, y);
     text.style.stroke = { color: C.ink, width: 2 };
     this.fx.addChild(text);
-    this.floaters.push({ text, life: 1.1, maxLife: 1.1, vy: -28 });
+    this.floaters.push({ text, life, maxLife: life, vy });
   }
 
   private updateFloaters(dt: number): void {
@@ -771,7 +722,9 @@ export class GameScreen extends Screen {
       const floater = this.floaters[i];
       floater.life -= dt;
       floater.text.y += floater.vy * dt;
-      floater.text.alpha = Math.max(0, floater.life / floater.maxLife);
+      const fadeTime = Math.min(0.4, floater.maxLife * 0.45);
+      floater.text.alpha =
+        floater.life < fadeTime ? Math.max(0, floater.life / fadeTime) : 1;
       if (floater.life <= 0) {
         this.fx.removeChild(floater.text);
         floater.text.destroy();
@@ -813,7 +766,7 @@ export class GameScreen extends Screen {
     this.powerLabel.style.fill = zone.color;
 
     const x = 172;
-    const y = 250;
+    const y = 204;
     const width = 136;
     const height = 8;
     g.rect(x - 1, y - 1, width + 2, height + 2).fill(C.ink);
@@ -834,7 +787,7 @@ export class GameScreen extends Screen {
     g.clear();
     if (this.phase !== "bite") return;
     const x = 196;
-    const y = 56;
+    const y = 148;
     const width = 88;
     const height = 4;
     const fraction = clamp(this.biteTimer / this.biteWindow);
@@ -858,7 +811,6 @@ export class GameScreen extends Screen {
 
     this.scene.update(dt);
     this.updateFloaters(dt);
-    this.updateCard(dt);
     this.updateScore(dt);
     this.updatePerfectPips();
 

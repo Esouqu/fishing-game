@@ -1,4 +1,4 @@
-import { AnimatedSprite, Container, Graphics, Sprite } from "pixi.js";
+import { Container, Graphics, Sprite } from "pixi.js";
 import { C, VIEW } from "../config";
 import type { AssetBag } from "../assets";
 import { randRange } from "../utils";
@@ -10,11 +10,13 @@ interface Swimmer {
   phase: number;
 }
 
-interface Sparkle {
-  sprite: AnimatedSprite;
-  baseAlpha: number;
+interface WaterMark {
+  x: number;
+  y: number;
+  radius: number;
   phase: number;
   speed: number;
+  alpha: number;
 }
 
 /**
@@ -23,7 +25,8 @@ interface Sparkle {
  */
 export class Backdrop extends Container {
   private readonly swimmers: Swimmer[] = [];
-  private readonly sparkles: Sparkle[] = [];
+  private readonly marks: WaterMark[] = [];
+  private readonly marksG = new Graphics();
   private time = 0;
 
   constructor(assets: AssetBag) {
@@ -64,22 +67,17 @@ export class Backdrop extends Container {
     }
     this.addChild(treeline);
 
-    for (let i = 0; i < 9; i += 1) {
-      const sprite = new AnimatedSprite(assets.ripples);
-      sprite.anchor.set(0.5);
-      sprite.position.set(randRange(14, VIEW.width - 14), randRange(40, 228));
-      sprite.animationSpeed = randRange(0.03, 0.08);
-      sprite.scale.set(randRange(1, 1.8));
-      sprite.alpha = randRange(0.12, 0.35);
-      sprite.play();
-      this.sparkles.push({
-        sprite,
-        baseAlpha: sprite.alpha,
+    for (let i = 0; i < 12; i += 1) {
+      this.marks.push({
+        x: randRange(12, VIEW.width - 12),
+        y: randRange(38, 230),
+        radius: randRange(4, 11),
         phase: randRange(0, Math.PI * 2),
-        speed: randRange(0.5, 1.2),
+        speed: randRange(0.45, 1.1),
+        alpha: randRange(0.04, 0.09),
       });
-      this.addChild(sprite);
     }
+    this.addChild(this.marksG);
 
     const fishIds = Object.keys(assets.fish);
     for (let i = 0; i < 7; i += 1) {
@@ -88,8 +86,8 @@ export class Backdrop extends Container {
       if (!texture) continue;
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5);
-      sprite.scale.set(randRange(1.4, 2.4));
-      sprite.alpha = randRange(0.1, 0.2);
+      sprite.scale.set(randRange(0.6, 0.95));
+      sprite.alpha = randRange(0.1, 0.18);
       const direction = Math.random() > 0.5 ? 1 : -1;
       sprite.scale.x = Math.abs(sprite.scale.x) * direction;
       sprite.position.set(randRange(0, VIEW.width), randRange(50, 222));
@@ -122,6 +120,7 @@ export class Backdrop extends Container {
 
   update(dt: number): void {
     this.time += dt;
+    this.drawWaterMarks();
     for (const item of this.swimmers) {
       const sprite = item.sprite;
       sprite.x += item.speed * dt;
@@ -129,10 +128,19 @@ export class Backdrop extends Container {
       if (sprite.x > VIEW.width + 20) sprite.x = -20;
       sprite.y = item.baseY + Math.sin(this.time * 0.8 + item.phase) * 6;
     }
-    for (const item of this.sparkles) {
-      item.sprite.alpha =
-        item.baseAlpha *
-        (0.55 + 0.45 * Math.sin(this.time * item.speed + item.phase));
+  }
+
+  private drawWaterMarks(): void {
+    const g = this.marksG;
+    g.clear();
+    for (const mark of this.marks) {
+      const pulse = (Math.sin(this.time * mark.speed + mark.phase) + 1) / 2;
+      const radius = mark.radius * (0.65 + pulse * 0.45);
+      g.ellipse(mark.x, mark.y, radius, radius * 0.38).stroke({
+        width: 1,
+        color: C.cyan,
+        alpha: mark.alpha * (0.4 + pulse * 0.6),
+      });
     }
   }
 }

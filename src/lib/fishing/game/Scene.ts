@@ -40,13 +40,26 @@ interface Jump {
   fromX: number;
   fromY: number;
   spin: number;
+  /** Caught fish stops above the angler's head instead of vanishing. */
+  hold: boolean;
 }
 
-interface AmbientSparkle {
-  sprite: AnimatedSprite;
-  baseAlpha: number;
+interface WaterMark {
+  x: number;
+  y: number;
+  radius: number;
   phase: number;
   speed: number;
+  alpha: number;
+}
+
+interface Whirl {
+  x: number;
+  y: number;
+  radius: number;
+  phase: number;
+  spin: number;
+  alpha: number;
 }
 
 /**
@@ -61,10 +74,12 @@ export class LakeScene extends Container {
   private readonly bobber = new Container();
   private readonly bobberBody = new Graphics();
   private readonly bobberRipple = new Graphics();
+  private readonly waterMarksG = new Graphics();
   private readonly particlesG = new Graphics();
   private readonly ringsG = new Graphics();
   private readonly biteMark: Text;
-  private readonly sparkles: AmbientSparkle[] = [];
+  private readonly waterMarks: WaterMark[] = [];
+  private readonly whirls: Whirl[] = [];
   private readonly fishShadows: {
     sprite: Sprite;
     speed: number;
@@ -75,6 +90,8 @@ export class LakeScene extends Container {
   private particles: Particle[] = [];
   private rings: Ring[] = [];
   private jumps: Jump[] = [];
+  private heldFish: Sprite | null = null;
+  private heldFishTime = 0;
   private time = 0;
 
   private phase: ScenePhase = "idle";
@@ -101,10 +118,11 @@ export class LakeScene extends Container {
     this.drawWater(background);
     this.drawShore(background);
     this.addChild(background);
-    this.addChild(this.previewG);
 
     this.addAmbientFish();
-    this.addSparkles();
+    this.addChild(this.waterMarksG);
+    this.addChild(this.previewG);
+    this.addWaterMarks();
     this.drawDock();
 
     this.angler.texture = assets.angler[10] ?? Texture.WHITE;
@@ -269,37 +287,29 @@ export class LakeScene extends Container {
     this.addChildAt(scenery, this.getChildIndex(this.angler));
   }
 
-  private addSparkles(): void {
-    for (let i = 0; i < 12; i += 1) {
-      const sprite = new AnimatedSprite(this.assets.ripples);
-      sprite.anchor.set(0.5);
-      sprite.scale.set(randRange(1, 2));
-      sprite.animationSpeed = randRange(0.03, 0.09);
-      sprite.position.set(
-        randRange(12, VIEW.width - 12),
-        randRange(34, SCENE.shoreY - 14),
-      );
-      const baseAlpha = randRange(0.18, 0.5);
-      sprite.alpha = baseAlpha;
-      sprite.play();
-      this.sparkles.push({
-        sprite,
-        baseAlpha,
+  private addWaterMarks(): void {
+    // Surface ripples are drawn procedurally: the old sprite-sheet tiles had
+    // opaque blue backgrounds and read as square patches on the lake.
+    for (let i = 0; i < 14; i += 1) {
+      this.waterMarks.push({
+        x: randRange(16, VIEW.width - 16),
+        y: randRange(34, SCENE.shoreY - 18),
+        radius: randRange(5, 13),
         phase: randRange(0, Math.PI * 2),
-        speed: randRange(0.4, 1.1),
+        speed: randRange(0.45, 1.15),
+        alpha: randRange(0.05, 0.12),
       });
-      this.addChild(sprite);
     }
 
     for (let i = 0; i < 2; i += 1) {
-      const swirl = new AnimatedSprite(this.assets.whirlpools);
-      swirl.anchor.set(0.5);
-      swirl.position.set(randRange(40, 440), randRange(60, 150));
-      swirl.scale.set(randRange(2, 3));
-      swirl.alpha = 0.12;
-      swirl.animationSpeed = randRange(0.02, 0.05);
-      swirl.play();
-      this.addChild(swirl);
+      this.whirls.push({
+        x: randRange(52, VIEW.width - 52),
+        y: randRange(62, 150),
+        radius: randRange(8, 13),
+        phase: randRange(0, Math.PI * 2),
+        spin: randRange(0.16, 0.32),
+        alpha: randRange(0.05, 0.085),
+      });
     }
   }
 
@@ -309,9 +319,9 @@ export class LakeScene extends Container {
       const id = ids[(i * 4) % ids.length];
       const sprite = new Sprite(this.assets.fish[id]);
       sprite.anchor.set(0.5);
-      sprite.alpha = 0.12;
-      sprite.tint = 0x0a4a7a;
-      sprite.scale.set(randRange(1.5, 2.2));
+      sprite.alpha = 0.09;
+      sprite.tint = 0x0f5c8f;
+      sprite.scale.set(randRange(0.62, 0.95));
       const direction = Math.random() > 0.5 ? 1 : -1;
       sprite.scale.x = Math.abs(sprite.scale.x) * direction;
       sprite.position.set(randRange(20, 460), randRange(50, 180));
@@ -463,22 +473,24 @@ export class LakeScene extends Container {
   catchFish(texture: Texture): void {
     this.phase = "result";
     this.biteMark.visible = false;
+    this.clearHeldFish();
     const fromX = this.bobber.x;
     const fromY = this.bobber.y;
     this.spawnSplash(fromX, fromY, 18, 1.1);
 
     const sprite = new Sprite(texture);
     sprite.anchor.set(0.5);
-    sprite.scale.set(2);
+    sprite.scale.set(1.5);
     sprite.position.set(fromX, fromY);
     this.addChild(sprite);
     this.jumps.push({
       sprite,
       t: 0,
-      duration: 0.75,
+      duration: 0.62,
       fromX,
       fromY,
-      spin: randRange(-1, 1),
+      spin: randRange(-0.5, 0.5),
+      hold: true,
     });
 
     this.setAngler([11], 6);
@@ -497,13 +509,15 @@ export class LakeScene extends Container {
     const chest = new AnimatedSprite(this.assets.chest);
     chest.anchor.set(0.5, 1);
     chest.animationSpeed = 0.22;
-    chest.position.set(this.bobberBaseX, this.bobberBaseY + 6);
-    chest.scale.set(2);
+    const x = SCENE.anglerX + 30;
+    const y = SCENE.anglerY - 2;
+    chest.position.set(x, y);
+    chest.scale.set(1.7);
     chest.play();
     this.addChild(chest);
     this.chestSprite = chest;
     this.chestLife = 1.6;
-    this.spawnSplash(this.bobberBaseX, this.bobberBaseY + 4, 10, 0.8);
+    this.spawnSplash(x, y - 10, 4, 0.4);
   }
 
   resetCast(): void {
@@ -516,11 +530,22 @@ export class LakeScene extends Container {
     this.castT = 0;
     this.nibbleTime = 0;
     this.bobberRipple.clear();
+    this.clearHeldFish();
+    for (const jump of this.jumps) jump.sprite.destroy();
+    this.jumps = [];
     this.chestLife = 0;
     if (this.chestSprite) {
       this.chestSprite.destroy();
       this.chestSprite = null;
     }
+  }
+
+  private clearHeldFish(): void {
+    if (this.heldFish) {
+      this.heldFish.destroy();
+      this.heldFish = null;
+    }
+    this.heldFishTime = 0;
   }
 
   // ---------------------------------------------------------------- internal
@@ -577,6 +602,7 @@ export class LakeScene extends Container {
     this.updateCast(dt);
     this.updateParticles(dt);
     this.updateJumps(dt);
+    this.updateHeldFish(dt);
     this.updateChest(dt);
   }
 
@@ -599,17 +625,52 @@ export class LakeScene extends Container {
   }
 
   private updateAmbient(dt: number): void {
-    for (const item of this.sparkles) {
-      item.sprite.alpha =
-        item.baseAlpha *
-        (0.5 + 0.5 * Math.sin(this.time * item.speed + item.phase));
-    }
+    this.drawWaterMarks();
     for (const item of this.fishShadows) {
       const sprite = item.sprite;
       sprite.x += item.speed * dt;
       if (sprite.x < -20) sprite.x = VIEW.width + 20;
       if (sprite.x > VIEW.width + 20) sprite.x = -20;
       sprite.y = item.baseY + Math.sin(this.time * 0.7 + item.phase) * 5;
+    }
+  }
+
+  private drawWaterMarks(): void {
+    const g = this.waterMarksG;
+    g.clear();
+
+    for (const mark of this.waterMarks) {
+      const pulse = (Math.sin(this.time * mark.speed + mark.phase) + 1) / 2;
+      const radius = mark.radius * (0.65 + pulse * 0.45);
+      g.ellipse(mark.x, mark.y, radius, radius * 0.38).stroke({
+        width: 1,
+        color: C.cyan,
+        alpha: mark.alpha * (0.4 + pulse * 0.6),
+      });
+      if (pulse > 0.72) {
+        g.rect(mark.x - 1, mark.y - radius * 0.38 - 2, 2, 1).fill({
+          color: C.cream,
+          alpha: mark.alpha * 0.8,
+        });
+      }
+    }
+
+    for (const whirl of this.whirls) {
+      const angle = this.time * whirl.spin + whirl.phase;
+      for (let i = 0; i < 3; i += 1) {
+        const start = angle + (i * Math.PI * 2) / 3;
+        g.arc(
+          whirl.x,
+          whirl.y,
+          whirl.radius * (0.45 + i * 0.17),
+          start,
+          start + 0.72,
+        ).stroke({
+          width: 1,
+          color: C.cream,
+          alpha: whirl.alpha,
+        });
+      }
     }
   }
 
@@ -736,17 +797,36 @@ export class LakeScene extends Container {
     this.jumps = this.jumps.filter((jump) => {
       jump.t += dt / jump.duration;
       if (jump.t >= 1) {
-        jump.sprite.destroy();
+        if (jump.hold) {
+          jump.sprite.position.set(SCENE.anglerX, SCENE.anglerY - 54);
+          jump.sprite.scale.set(1.6);
+          jump.sprite.rotation = 0;
+          jump.sprite.alpha = 1;
+          this.heldFish = jump.sprite;
+          this.heldFishTime = 0;
+          this.spawnSplash(SCENE.anglerX, SCENE.anglerY - 54, 4, 0.35);
+        } else {
+          jump.sprite.destroy();
+        }
         return false;
       }
       const t = jump.t;
       const arc = Math.sin(Math.PI * Math.min(1, t));
       jump.sprite.x = lerp(jump.fromX, SCENE.anglerX, t);
-      jump.sprite.y = lerp(jump.fromY, SCENE.anglerY - 18, t) - arc * 46;
+      jump.sprite.y = lerp(jump.fromY, SCENE.anglerY - 54, t) - arc * 46;
       jump.sprite.rotation = Math.sin(t * Math.PI * 3) * 0.25 + jump.spin * t;
-      jump.sprite.alpha = t > 0.85 ? (1 - t) / 0.15 : 1;
+      jump.sprite.alpha = jump.hold ? 1 : t > 0.85 ? (1 - t) / 0.15 : 1;
       return true;
     });
+  }
+
+  private updateHeldFish(dt: number): void {
+    if (!this.heldFish) return;
+    this.heldFishTime += dt;
+    this.heldFish.x = SCENE.anglerX + Math.sin(this.heldFishTime * 1.7) * 1.2;
+    this.heldFish.y =
+      SCENE.anglerY - 54 + Math.sin(this.heldFishTime * 3.4) * 2;
+    this.heldFish.rotation = Math.sin(this.heldFishTime * 2.2) * 0.06;
   }
 
   private updateChest(dt: number): void {

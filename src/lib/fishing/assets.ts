@@ -6,8 +6,6 @@ export interface AssetBag {
   fontLoaded: boolean;
   /** 4x4 character sheet, row-major, 32px frames. */
   angler: Texture[];
-  ripples: Texture[];
-  whirlpools: Texture[];
   chest: Texture[];
   tree: Texture;
   bush: Texture;
@@ -154,11 +152,6 @@ export async function loadGameAssets(
       fallback: () => fallbackTexture(0xe64539, 32, "person"),
     },
     {
-      key: "water-misc",
-      url: `${base}/water-misc.png`,
-      fallback: () => fallbackTexture(0xf5ffe8, 64, "fish"),
-    },
-    {
       key: "chest",
       url: `${base}/chest.png`,
       fallback: () => fallbackTexture(0xab5130, 16, "chest"),
@@ -211,19 +204,6 @@ export async function loadGameAssets(
     for (let index = 0; index < 16; index += 1) angler.push(anglerSheet);
   }
 
-  const misc = loaded.get("water-misc") ?? Texture.WHITE;
-  const ripples: Texture[] = [];
-  const whirlpools: Texture[] = [];
-  if (misc.width >= 64) {
-    for (let i = 0; i < 4; i += 1)
-      ripples.push(frame(misc, i * 16, 16, 16, 16));
-    for (let i = 0; i < 4; i += 1)
-      whirlpools.push(frame(misc, i * 16, 64, 16, 16));
-  } else {
-    ripples.push(misc);
-    whirlpools.push(misc);
-  }
-
   const chestSheet = loaded.get("chest") ?? Texture.WHITE;
   const chest: Texture[] = [];
   if (chestSheet.width >= 96) {
@@ -242,8 +222,6 @@ export async function loadGameAssets(
     base,
     fontLoaded,
     angler,
-    ripples,
-    whirlpools,
     chest,
     tree: loaded.get("tree") ?? Texture.WHITE,
     bush: loaded.get("bush") ?? Texture.WHITE,
