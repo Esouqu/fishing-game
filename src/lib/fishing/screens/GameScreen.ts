@@ -183,11 +183,12 @@ export class GameScreen extends Screen {
 
     this.castInfo.addChild(this.dots);
 
-    this.comboText = makeText("КОМБО —", {
-      size: 10,
+    this.comboText = makeText("СЕРИЯ 0", {
+      size: 7,
       weight: 700,
       color: C.steelPale,
       align: "right",
+      letterSpacing: 0.5,
     });
     this.comboText.position.set(HUD_INFO_WIDTH, 1);
     this.castInfo.addChild(this.comboText);
@@ -258,11 +259,11 @@ export class GameScreen extends Screen {
       const next = comboMultiplier(this.combo);
       setText(
         this.comboText,
-        `СЕРИЯ ${this.combo} → ${formatMultiplier(next)}`,
+        `Серия ${this.combo} (${formatMultiplier(next)})`,
       );
       this.comboText.style.fill = C.gold;
     } else {
-      setText(this.comboText, "КОМБО —");
+      setText(this.comboText, "Серия 0");
       this.comboText.style.fill = C.steelPale;
     }
     setText(this.castLabel, `ЗАБРОС ${this.castsUsed}/${CASTS_PER_SESSION}`);
