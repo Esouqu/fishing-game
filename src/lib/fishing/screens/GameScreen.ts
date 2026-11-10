@@ -224,7 +224,7 @@ export class GameScreen extends Screen {
       align: "center",
     });
     this.statusText.anchor.set(0.5, 0);
-    this.statusText.position.set(SCENE.anglerX, 126);
+    this.statusText.position.set(SCENE.anglerX, 108);
     this.statusText.style.stroke = { color: C.ink, width: 2.5 };
     this.statusText.eventMode = "none";
     this.hud.addChild(this.statusText);
@@ -250,7 +250,7 @@ export class GameScreen extends Screen {
       align: "center",
       letterSpacing: 1,
     });
-    this.biteText.position.set(240, 126);
+    this.biteText.position.set(240, 100);
     this.biteText.style.stroke = { color: C.ink, width: 4 };
     this.biteText.visible = false;
     this.biteText.eventMode = "none";
