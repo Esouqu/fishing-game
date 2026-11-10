@@ -65,6 +65,11 @@ export class Game implements FishingGameInstance {
     this.screens.handleKeyUp(event);
   };
 
+  private readonly onWheel = (event: WheelEvent): void => {
+    if (this.destroyed || !this.isEngaged() || this.assetBag === null) return;
+    this.screens.active?.handleWheel(event);
+  };
+
   private readonly onVisibility = (): void => {
     if (this.destroyed) return;
     if (document.hidden) {
@@ -85,6 +90,7 @@ export class Game implements FishingGameInstance {
 
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
+    app.canvas.addEventListener("wheel", this.onWheel);
     document.addEventListener("visibilitychange", this.onVisibility);
     app.canvas.addEventListener("pointerdown", this.focusCanvas);
     app.canvas.addEventListener("pointerenter", this.onPointerEnter);
@@ -373,6 +379,7 @@ export class Game implements FishingGameInstance {
     this.destroyed = true;
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
+    this.app.canvas.removeEventListener("wheel", this.onWheel);
     document.removeEventListener("visibilitychange", this.onVisibility);
     this.resizeObserver.disconnect();
     this.app.canvas.removeEventListener("pointerdown", this.focusCanvas);

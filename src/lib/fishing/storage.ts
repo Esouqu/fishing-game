@@ -95,9 +95,54 @@ const BOTS: readonly LeaderboardEntry[] = [
     date: 0,
     bot: true,
   },
+  {
+    id: "bot-bal",
+    name: "Баллада",
+    score: 990,
+    caught: 9,
+    best: "Щука",
+    date: 0,
+    bot: true,
+  },
+  {
+    id: "bot-groz",
+    name: "Гроза",
+    score: 1080,
+    caught: 9,
+    best: "Карп",
+    date: 0,
+    bot: true,
+  },
+  {
+    id: "bot-fred",
+    name: "Фрёд",
+    score: 1220,
+    caught: 8,
+    best: "Лещ",
+    date: 0,
+    bot: true,
+  },
+  {
+    id: "bot-kalin",
+    name: "Калин",
+    score: 1450,
+    caught: 8,
+    best: "Сом",
+    date: 0,
+    bot: true,
+  },
+  {
+    id: "bot-olga",
+    name: "Ольга",
+    score: 1680,
+    caught: 7,
+    best: "Окунь",
+    date: 0,
+    bot: true,
+  },
 ] as const;
 
-const BOARD_SIZE = 10;
+const BOARD_SIZE = 14;
 const STORE_LIMIT = 20;
 
 function compareEntries(a: LeaderboardEntry, b: LeaderboardEntry): number {
