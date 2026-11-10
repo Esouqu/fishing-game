@@ -18,7 +18,6 @@ const PANEL_H = 234;
 const TABLE_X = PANEL_X + 12;
 const TABLE_Y = 62;
 const TABLE_W = PANEL_W - 24;
-const TABLE_ROWS = 10;
 const TABLE_ROW_H = 13;
 const TABLE_FONT = 10;
 
@@ -58,7 +57,13 @@ export class LeaderboardScreen extends Screen {
     title.position.set(centerX, PANEL_Y + 8);
     this.addChild(title);
 
-    const subtitle = makeText("ТОП-10 · ЛОКАЛЬНЫЙ РЕЙТИНГ", {
+    const entries = game.leaderboard.top();
+    const personal = game.leaderboard.personalBest();
+    const rows =
+      personal && !entries.some((entry) => entry.id === personal.id)
+        ? entries.length + 1
+        : entries.length;
+    const subtitle = makeText(`ТОП-${rows} · ЛОКАЛЬНЫЙ РЕЙТИНГ`, {
       size: 8,
       color: C.steelPale,
       align: "center",
@@ -67,20 +72,18 @@ export class LeaderboardScreen extends Screen {
     subtitle.position.set(centerX, PANEL_Y + 26);
     this.addChild(subtitle);
 
-    drawLeaderboardTable(this, game.leaderboard.top(), {
+    drawLeaderboardTable(this, entries, {
       x: TABLE_X,
       y: TABLE_Y,
       width: TABLE_W,
-      rows: TABLE_ROWS,
-      highlightId: view.highlightId,
+      rows,
+      highlightId: view.highlightId ?? personal?.id,
       rowHeight: TABLE_ROW_H,
       fontSize: TABLE_FONT,
     });
 
     const needed =
-      TABLE_Y -
-      PANEL_Y +
-      leaderboardTableHeight(TABLE_ROWS, TABLE_ROW_H, TABLE_FONT);
+      TABLE_Y - PANEL_Y + leaderboardTableHeight(rows, TABLE_ROW_H, TABLE_FONT);
     if (needed > PANEL_H) {
       console.warn("[fishing] leaderboard overflows its panel", needed);
     }

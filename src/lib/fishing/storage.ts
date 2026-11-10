@@ -152,8 +152,13 @@ export class Leaderboard {
   }
 
   /** Top entries including the seeded rivals. */
-  top(): LeaderboardEntry[] {
-    return this.merged().slice(0, BOARD_SIZE);
+  top(count: number = BOARD_SIZE): LeaderboardEntry[] {
+    return this.merged().slice(0, count);
+  }
+
+  /** Every entry, best first — the board may grow beyond a fixed size. */
+  all(): LeaderboardEntry[] {
+    return this.merged();
   }
 
   /** Best score saved by the local player (bots excluded). */

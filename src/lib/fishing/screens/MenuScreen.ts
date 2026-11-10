@@ -19,7 +19,6 @@ const PANEL_H = 176;
 const TABLE_X = PANEL_X + 12;
 const TABLE_Y = 120;
 const TABLE_W = PANEL_W - 24;
-const TABLE_ROWS = 10;
 const TABLE_ROW_H = 12;
 const TABLE_FONT = 9;
 
@@ -80,8 +79,21 @@ export class MenuScreen extends Screen {
   }
 
   private buildLeaderboard(): void {
+    const personal = this.game.leaderboard.personalBest();
+    const entries = this.game.leaderboard.top();
+    const rows =
+      personal && !entries.some((entry) => entry.id === personal.id)
+        ? entries.length + 1
+        : entries.length;
+    const panelH = Math.max(
+      PANEL_H,
+      TABLE_Y -
+        PANEL_Y +
+        leaderboardTableHeight(rows, TABLE_ROW_H, TABLE_FONT) +
+        8,
+    );
     const panel = new Graphics();
-    drawPanel(panel, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, {
+    drawPanel(panel, PANEL_X, PANEL_Y, PANEL_W, panelH, {
       fill: C.panel,
       alpha: 0.92,
       shadow: true,
@@ -99,8 +111,7 @@ export class MenuScreen extends Screen {
     title.position.set(centerX, PANEL_Y + 8);
     this.addChild(title);
 
-    const entries = this.game.leaderboard.top();
-    const subtitle = makeText(`ТОП-${TABLE_ROWS} · ЛОКАЛЬНЫЙ РЕЙТИНГ`, {
+    const subtitle = makeText(`ТОП-${rows} · ЛОКАЛЬНЫЙ РЕЙТИНГ`, {
       size: 7,
       color: C.steelPale,
       align: "center",
@@ -113,17 +124,16 @@ export class MenuScreen extends Screen {
       x: TABLE_X,
       y: TABLE_Y,
       width: TABLE_W,
-      rows: TABLE_ROWS,
+      rows,
+      highlightId: personal?.id,
       rowHeight: TABLE_ROW_H,
       fontSize: TABLE_FONT,
     });
 
     // Sanity: keep the resized panel and table in sync.
     const needed =
-      TABLE_Y -
-      PANEL_Y +
-      leaderboardTableHeight(TABLE_ROWS, TABLE_ROW_H, TABLE_FONT);
-    if (needed > PANEL_H) {
+      TABLE_Y - PANEL_Y + leaderboardTableHeight(rows, TABLE_ROW_H, TABLE_FONT);
+    if (needed > panelH - 8) {
       console.warn("[fishing] menu leaderboard overflows its panel", needed);
     }
   }

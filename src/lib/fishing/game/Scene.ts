@@ -723,7 +723,7 @@ export class LakeScene extends Container {
     this.biteMark.visible = this.phase === "bite";
     if (this.biteMark.visible) {
       const bounce = Math.abs(Math.sin(this.time * 6)) * 5;
-      this.biteMark.position.set(this.bobber.x, this.bobber.y - 16 - bounce);
+      this.biteMark.position.set(this.bobber.x, this.bobber.y - 10 - bounce);
     }
 
     // Bobber ripple.

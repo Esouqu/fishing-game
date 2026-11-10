@@ -220,7 +220,7 @@ export class GameScreen extends Screen {
       align: "center",
     });
     this.statusText.anchor.set(0.5, 1);
-    this.statusText.position.set(SCENE.anglerX, SCENE.anglerY - 68);
+    this.statusText.position.set(SCENE.anglerX, SCENE.anglerY - 54);
     this.statusText.style.stroke = { color: C.ink, width: 2.5 };
     this.hud.addChild(this.statusText);
 
