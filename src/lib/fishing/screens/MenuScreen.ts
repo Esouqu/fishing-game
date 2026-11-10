@@ -1,7 +1,6 @@
 import { Graphics } from "pixi.js";
 import type { Game } from "../Game";
 import { C, VIEW } from "../config";
-import { formatScore } from "../utils";
 import { Screen } from "../ui/Screen";
 import { Backdrop } from "../ui/Backdrop";
 import { Button } from "../ui/Button";
@@ -61,18 +60,6 @@ export class MenuScreen extends Screen {
     wave.rect(150, 58, 180, 1).fill({ color: C.steel, alpha: 0.7 });
     wave.rect(170, 60, 140, 1).fill({ color: C.steel, alpha: 0.35 });
     this.addChild(wave);
-
-    const personal = game.leaderboard.personalBest();
-    const bestLine = personal
-      ? `ЛУЧШИЙ УЛОВ: ${formatScore(personal.score)} · ${personal.name.toUpperCase()}`
-      : "ЛУЧШИЙ УЛОВ: ПОКА ПУСТО";
-    const best = makeText(bestLine, {
-      size: 9,
-      color: C.steelPale,
-      align: "center",
-    });
-    best.position.set(240, 66);
-    this.addChild(best);
 
     this.buildLeaderboard();
     this.buildActions();
