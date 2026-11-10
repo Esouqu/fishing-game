@@ -1,4 +1,4 @@
-import { Graphics } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import type { Game, LeaderboardViewOptions } from "../Game";
 import { C } from "../config";
 import { Screen } from "../ui/Screen";
@@ -10,6 +10,7 @@ import {
   leaderboardTableHeight,
 } from "../ui/LeaderboardTable";
 import { drawPanel, makeText } from "../ui/theme";
+import { clamp } from "../utils";
 
 const PANEL_X = 100;
 const PANEL_Y = 18;
@@ -31,6 +32,12 @@ export class LeaderboardScreen extends Screen {
   private resetArmed = false;
   private resetTimer = 0;
 
+  private readonly leaderboardViewport = new Container();
+  private readonly leaderboardContent = new Container();
+  private readonly leaderboardMask = new Graphics();
+  private leaderboardScroll = 0;
+  private leaderboardMaxScroll = 0;
+
   constructor(game: Game, view: LeaderboardViewOptions = {}) {
     super();
     this.game = game;
@@ -38,13 +45,24 @@ export class LeaderboardScreen extends Screen {
     this.backdrop = new Backdrop(game.assets);
     this.addChild(this.backdrop);
 
+    this.leaderboardViewport.eventMode = "none";
+    this.addChild(this.leaderboardViewport);
+
     const panel = new Graphics();
     drawPanel(panel, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, {
       fill: C.panel,
       alpha: 0.95,
       shadow: true,
     });
-    this.addChild(panel);
+    this.leaderboardViewport.addChild(panel);
+
+    this.leaderboardContent.eventMode = "none";
+    this.leaderboardViewport.addChild(this.leaderboardContent);
+    this.leaderboardContent.mask = this.leaderboardMask;
+    this.leaderboardMask.eventMode = "none";
+    this.leaderboardMask
+      .rect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H)
+      .fill(0xff000000);
 
     const centerX = PANEL_X + PANEL_W / 2;
     const title = makeText("ТАБЛИЦА ЛИДЕРОВ", {
@@ -55,7 +73,7 @@ export class LeaderboardScreen extends Screen {
       letterSpacing: 1,
     });
     title.position.set(centerX, PANEL_Y + 8);
-    this.addChild(title);
+    this.leaderboardContent.addChild(title);
 
     const entries = game.leaderboard.top();
     const personal = game.leaderboard.personalBest();
@@ -72,7 +90,7 @@ export class LeaderboardScreen extends Screen {
     subtitle.position.set(centerX, PANEL_Y + 26);
     this.addChild(subtitle);
 
-    drawLeaderboardTable(this, entries, {
+    const tableHeight = drawLeaderboardTable(this.leaderboardContent, entries, {
       x: TABLE_X,
       y: TABLE_Y,
       width: TABLE_W,
@@ -81,6 +99,11 @@ export class LeaderboardScreen extends Screen {
       rowHeight: TABLE_ROW_H,
       fontSize: TABLE_FONT,
     });
+    this.leaderboardMaxScroll = Math.max(
+      0,
+      TABLE_Y - PANEL_Y + tableHeight - PANEL_H,
+    );
+    this.applyLeaderboardScroll();
 
     const needed =
       TABLE_Y - PANEL_Y + leaderboardTableHeight(rows, TABLE_ROW_H, TABLE_FONT);
@@ -139,6 +162,20 @@ export class LeaderboardScreen extends Screen {
     this.focus.onMove = () => game.audio.hover();
   }
 
+  private applyLeaderboardScroll(): void {
+    this.leaderboardContent.position.y = -this.leaderboardScroll;
+  }
+
+  override handleWheel(event: WheelEvent): void {
+    if (this.leaderboardMaxScroll <= 0) return;
+    this.leaderboardScroll = clamp(
+      this.leaderboardScroll + event.deltaY * 0.05,
+      0,
+      this.leaderboardMaxScroll,
+    );
+    this.applyLeaderboardScroll();
+  }
+
   private handleReset(): void {
     if (!this.resetArmed) {
       this.resetArmed = true;
@@ -154,6 +191,7 @@ export class LeaderboardScreen extends Screen {
   }
 
   override onEnter(): void {
+    this.leaderboardScroll = 0;
     this.focus.focus(0);
   }
 
