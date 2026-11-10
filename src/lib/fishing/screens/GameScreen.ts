@@ -426,13 +426,16 @@ export class GameScreen extends Screen {
       this.chargeSoundTimer = 0;
       this.setStatus("ОТПУСТИ — ЗАБРОС");
     } else if (this.phase === "bite") {
+      // The player just pressed on the bite prompt — hook immediately and
+      // arm the reel hold so a single press-and-hold starts reeling.
+      this.pressed = true;
       this.hookFish();
     } else if (this.phase === "fighting") {
       this.pressed = true;
       this.minigame?.setHold(true);
-    } else if (this.phase === "resolve") {
-      this.resolveTimer = Math.min(this.resolveTimer, 0.2);
     }
+    // No skip during the resolve phase: the player must watch the caught
+    // fish land — there is nothing to skip past once it is over.
   }
 
   private pressEnd(): void {
