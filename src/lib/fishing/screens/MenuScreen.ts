@@ -101,7 +101,7 @@ export class MenuScreen extends Screen {
     this.addChild(panel);
 
     const centerX = PANEL_X + PANEL_W / 2;
-    const title = makeText("ЛИДЕРЫ", {
+    const title = makeText("ЛИДЕРБОРД", {
       size: 13,
       weight: 800,
       color: C.gold,
@@ -110,15 +110,6 @@ export class MenuScreen extends Screen {
     });
     title.position.set(centerX, PANEL_Y + 8);
     this.addChild(title);
-
-    const subtitle = makeText(`ТОП-${rows} · ЛОКАЛЬНЫЙ РЕЙТИНГ`, {
-      size: 7,
-      color: C.steelPale,
-      align: "center",
-      letterSpacing: 0.5,
-    });
-    subtitle.position.set(centerX, PANEL_Y + 22);
-    this.addChild(subtitle);
 
     drawLeaderboardTable(this, entries, {
       x: TABLE_X,

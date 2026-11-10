@@ -47,6 +47,8 @@ const CAST_LABEL = "УДЕРЖИВАЙ — СИЛА ЗАБРОСА";
 const HUD_INFO_WIDTH = 188;
 const HUD_INFO_LEFT = VIEW.width / 2 - HUD_INFO_WIDTH / 2;
 const HUD_INFO_RIGHT = VIEW.width / 2 + HUD_INFO_WIDTH / 2;
+const HUD_ATTEMPT_SPAN = (CASTS_PER_SESSION - 1) * 10 + 6;
+const HUD_ATTEMPT_START = Math.round((HUD_INFO_WIDTH - HUD_ATTEMPT_SPAN) / 2);
 const WAIT_LABEL = "ЖДЁМ ПОКЛЁВКИ";
 const FIGHT_LABEL = "УДЕРЖИВАЙ — ЗОНА ВВЕРХ";
 
@@ -171,7 +173,7 @@ export class GameScreen extends Screen {
       color: C.steelPale,
       letterSpacing: 0.5,
     });
-    this.castLabel.position.set(0, 2);
+    this.castLabel.position.set(HUD_ATTEMPT_START, 2);
     this.castInfo.addChild(this.castLabel);
 
     this.castInfo.addChild(this.dots);
@@ -183,7 +185,7 @@ export class GameScreen extends Screen {
       align: "right",
       letterSpacing: 0.5,
     });
-    this.comboText.position.set(HUD_INFO_WIDTH, 1);
+    this.comboText.position.set(HUD_ATTEMPT_START + HUD_ATTEMPT_SPAN, 2);
     this.castInfo.addChild(this.comboText);
     this.hud.addChild(this.perfectPips);
 
@@ -263,8 +265,11 @@ export class GameScreen extends Screen {
   private drawDots(): void {
     const g = this.dots;
     g.clear();
+    // Centre the attempt dots inside the cast/combo block so the two-row
+    // header group reads as one centred unit.
+    const startX = HUD_ATTEMPT_START;
     for (let i = 0; i < CASTS_PER_SESSION; i += 1) {
-      const x = i * 10;
+      const x = startX + i * 10;
       const y = 12;
       const outcome = this.outcomes[i];
       g.rect(x, y, 6, 6).fill({ color: 0x232a44 });
