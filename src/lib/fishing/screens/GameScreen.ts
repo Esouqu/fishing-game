@@ -62,6 +62,7 @@ export class GameScreen extends Screen {
   private readonly fightDim = new Graphics();
   private readonly inputCatcher: Graphics;
   private readonly dots = new Graphics();
+  private readonly perfectPips = new Graphics();
   private readonly powerBar = new Graphics();
   private readonly reactionBar = new Graphics();
 
@@ -186,6 +187,7 @@ export class GameScreen extends Screen {
     });
     this.comboText.position.set(248, 6);
     this.hud.addChild(this.comboText);
+    this.hud.addChild(this.perfectPips);
 
     this.soundButton = new Button({
       width: 18,
@@ -279,6 +281,31 @@ export class GameScreen extends Screen {
         alpha: current ? 0.9 : 0.35,
         alignment: 0,
       });
+    }
+  }
+
+  private updatePerfectPips(): void {
+    const g = this.perfectPips;
+    const active = this.phase === "fighting" && this.minigame !== null;
+    g.visible = active;
+    if (!active) {
+      g.clear();
+      return;
+    }
+
+    const left = this.minigame!.slipsLeft;
+    const x = 336;
+    const y = 8;
+    g.clear();
+    for (let i = 0; i < 2; i += 1) {
+      const px = x + i * 9;
+      g.rect(px, y, 7, 7).fill({ color: C.ink, alpha: 0.8 });
+      if (i < left) {
+        g.rect(px + 1, y + 1, 5, 5).fill(C.cyan);
+        g.rect(px + 1, y + 1, 5, 1).fill({ color: C.cream, alpha: 0.8 });
+      } else {
+        g.rect(px + 1, y + 1, 5, 5).fill({ color: C.steel, alpha: 0.35 });
+      }
     }
   }
 
@@ -474,11 +501,12 @@ export class GameScreen extends Screen {
       this.fish,
       this.game.assets.fish[this.fish.id],
     );
-    minigame.position.set(352, 38);
+    minigame.position.set(366, 28);
     this.fx.addChild(minigame);
     minigame.onFinish = (result) => this.resolveFight(result);
     minigame.setHold(this.pressed);
     this.minigame = minigame;
+    this.updatePerfectPips();
   }
 
   private resolveFight(result: MinigameResult): void {
@@ -536,6 +564,7 @@ export class GameScreen extends Screen {
       this.minigame.visible = false;
       this.minigame.setHold(false);
     }
+    this.updatePerfectPips();
     this.scene.catchFish(this.game.assets.fish[fish.id]);
     this.game.audio.catchFish(perfect);
 
@@ -563,6 +592,7 @@ export class GameScreen extends Screen {
     this.game.audio.escape();
     if (brokenStreak >= 2) this.game.audio.comboBreak();
     if (this.minigame) this.minigame.visible = false;
+    this.updatePerfectPips();
     this.biteText.visible = false;
     this.reactionBar.clear();
     this.powerBar.clear();
@@ -590,6 +620,7 @@ export class GameScreen extends Screen {
       this.minigame = null;
     }
     this.clearCatchCard();
+    this.updatePerfectPips();
     this.fish = null;
     this.biteText.visible = false;
     this.reactionBar.clear();
@@ -829,6 +860,7 @@ export class GameScreen extends Screen {
     this.updateFloaters(dt);
     this.updateCard(dt);
     this.updateScore(dt);
+    this.updatePerfectPips();
 
     if (this.chestSoundTimer > 0) {
       this.chestSoundTimer -= dt;

@@ -1,34 +1,38 @@
-import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
+import { Container, Graphics, Sprite, type Texture } from "pixi.js";
 import { C, START_PROGRESS } from "../config";
 import type { FishSpecies } from "../config";
 import { chance, clamp, randRange } from "../utils";
-import { drawPanel, makeText } from "../ui/theme";
 
 export interface MinigameResult {
   won: boolean;
   perfect: boolean;
 }
 
-const WIDTH = 114;
-const HEIGHT = 190;
-const COL_X = 12;
-const COL_Y = 27;
-const COL_W = 40;
-const COL_H = 132;
-const PROG_X = 66;
-const PROG_W = 12;
+const WIDTH = 100;
+const HEIGHT = 208;
+const COL_X = 15;
+const COL_Y = 17;
+const COL_W = 60;
+const COL_H = 174;
+const PROG_X = 79;
+const PROG_Y = 17;
+const PROG_W = 8;
+const PROG_H = 174;
 const MAX_SLIPS = 2;
 
 /**
  * Stardew-style reeling minigame: hold to lift the green zone, keep the fish
  * inside it, fill the progress bar before it drains.
+ *
+ * The panel is deliberately textless: a cream outer frame, a wooden inner
+ * frame, a water column, and a gold progress channel in the right rail.
  */
 export class Minigame extends Container {
   private readonly fish: FishSpecies;
   private readonly fishSprite: Sprite;
+  private readonly ambientG = new Graphics();
   private readonly zoneG = new Graphics();
   private readonly progressG = new Graphics();
-  private readonly hint: Text;
 
   private fishPos = 0.5;
   private fishVel = 0;
@@ -44,7 +48,6 @@ export class Minigame extends Container {
   private perfect = true;
   private slips = 0;
   private wasOverlapping = true;
-  private readonly pipsG = new Graphics();
   private time = 0;
   private finishResult: MinigameResult | null = null;
 
@@ -54,75 +57,21 @@ export class Minigame extends Container {
     super();
     this.fish = fish;
 
-    const g = new Graphics();
-    drawPanel(g, 0, 0, WIDTH, HEIGHT, { shadow: true, fill: C.panel });
-    g.rect(0, 0, WIDTH, 20).fill(C.ink);
-    g.rect(0, 20, WIDTH, 1).fill({ color: C.steel, alpha: 0.6 });
-    this.addChild(g);
-
-    const title = makeText(fish.name, {
-      size: 10,
-      color: C.gold,
-      weight: 700,
-      align: "center",
-    });
-    title.position.set(WIDTH / 2, 5);
-    this.addChild(title);
-    this.addChild(this.pipsG);
-
-    const columnBg = new Graphics();
-    columnBg.rect(COL_X, COL_Y, COL_W, COL_H).fill(0x1c2440);
-    columnBg
-      .rect(COL_X, COL_Y, COL_W, COL_H)
-      .stroke({ width: 1, color: C.ink, alignment: 0 });
-    for (let i = 1; i < 4; i += 1) {
-      columnBg
-        .rect(COL_X + 1, COL_Y + (COL_H / 4) * i, COL_W - 2, 1)
-        .fill({ color: C.steel, alpha: 0.16 });
-    }
-    this.addChild(columnBg);
-
-    this.zonePos = this.fishPos;
+    this.addChild(this.buildFrame());
+    this.addChild(this.ambientG);
     this.addChild(this.zoneG);
 
     this.fishSprite = new Sprite(icon);
     this.fishSprite.anchor.set(0.5);
-    this.fishSprite.scale.set(1.6);
+    this.fishSprite.scale.set(1.45);
     this.fishSprite.scale.x *= -1;
     this.addChild(this.fishSprite);
 
-    const progressBg = new Graphics();
-    progressBg.rect(PROG_X, COL_Y, PROG_W, COL_H).fill(0x1c2440);
-    progressBg
-      .rect(PROG_X, COL_Y, PROG_W, COL_H)
-      .stroke({ width: 1, color: C.ink, alignment: 0 });
-    this.addChild(progressBg);
+    this.addChild(this.buildProgress());
     this.addChild(this.progressG);
+    this.addChild(this.buildRod());
 
-    const progressLabel = makeText("ПРОГРЕСС", {
-      size: 7,
-      color: C.steelPale,
-      align: "center",
-    });
-    progressLabel.position.set(PROG_X + PROG_W / 2, COL_Y + COL_H + 4);
-    this.addChild(progressLabel);
-
-    this.hint = makeText("ДЕРЖИ", {
-      size: 8,
-      color: C.steelPale,
-      weight: 600,
-      align: "center",
-    });
-    this.hint.position.set(WIDTH / 2, HEIGHT - 14);
-    this.addChild(this.hint);
-
-    const points = makeText(`+${fish.points}`, {
-      size: 8,
-      color: C.yellow,
-    });
-    points.position.set(6, 5);
-    this.addChild(points);
-
+    this.zonePos = this.fishPos;
     this.update(0);
   }
 
@@ -132,6 +81,11 @@ export class Minigame extends Container {
 
   get fishSpecies(): FishSpecies {
     return this.fish;
+  }
+
+  /** Perfect slips still available, shown by the HUD pips. */
+  get slipsLeft(): number {
+    return Math.max(0, MAX_SLIPS - this.slips);
   }
 
   setHold(hold: boolean): void {
@@ -194,24 +148,171 @@ export class Minigame extends Container {
     else if (this.progress <= 0) this.finish(false);
   }
 
+  // ------------------------------------------------------------------ layout
+
+  private buildFrame(): Graphics {
+    const g = new Graphics();
+
+    // Soft drop shadow + cream outer shell.
+    g.roundRect(2, 3, WIDTH, HEIGHT, 9).fill({
+      color: C.ink,
+      alpha: 0.35,
+    });
+    g.roundRect(0, 0, WIDTH, HEIGHT, 9).fill(C.cream);
+    g.roundRect(0, 0, WIDTH, HEIGHT, 9).stroke({
+      width: 1,
+      color: C.ink,
+      alignment: 0,
+    });
+    g.roundRect(1, 1, WIDTH - 2, HEIGHT - 2, 8).stroke({
+      width: 1,
+      color: C.white,
+      alpha: 0.7,
+      alignment: 0,
+    });
+    g.roundRect(2, 2, WIDTH - 4, HEIGHT - 4, 7).stroke({
+      width: 1,
+      color: C.steelPale,
+      alpha: 0.5,
+      alignment: 0,
+    });
+
+    // Wooden inner frame.
+    g.rect(5, 5, 90, 198).fill(C.brown);
+    g.rect(5, 5, 90, 198).stroke({ width: 1, color: C.ink, alignment: 0 });
+
+    // Top rail.
+    g.rect(5, 5, 90, 12).fill(C.brown);
+    g.rect(6, 6, 88, 1).fill(C.brownLight);
+    g.rect(5, 15, 90, 2).fill(C.brownDark);
+    for (const x of [30, 55, 80]) g.rect(x, 5, 1, 12).fill(C.brownDark);
+
+    // Bottom rail.
+    g.rect(5, 191, 90, 12).fill(C.brown);
+    g.rect(6, 192, 88, 1).fill({ color: C.brownLight, alpha: 0.7 });
+    g.rect(5, 201, 90, 2).fill(C.brownDark);
+    for (const x of [30, 55, 80]) g.rect(x, 191, 1, 12).fill(C.brownDark);
+
+    // Left rail (the rod sits in this gutter).
+    g.rect(5, 17, 10, 174).fill(C.brown);
+    g.rect(5, 17, 1, 174).fill(C.brownDark);
+    g.rect(14, 17, 1, 174).fill(C.brownDark);
+    g.rect(6, 17, 1, 174).fill({ color: C.brownLight, alpha: 0.55 });
+
+    // Right rail.
+    g.rect(87, 17, 8, 174).fill(C.brown);
+    g.rect(87, 17, 1, 174).fill(C.brownDark);
+    g.rect(94, 17, 1, 174).fill(C.brownDark);
+    g.rect(88, 17, 1, 174).fill({ color: C.brownLight, alpha: 0.4 });
+
+    // Thin wooden separator between water and progress.
+    g.rect(75, 17, 4, 174).fill(C.brown);
+    g.rect(75, 17, 1, 174).fill(C.brownDark);
+    g.rect(78, 17, 1, 174).fill(C.brownDark);
+
+    // Plank seams.
+    for (let y = 39; y < 190; y += 26) {
+      g.rect(5, y, 10, 1).fill({ color: C.brownDark, alpha: 0.7 });
+      g.rect(75, y, 4, 1).fill({ color: C.brownDark, alpha: 0.7 });
+      g.rect(87, y, 8, 1).fill({ color: C.brownDark, alpha: 0.7 });
+    }
+
+    // Recessed water field.
+    g.rect(COL_X - 1, COL_Y - 1, COL_W + 2, COL_H + 2).fill(C.ink);
+    g.rect(COL_X, COL_Y, COL_W, COL_H).fill(C.ocean);
+    g.rect(COL_X, COL_Y + COL_H * 0.34, COL_W, COL_H * 0.36).fill(C.deep);
+    g.rect(COL_X, COL_Y + COL_H * 0.7, COL_W, COL_H * 0.3).fill(0x0d3f70);
+    g.rect(COL_X, COL_Y, COL_W, 5).fill({ color: C.ink, alpha: 0.25 });
+    g.rect(COL_X, COL_Y, 2, COL_H).fill({ color: C.ink, alpha: 0.18 });
+    g.rect(COL_X + COL_W - 2, COL_Y, 2, COL_H).fill({
+      color: C.ink,
+      alpha: 0.18,
+    });
+
+    // Light shafts and a couple of weeds near the bottom.
+    g.rect(COL_X + 12, COL_Y + 10, 1, COL_H - 24).fill({
+      color: C.cream,
+      alpha: 0.05,
+    });
+    g.rect(COL_X + 34, COL_Y + 6, 1, COL_H - 20).fill({
+      color: C.cream,
+      alpha: 0.04,
+    });
+    g.rect(COL_X + 47, COL_Y + 14, 1, COL_H - 28).fill({
+      color: C.cream,
+      alpha: 0.035,
+    });
+    g.rect(COL_X + 9, COL_Y + COL_H - 9, 1, 7).fill({
+      color: C.greenDark,
+      alpha: 0.75,
+    });
+    g.rect(COL_X + 12, COL_Y + COL_H - 7, 1, 5).fill({
+      color: C.greenDark,
+      alpha: 0.6,
+    });
+    g.rect(COL_X + 50, COL_Y + COL_H - 8, 1, 6).fill({
+      color: C.greenDark,
+      alpha: 0.65,
+    });
+
+    return g;
+  }
+
+  private buildProgress(): Graphics {
+    const g = new Graphics();
+    g.rect(PROG_X - 1, PROG_Y - 1, PROG_W + 2, PROG_H + 2).fill(C.ink);
+    g.rect(PROG_X, PROG_Y, PROG_W, PROG_H).fill(0x1c2440);
+    g.rect(PROG_X, PROG_Y, PROG_W, 2).fill({ color: C.ink, alpha: 0.55 });
+    g.rect(PROG_X + 1, PROG_Y + 2, 1, PROG_H - 4).fill({
+      color: C.steel,
+      alpha: 0.18,
+    });
+    return g;
+  }
+
+  private buildRod(): Graphics {
+    const g = new Graphics();
+    // Steel rod running down the left gutter.
+    g.rect(9, 22, 2, 160).fill(C.steelPale);
+    g.rect(9, 22, 1, 160).fill(C.cream);
+    g.rect(10, 22, 1, 160).fill({ color: C.ink, alpha: 0.45 });
+    g.rect(8, 22, 4, 2).fill(C.ink);
+
+    // Small wooden reel and crank at the bottom.
+    g.circle(10, 184, 5).fill(C.brownLight);
+    g.circle(10, 184, 5).stroke({ width: 1, color: C.ink, alignment: 0 });
+    g.circle(10, 184, 2).fill(C.brownDark);
+    g.rect(12, 182, 4, 2).fill(C.brownDark);
+    g.rect(15, 180, 2, 4).fill(C.brownLight);
+    g.rect(15, 180, 2, 1).fill(C.cream);
+    return g;
+  }
+
+  // -------------------------------------------------------------------- draw
+
   private draw(overlap: boolean): void {
+    this.drawAmbient();
+
     const zoneHeight = COL_H * this.fish.zone;
     const center = COL_Y + this.zonePos * COL_H;
     const top = clamp(
       center - zoneHeight / 2,
-      COL_Y,
-      COL_Y + COL_H - zoneHeight,
+      COL_Y + 1,
+      COL_Y + COL_H - zoneHeight - 1,
     );
     this.zoneG.clear();
     this.zoneG
-      .rect(COL_X + 1, top, COL_W - 2, zoneHeight)
-      .fill({ color: overlap ? C.green : C.greenDark, alpha: 0.85 });
+      .rect(COL_X + 2, top, COL_W - 4, zoneHeight)
+      .fill(overlap ? 0x7ed957 : C.green);
     this.zoneG
-      .rect(COL_X + 1, top, COL_W - 2, 2)
-      .fill({ color: C.yellow, alpha: overlap ? 0.85 : 0.45 });
+      .rect(COL_X + 2, top, COL_W - 4, zoneHeight)
+      .stroke({ width: 1, color: C.greenDark, alignment: 0 });
     this.zoneG
-      .rect(COL_X + 1, top + zoneHeight - 2, COL_W - 2, 2)
-      .fill({ color: C.ink, alpha: 0.35 });
+      .rect(COL_X + 2, top, COL_W - 4, 1)
+      .fill(overlap ? C.cream : C.yellow);
+    this.zoneG
+      .rect(COL_X + 2, top + zoneHeight - 1, COL_W - 4, 1)
+      .fill({ color: C.greenDark, alpha: 0.9 });
 
     const fishY = clamp(
       COL_Y + this.fishPos * COL_H,
@@ -221,43 +322,34 @@ export class Minigame extends Container {
     this.fishSprite.position.set(COL_X + COL_W / 2, fishY);
     this.fishSprite.y += Math.sin(this.time * 8) * 0.6;
 
-    const innerHeight = COL_H - 2;
+    const innerHeight = PROG_H - 2;
     const fillHeight = Math.max(0, innerHeight * this.progress);
-    const color =
-      this.progress > 0.66 ? C.green : this.progress > 0.33 ? C.gold : C.orange;
     this.progressG.clear();
-    this.progressG
-      .rect(
-        PROG_X + 1,
-        COL_Y + 1 + (innerHeight - fillHeight),
-        PROG_W - 2,
-        fillHeight,
-      )
-      .fill({ color, alpha: 0.95 });
-    this.progressG
-      .rect(PROG_X + 1, COL_Y + 1 + (innerHeight - fillHeight), PROG_W - 2, 1)
-      .fill({ color: C.cream, alpha: 0.8 });
-
-    this.drawPips();
-
-    this.hint.text = this.perfect ? "УДЕРЖИВАЙ · ЧИСТО" : "УДЕРЖИВАЙ";
-    this.hint.alpha = overlap ? 0.9 : 0.55;
+    if (fillHeight > 0) {
+      const fillTop = PROG_Y + 1 + (innerHeight - fillHeight);
+      this.progressG
+        .rect(PROG_X + 1, fillTop, PROG_W - 2, fillHeight)
+        .fill(C.gold);
+      this.progressG.rect(PROG_X + 1, fillTop, PROG_W - 2, 1).fill(C.cream);
+      this.progressG
+        .rect(PROG_X + 1, fillTop, 1, fillHeight)
+        .fill({ color: C.cream, alpha: 0.35 });
+    }
   }
 
-  private drawPips(): void {
-    const g = this.pipsG;
+  private drawAmbient(): void {
+    const g = this.ambientG;
     g.clear();
-    const remaining = Math.max(0, MAX_SLIPS - this.slips);
-    for (let i = 0; i < MAX_SLIPS; i += 1) {
-      const x = WIDTH - 17 + i * 8;
-      const y = 7;
-      g.rect(x, y, 6, 6).fill({ color: C.ink, alpha: 0.8 });
-      if (i < remaining) {
-        g.rect(x + 1, y + 1, 4, 4).fill(C.cyan);
-        g.rect(x + 1, y + 1, 4, 1).fill({ color: C.cream, alpha: 0.8 });
-      } else {
-        g.rect(x + 1, y + 1, 4, 4).fill({ color: C.steel, alpha: 0.35 });
-      }
+    for (let i = 0; i < 4; i += 1) {
+      const speed = 0.045 + i * 0.012;
+      const rise = (this.time * speed + i * 0.27) % 1;
+      const x = COL_X + 8 + i * 13 + Math.sin(this.time * 1.4 + i * 2.1) * 1.6;
+      const y = COL_Y + COL_H - 12 - rise * (COL_H - 34);
+      const radius = i % 2 === 0 ? 1.5 : 1;
+      g.circle(x, y, radius).fill({
+        color: C.cream,
+        alpha: 0.12 + (1 - rise) * 0.12,
+      });
     }
   }
 
