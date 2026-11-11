@@ -89,7 +89,7 @@ export class LeaderboardScreen extends Screen {
     this.leaderboardMask.eventMode = "none";
     this.leaderboardMask
       .rect(PANEL_X, TABLE_Y, PANEL_W, visibleH)
-      .fill(0xff000000);
+      .fill(0xffffff);
     this.leaderboardViewport.addChild(this.leaderboardMask);
     this.leaderboardContent.mask = this.leaderboardMask;
 
