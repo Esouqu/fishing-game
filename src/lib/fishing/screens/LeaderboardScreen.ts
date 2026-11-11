@@ -5,16 +5,20 @@ import { Screen } from "../ui/Screen";
 import { Backdrop } from "../ui/Backdrop";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
-import { drawLeaderboardTable } from "../ui/LeaderboardTable";
+import {
+  drawLeaderboardRow,
+  drawLeaderboardTable,
+} from "../ui/LeaderboardTable";
 import { drawPanel, makeText } from "../ui/theme";
 import { clamp } from "../utils";
+import type { LeaderboardEntry } from "../types";
 
 const PANEL_X = 100;
-const PANEL_Y = 18;
+const PANEL_Y = 12;
 const PANEL_W = 280;
-const PANEL_H = 234;
+const PANEL_H = 216;
 const TABLE_X = PANEL_X + 12;
-const TABLE_Y = 62;
+const TABLE_Y = 56;
 const TABLE_W = PANEL_W - 24;
 const TABLE_ROW_H = 13;
 const TABLE_FONT = 10;
@@ -34,9 +38,12 @@ export class LeaderboardScreen extends Screen {
   private readonly leaderboardMask = new Graphics();
   private leaderboardScroll = 0;
   private leaderboardMaxScroll = 0;
+  private leaderboardVisibleH = 0;
   private leaderboardThumb: Graphics | null = null;
   private thumbTrackY = 0;
   private thumbTrackH = 0;
+  private pinnedRow: Container | null = null;
+  private pinnedRowIndex = -1;
 
   constructor(game: Game, view: LeaderboardViewOptions = {}) {
     super();
@@ -115,8 +122,16 @@ export class LeaderboardScreen extends Screen {
       showHeader: false,
     });
     this.leaderboardMaxScroll = Math.max(0, tableHeight - visibleH);
+    this.leaderboardVisibleH = visibleH;
     this.thumbTrackY = TABLE_Y + headerH;
     this.thumbTrackH = visibleH;
+
+    if (personal) {
+      const index = game.leaderboard
+        .all()
+        .findIndex((entry) => entry.id === personal.id);
+      if (index >= 0) this.buildPinnedRow(personal, index, headerH, visibleH);
+    }
 
     if (this.leaderboardMaxScroll > 0) {
       const track = new Graphics();
@@ -150,7 +165,7 @@ export class LeaderboardScreen extends Screen {
         size: 11,
         onClick: () => game.startGame(),
       });
-      again.position.set(122, 216);
+      again.position.set(122, 238);
       this.addChild(again);
       this.bottomButtons.push(again);
 
@@ -161,7 +176,7 @@ export class LeaderboardScreen extends Screen {
         size: 11,
         onClick: () => game.showMenu(),
       });
-      menu.position.set(246, 216);
+      menu.position.set(246, 238);
       this.addChild(menu);
       this.bottomButtons.push(menu);
     } else {
@@ -173,7 +188,7 @@ export class LeaderboardScreen extends Screen {
         size: 11,
         onClick: () => game.showMenu(),
       });
-      back.position.set(176, 216);
+      back.position.set(176, 238);
       this.addChild(back);
       this.bottomButtons.push(back);
     }
@@ -182,8 +197,55 @@ export class LeaderboardScreen extends Screen {
     this.focus.onMove = () => game.audio.hover();
   }
 
+  private buildPinnedRow(
+    entry: LeaderboardEntry,
+    index: number,
+    headerH: number,
+    visibleH: number,
+  ): void {
+    const y = TABLE_Y + headerH + visibleH - TABLE_ROW_H;
+    const pinned = new Container();
+    pinned.eventMode = "none";
+
+    const cover = new Graphics();
+    cover
+      .rect(PANEL_X + 2, y - 2, PANEL_W - 4, TABLE_ROW_H + 2)
+      .fill({ color: C.panel, alpha: 0.98 });
+    pinned.addChild(cover);
+
+    drawLeaderboardRow(pinned, entry, {
+      x: TABLE_X,
+      y,
+      width: TABLE_W,
+      rank: index + 1,
+      rowHeight: TABLE_ROW_H,
+      fontSize: TABLE_FONT,
+      highlighted: true,
+    });
+
+    const divider = new Graphics();
+    divider
+      .rect(PANEL_X + 8, y - 2, PANEL_W - 16, 1)
+      .fill({ color: C.gold, alpha: 0.5 });
+    pinned.addChild(divider);
+
+    this.addChild(pinned);
+    this.pinnedRow = pinned;
+    this.pinnedRowIndex = index;
+  }
+
+  private updatePinnedRow(): void {
+    if (!this.pinnedRow) return;
+    const rowTop = this.pinnedRowIndex * TABLE_ROW_H;
+    const rowBottom = rowTop + TABLE_ROW_H;
+    const top = this.leaderboardScroll;
+    const bottom = top + this.leaderboardVisibleH;
+    this.pinnedRow.visible = !(rowBottom > top && rowTop < bottom);
+  }
+
   private applyLeaderboardScroll(): void {
     this.leaderboardContent.position.y = -this.leaderboardScroll;
+    this.updatePinnedRow();
 
     const thumb = this.leaderboardThumb;
     if (thumb === null) return;
@@ -230,6 +292,7 @@ export class LeaderboardScreen extends Screen {
 
   override onEnter(): void {
     this.leaderboardScroll = 0;
+    this.applyLeaderboardScroll();
     this.focus.focus(0);
   }
 
