@@ -28,7 +28,11 @@ import {
   setText,
 } from "../ui/theme";
 import { LakeScene } from "../game/Scene";
-import { Minigame, type MinigameResult } from "../game/Minigame";
+import {
+  Minigame,
+  MINIGAME_WIDTH,
+  type MinigameResult,
+} from "../game/Minigame";
 
 type Phase =
   "idle" | "charging" | "waiting" | "bite" | "fighting" | "resolve" | "done";
@@ -522,7 +526,7 @@ export class GameScreen extends Screen {
       this.fish,
       this.game.assets.fish[this.fish.id],
     );
-    minigame.position.set(366, 28);
+    minigame.position.set(VIEW.width - MINIGAME_WIDTH - 14, 28);
     this.fx.addChild(minigame);
     minigame.onFinish = (result) => this.resolveFight(result);
     minigame.setHold(this.pressed);

@@ -8,17 +8,20 @@ export interface MinigameResult {
   perfect: boolean;
 }
 
-const WIDTH = 100;
+const WIDTH = 84;
 const HEIGHT = 208;
 const COL_X = 15;
 const COL_Y = 17;
-const COL_W = 60;
+const COL_W = 44;
 const COL_H = 174;
-const PROG_X = 79;
+const PROG_X = 63;
 const PROG_Y = 17;
 const PROG_W = 8;
 const PROG_H = 174;
 const MAX_SLIPS = 2;
+
+/** Panel width, used by the HUD to right-align it. */
+export const MINIGAME_WIDTH = WIDTH;
 
 /**
  * Stardew-style reeling minigame: hold to lift the green zone, keep the fish
@@ -63,7 +66,7 @@ export class Minigame extends Container {
 
     this.fishSprite = new Sprite(icon);
     this.fishSprite.anchor.set(0.5);
-    this.fishSprite.scale.set(1.45);
+    this.fishSprite.scale.set(1.3);
     this.fishSprite.scale.x *= -1;
     this.addChild(this.fishSprite);
 
@@ -178,20 +181,20 @@ export class Minigame extends Container {
     });
 
     // Wooden inner frame.
-    g.rect(5, 5, 90, 198).fill(C.brown);
-    g.rect(5, 5, 90, 198).stroke({ width: 1, color: C.ink, alignment: 0 });
+    g.rect(5, 5, 74, 198).fill(C.brown);
+    g.rect(5, 5, 74, 198).stroke({ width: 1, color: C.ink, alignment: 0 });
 
     // Top rail.
-    g.rect(5, 5, 90, 12).fill(C.brown);
-    g.rect(6, 6, 88, 1).fill(C.brownLight);
-    g.rect(5, 15, 90, 2).fill(C.brownDark);
-    for (const x of [30, 55, 80]) g.rect(x, 5, 1, 12).fill(C.brownDark);
+    g.rect(5, 5, 74, 12).fill(C.brown);
+    g.rect(6, 6, 72, 1).fill(C.brownLight);
+    g.rect(5, 15, 74, 2).fill(C.brownDark);
+    for (const x of [26, 44, 62]) g.rect(x, 5, 1, 12).fill(C.brownDark);
 
     // Bottom rail.
-    g.rect(5, 191, 90, 12).fill(C.brown);
-    g.rect(6, 192, 88, 1).fill({ color: C.brownLight, alpha: 0.7 });
-    g.rect(5, 201, 90, 2).fill(C.brownDark);
-    for (const x of [30, 55, 80]) g.rect(x, 191, 1, 12).fill(C.brownDark);
+    g.rect(5, 191, 74, 12).fill(C.brown);
+    g.rect(6, 192, 72, 1).fill({ color: C.brownLight, alpha: 0.7 });
+    g.rect(5, 201, 74, 2).fill(C.brownDark);
+    for (const x of [26, 44, 62]) g.rect(x, 191, 1, 12).fill(C.brownDark);
 
     // Left rail (the rod sits in this gutter).
     g.rect(5, 17, 10, 174).fill(C.brown);
@@ -200,21 +203,21 @@ export class Minigame extends Container {
     g.rect(6, 17, 1, 174).fill({ color: C.brownLight, alpha: 0.55 });
 
     // Right rail.
-    g.rect(87, 17, 8, 174).fill(C.brown);
-    g.rect(87, 17, 1, 174).fill(C.brownDark);
-    g.rect(94, 17, 1, 174).fill(C.brownDark);
-    g.rect(88, 17, 1, 174).fill({ color: C.brownLight, alpha: 0.4 });
+    g.rect(71, 17, 8, 174).fill(C.brown);
+    g.rect(71, 17, 1, 174).fill(C.brownDark);
+    g.rect(62, 17, 1, 174).fill(C.brownDark);
+    g.rect(72, 17, 1, 174).fill({ color: C.brownLight, alpha: 0.4 });
 
     // Thin wooden separator between water and progress.
-    g.rect(75, 17, 4, 174).fill(C.brown);
-    g.rect(75, 17, 1, 174).fill(C.brownDark);
-    g.rect(78, 17, 1, 174).fill(C.brownDark);
+    g.rect(59, 17, 4, 174).fill(C.brown);
+    g.rect(59, 17, 1, 174).fill(C.brownDark);
+    g.rect(62, 17, 1, 174).fill(C.brownDark);
 
     // Plank seams.
     for (let y = 39; y < 190; y += 26) {
       g.rect(5, y, 10, 1).fill({ color: C.brownDark, alpha: 0.7 });
-      g.rect(75, y, 4, 1).fill({ color: C.brownDark, alpha: 0.7 });
-      g.rect(87, y, 8, 1).fill({ color: C.brownDark, alpha: 0.7 });
+      g.rect(59, y, 4, 1).fill({ color: C.brownDark, alpha: 0.7 });
+      g.rect(71, y, 8, 1).fill({ color: C.brownDark, alpha: 0.7 });
     }
 
     // Recessed water field.
@@ -238,7 +241,7 @@ export class Minigame extends Container {
       color: C.cream,
       alpha: 0.04,
     });
-    g.rect(COL_X + 47, COL_Y + 14, 1, COL_H - 28).fill({
+    g.rect(COL_X + 32, COL_Y + 14, 1, COL_H - 28).fill({
       color: C.cream,
       alpha: 0.035,
     });
@@ -250,7 +253,7 @@ export class Minigame extends Container {
       color: C.greenDark,
       alpha: 0.6,
     });
-    g.rect(COL_X + 50, COL_Y + COL_H - 8, 1, 6).fill({
+    g.rect(COL_X + 34, COL_Y + COL_H - 8, 1, 6).fill({
       color: C.greenDark,
       alpha: 0.65,
     });
@@ -343,7 +346,7 @@ export class Minigame extends Container {
     for (let i = 0; i < 4; i += 1) {
       const speed = 0.045 + i * 0.012;
       const rise = (this.time * speed + i * 0.27) % 1;
-      const x = COL_X + 8 + i * 13 + Math.sin(this.time * 1.4 + i * 2.1) * 1.6;
+      const x = COL_X + 8 + i * 9 + Math.sin(this.time * 1.4 + i * 2.1) * 1.6;
       const y = COL_Y + COL_H - 12 - rise * (COL_H - 34);
       const radius = i % 2 === 0 ? 1.5 : 1;
       g.circle(x, y, radius).fill({
