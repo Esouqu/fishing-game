@@ -1,4 +1,9 @@
-import { Container, Graphics } from "pixi.js";
+import {
+  Container,
+  Graphics,
+  Rectangle,
+  type FederatedPointerEvent,
+} from "pixi.js";
 import type { Game } from "../Game";
 import { C, VIEW } from "../config";
 import { Screen } from "../ui/Screen";
@@ -79,6 +84,8 @@ export class MenuScreen extends Screen {
   private thumbTrackH = 0;
   private pinnedRow: Container | null = null;
   private pinnedRowIndex = -1;
+  private thumbHeight = 0;
+  private scrollDragging = false;
 
   constructor(game: Game) {
     super();
@@ -188,11 +195,11 @@ export class MenuScreen extends Screen {
 
   private buildLeaderboard(): void {
     const personal = this.game.leaderboard.personalBest();
-    const entries = this.game.leaderboard.top();
-    const rows =
-      personal && !entries.some((entry) => entry.id === personal.id)
-        ? entries.length + 1
-        : entries.length;
+    const entries = this.game.leaderboard.all();
+    const personalIndex = personal
+      ? entries.findIndex((entry) => entry.id === personal.id)
+      : -1;
+    const hasPersonal = personal !== null && personalIndex >= 0;
 
     const panel = new Graphics();
     drawMenuPanel(panel, BOARD_X, BOARD_Y, BOARD_W, BOARD_H, 0.9);
@@ -218,10 +225,12 @@ export class MenuScreen extends Screen {
       fontSize: TABLE_FONT,
     });
 
-    // Clip rows on a row boundary: a half-row would peek under the frame.
+    // The pinned player row owns the last row of the panel, so the scroll
+    // area is one row shorter and never hides data behind the pin.
     const available = BOARD_H - (BOARD_TABLE_Y - BOARD_Y) - 8;
-    const visibleH =
+    const baseVisibleH =
       Math.floor((available - headerH) / TABLE_ROW_H) * TABLE_ROW_H;
+    const visibleH = hasPersonal ? baseVisibleH - TABLE_ROW_H : baseVisibleH;
     this.leaderboardViewport.eventMode = "none";
     this.addChild(this.leaderboardViewport);
 
@@ -239,7 +248,6 @@ export class MenuScreen extends Screen {
       x: BOARD_TABLE_X,
       y: BOARD_TABLE_Y + headerH,
       width: BOARD_TABLE_W,
-      rows,
       highlightId: personal?.id,
       rowHeight: TABLE_ROW_H,
       fontSize: TABLE_FONT,
@@ -250,11 +258,8 @@ export class MenuScreen extends Screen {
     this.thumbTrackY = BOARD_TABLE_Y + headerH;
     this.thumbTrackH = visibleH;
 
-    if (personal) {
-      const index = this.game.leaderboard
-        .all()
-        .findIndex((entry) => entry.id === personal.id);
-      if (index >= 0) this.buildPinnedRow(personal, index, headerH, visibleH);
+    if (hasPersonal && personal) {
+      this.buildPinnedRow(personal, personalIndex, headerH, visibleH);
     }
 
     if (this.leaderboardMaxScroll > 0) {
@@ -267,6 +272,8 @@ export class MenuScreen extends Screen {
       this.leaderboardThumb = new Graphics();
       this.leaderboardThumb.eventMode = "none";
       this.addChild(this.leaderboardThumb);
+
+      this.buildScrollbar(visibleH);
     }
     this.applyLeaderboardScroll();
   }
@@ -277,7 +284,7 @@ export class MenuScreen extends Screen {
     headerH: number,
     visibleH: number,
   ): void {
-    const y = BOARD_TABLE_Y + headerH + visibleH - TABLE_ROW_H;
+    const y = BOARD_TABLE_Y + headerH + visibleH;
     const pinned = new Container();
     pinned.eventMode = "none";
 
@@ -317,6 +324,44 @@ export class MenuScreen extends Screen {
     this.pinnedRow.visible = !(rowBottom > top && rowTop < bottom);
   }
 
+  private buildScrollbar(visibleH: number): void {
+    const hit = new Graphics();
+    hit.eventMode = "static";
+    hit.cursor = "pointer";
+    hit.hitArea = new Rectangle(
+      BOARD_X + BOARD_W - 12,
+      this.thumbTrackY,
+      14,
+      visibleH,
+    );
+    hit.on("pointerdown", (event: FederatedPointerEvent) => {
+      this.scrollDragging = true;
+      this.scrollToPointer(event);
+    });
+    hit.on("globalpointermove", (event: FederatedPointerEvent) => {
+      if (this.scrollDragging) this.scrollToPointer(event);
+    });
+    const end = (): void => {
+      this.scrollDragging = false;
+    };
+    hit.on("pointerup", end);
+    hit.on("pointerupoutside", end);
+    this.addChild(hit);
+  }
+
+  private scrollToPointer(event: FederatedPointerEvent): void {
+    const travel = this.thumbTrackH - this.thumbHeight;
+    if (travel <= 0) return;
+    const local = event.getLocalPosition(this);
+    const ratio = clamp(
+      (local.y - this.thumbTrackY - this.thumbHeight / 2) / travel,
+      0,
+      1,
+    );
+    this.leaderboardScroll = ratio * this.leaderboardMaxScroll;
+    this.applyLeaderboardScroll();
+  }
+
   private applyLeaderboardScroll(): void {
     this.leaderboardContent.position.y = -this.leaderboardScroll;
     this.updatePinnedRow();
@@ -324,7 +369,10 @@ export class MenuScreen extends Screen {
     const thumb = this.leaderboardThumb;
     if (thumb === null) return;
     const total = this.thumbTrackH + this.leaderboardMaxScroll;
-    const height = Math.max(18, (this.thumbTrackH * this.thumbTrackH) / total);
+    this.thumbHeight = Math.max(
+      18,
+      (this.thumbTrackH * this.thumbTrackH) / total,
+    );
     const progress =
       this.leaderboardMaxScroll > 0
         ? this.leaderboardScroll / this.leaderboardMaxScroll
@@ -333,21 +381,22 @@ export class MenuScreen extends Screen {
     thumb
       .rect(
         BOARD_X + BOARD_W - 6,
-        this.thumbTrackY + (this.thumbTrackH - height) * progress,
+        this.thumbTrackY + (this.thumbTrackH - this.thumbHeight) * progress,
         2,
-        height,
+        this.thumbHeight,
       )
       .fill({ color: C.steelPale, alpha: 0.5 });
   }
 
-  override handleWheel(event: WheelEvent): void {
-    if (this.leaderboardMaxScroll <= 0) return;
+  override handleWheel(event: WheelEvent): boolean {
+    if (this.leaderboardMaxScroll <= 0) return false;
     this.leaderboardScroll = clamp(
       this.leaderboardScroll + event.deltaY * 0.05,
       0,
       this.leaderboardMaxScroll,
     );
     this.applyLeaderboardScroll();
+    return true;
   }
 
   private muteLabel(): string {

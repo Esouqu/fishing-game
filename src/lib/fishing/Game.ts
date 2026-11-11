@@ -67,7 +67,8 @@ export class Game implements FishingGameInstance {
 
   private readonly onWheel = (event: WheelEvent): void => {
     if (this.destroyed || !this.isEngaged() || this.assetBag === null) return;
-    this.screens.active?.handleWheel(event);
+    const handled = this.screens.active?.handleWheel(event) ?? false;
+    if (handled) event.preventDefault();
   };
 
   private readonly onVisibility = (): void => {
@@ -90,7 +91,7 @@ export class Game implements FishingGameInstance {
 
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
-    app.canvas.addEventListener("wheel", this.onWheel);
+    app.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     document.addEventListener("visibilitychange", this.onVisibility);
     app.canvas.addEventListener("pointerdown", this.focusCanvas);
     app.canvas.addEventListener("pointerenter", this.onPointerEnter);

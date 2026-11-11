@@ -1,4 +1,9 @@
-import { Container, Graphics } from "pixi.js";
+import {
+  Container,
+  Graphics,
+  Rectangle,
+  type FederatedPointerEvent,
+} from "pixi.js";
 import type { Game, LeaderboardViewOptions } from "../Game";
 import { C } from "../config";
 import { Screen } from "../ui/Screen";
@@ -44,6 +49,8 @@ export class LeaderboardScreen extends Screen {
   private thumbTrackH = 0;
   private pinnedRow: Container | null = null;
   private pinnedRowIndex = -1;
+  private thumbHeight = 0;
+  private scrollDragging = false;
 
   constructor(game: Game, view: LeaderboardViewOptions = {}) {
     super();
@@ -71,13 +78,13 @@ export class LeaderboardScreen extends Screen {
     title.position.set(centerX, PANEL_Y + 8);
     this.addChild(title);
 
-    const entries = game.leaderboard.top();
+    const entries = game.leaderboard.all();
     const personal = game.leaderboard.personalBest();
-    const rows =
-      personal && !entries.some((entry) => entry.id === personal.id)
-        ? entries.length + 1
-        : entries.length;
-    const subtitle = makeText(`ТОП-${rows} · ЛОКАЛЬНЫЙ РЕЙТИНГ`, {
+    const personalIndex = personal
+      ? entries.findIndex((entry) => entry.id === personal.id)
+      : -1;
+    const hasPersonal = personal !== null && personalIndex >= 0;
+    const subtitle = makeText(`ТОП-${entries.length} · ЛОКАЛЬНЫЙ РЕЙТИНГ`, {
       size: 8,
       color: C.steelPale,
       align: "center",
@@ -95,9 +102,12 @@ export class LeaderboardScreen extends Screen {
       fontSize: TABLE_FONT,
     });
 
+    // One row is reserved for the pinned player row, so the scroll area can
+    // reach every place without the pin covering the last one.
     const available = PANEL_Y + PANEL_H - 8 - TABLE_Y;
-    const visibleH =
+    const baseVisibleH =
       Math.floor((available - headerH) / TABLE_ROW_H) * TABLE_ROW_H;
+    const visibleH = hasPersonal ? baseVisibleH - TABLE_ROW_H : baseVisibleH;
     this.leaderboardViewport.eventMode = "none";
     this.addChild(this.leaderboardViewport);
 
@@ -115,7 +125,6 @@ export class LeaderboardScreen extends Screen {
       x: TABLE_X,
       y: TABLE_Y + headerH,
       width: TABLE_W,
-      rows,
       highlightId: view.highlightId ?? personal?.id,
       rowHeight: TABLE_ROW_H,
       fontSize: TABLE_FONT,
@@ -126,11 +135,8 @@ export class LeaderboardScreen extends Screen {
     this.thumbTrackY = TABLE_Y + headerH;
     this.thumbTrackH = visibleH;
 
-    if (personal) {
-      const index = game.leaderboard
-        .all()
-        .findIndex((entry) => entry.id === personal.id);
-      if (index >= 0) this.buildPinnedRow(personal, index, headerH, visibleH);
+    if (hasPersonal && personal) {
+      this.buildPinnedRow(personal, personalIndex, headerH, visibleH);
     }
 
     if (this.leaderboardMaxScroll > 0) {
@@ -143,6 +149,8 @@ export class LeaderboardScreen extends Screen {
       this.leaderboardThumb = new Graphics();
       this.leaderboardThumb.eventMode = "none";
       this.addChild(this.leaderboardThumb);
+
+      this.buildScrollbar(visibleH);
     }
     this.applyLeaderboardScroll();
 
@@ -203,7 +211,7 @@ export class LeaderboardScreen extends Screen {
     headerH: number,
     visibleH: number,
   ): void {
-    const y = TABLE_Y + headerH + visibleH - TABLE_ROW_H;
+    const y = TABLE_Y + headerH + visibleH;
     const pinned = new Container();
     pinned.eventMode = "none";
 
@@ -243,6 +251,44 @@ export class LeaderboardScreen extends Screen {
     this.pinnedRow.visible = !(rowBottom > top && rowTop < bottom);
   }
 
+  private buildScrollbar(visibleH: number): void {
+    const hit = new Graphics();
+    hit.eventMode = "static";
+    hit.cursor = "pointer";
+    hit.hitArea = new Rectangle(
+      PANEL_X + PANEL_W - 13,
+      this.thumbTrackY,
+      15,
+      visibleH,
+    );
+    hit.on("pointerdown", (event: FederatedPointerEvent) => {
+      this.scrollDragging = true;
+      this.scrollToPointer(event);
+    });
+    hit.on("globalpointermove", (event: FederatedPointerEvent) => {
+      if (this.scrollDragging) this.scrollToPointer(event);
+    });
+    const end = (): void => {
+      this.scrollDragging = false;
+    };
+    hit.on("pointerup", end);
+    hit.on("pointerupoutside", end);
+    this.addChild(hit);
+  }
+
+  private scrollToPointer(event: FederatedPointerEvent): void {
+    const travel = this.thumbTrackH - this.thumbHeight;
+    if (travel <= 0) return;
+    const local = event.getLocalPosition(this);
+    const ratio = clamp(
+      (local.y - this.thumbTrackY - this.thumbHeight / 2) / travel,
+      0,
+      1,
+    );
+    this.leaderboardScroll = ratio * this.leaderboardMaxScroll;
+    this.applyLeaderboardScroll();
+  }
+
   private applyLeaderboardScroll(): void {
     this.leaderboardContent.position.y = -this.leaderboardScroll;
     this.updatePinnedRow();
@@ -250,7 +296,10 @@ export class LeaderboardScreen extends Screen {
     const thumb = this.leaderboardThumb;
     if (thumb === null) return;
     const total = this.thumbTrackH + this.leaderboardMaxScroll;
-    const height = Math.max(16, (this.thumbTrackH * this.thumbTrackH) / total);
+    this.thumbHeight = Math.max(
+      16,
+      (this.thumbTrackH * this.thumbTrackH) / total,
+    );
     const progress =
       this.leaderboardMaxScroll > 0
         ? this.leaderboardScroll / this.leaderboardMaxScroll
@@ -259,21 +308,22 @@ export class LeaderboardScreen extends Screen {
     thumb
       .rect(
         PANEL_X + PANEL_W - 7,
-        this.thumbTrackY + (this.thumbTrackH - height) * progress,
+        this.thumbTrackY + (this.thumbTrackH - this.thumbHeight) * progress,
         2,
-        height,
+        this.thumbHeight,
       )
       .fill({ color: C.steel, alpha: 0.65 });
   }
 
-  override handleWheel(event: WheelEvent): void {
-    if (this.leaderboardMaxScroll <= 0) return;
+  override handleWheel(event: WheelEvent): boolean {
+    if (this.leaderboardMaxScroll <= 0) return false;
     this.leaderboardScroll = clamp(
       this.leaderboardScroll + event.deltaY * 0.05,
       0,
       this.leaderboardMaxScroll,
     );
     this.applyLeaderboardScroll();
+    return true;
   }
 
   private handleReset(): void {

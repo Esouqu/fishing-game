@@ -8,7 +8,9 @@ export abstract class Screen extends Container {
     return false;
   }
   handleKeyUp(_event: KeyboardEvent): void {}
-  handleWheel(_event: WheelEvent): void {}
+  handleWheel(_event: WheelEvent): boolean {
+    return false;
+  }
   onHostPause(_paused: boolean): void {}
   onMuteChanged(): void {}
 }
