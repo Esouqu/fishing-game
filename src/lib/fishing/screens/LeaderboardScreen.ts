@@ -5,10 +5,7 @@ import { Screen } from "../ui/Screen";
 import { Backdrop } from "../ui/Backdrop";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
-import {
-  drawLeaderboardTable,
-  leaderboardTableHeight,
-} from "../ui/LeaderboardTable";
+import { drawLeaderboardTable } from "../ui/LeaderboardTable";
 import { drawPanel, makeText } from "../ui/theme";
 import { clamp } from "../utils";
 
@@ -37,6 +34,9 @@ export class LeaderboardScreen extends Screen {
   private readonly leaderboardMask = new Graphics();
   private leaderboardScroll = 0;
   private leaderboardMaxScroll = 0;
+  private leaderboardThumb: Graphics | null = null;
+  private thumbTrackY = 0;
+  private thumbTrackH = 0;
 
   constructor(game: Game, view: LeaderboardViewOptions = {}) {
     super();
@@ -45,24 +45,13 @@ export class LeaderboardScreen extends Screen {
     this.backdrop = new Backdrop(game.assets);
     this.addChild(this.backdrop);
 
-    this.leaderboardViewport.eventMode = "none";
-    this.addChild(this.leaderboardViewport);
-
     const panel = new Graphics();
     drawPanel(panel, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, {
       fill: C.panel,
       alpha: 0.95,
       shadow: true,
     });
-    this.leaderboardViewport.addChild(panel);
-
-    this.leaderboardContent.eventMode = "none";
-    this.leaderboardViewport.addChild(this.leaderboardContent);
-    this.leaderboardContent.mask = this.leaderboardMask;
-    this.leaderboardMask.eventMode = "none";
-    this.leaderboardMask
-      .rect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H)
-      .fill(0xff000000);
+    this.addChild(panel);
 
     const centerX = PANEL_X + PANEL_W / 2;
     const title = makeText("ТАБЛИЦА ЛИДЕРОВ", {
@@ -73,7 +62,7 @@ export class LeaderboardScreen extends Screen {
       letterSpacing: 1,
     });
     title.position.set(centerX, PANEL_Y + 8);
-    this.leaderboardContent.addChild(title);
+    this.addChild(title);
 
     const entries = game.leaderboard.top();
     const personal = game.leaderboard.personalBest();
@@ -90,6 +79,20 @@ export class LeaderboardScreen extends Screen {
     subtitle.position.set(centerX, PANEL_Y + 26);
     this.addChild(subtitle);
 
+    const visibleH = PANEL_Y + PANEL_H - 8 - TABLE_Y;
+    this.leaderboardViewport.eventMode = "none";
+    this.addChild(this.leaderboardViewport);
+
+    this.leaderboardContent.eventMode = "none";
+    this.leaderboardViewport.addChild(this.leaderboardContent);
+
+    this.leaderboardMask.eventMode = "none";
+    this.leaderboardMask
+      .rect(PANEL_X, TABLE_Y, PANEL_W, visibleH)
+      .fill(0xff000000);
+    this.leaderboardViewport.addChild(this.leaderboardMask);
+    this.leaderboardContent.mask = this.leaderboardMask;
+
     const tableHeight = drawLeaderboardTable(this.leaderboardContent, entries, {
       x: TABLE_X,
       y: TABLE_Y,
@@ -99,17 +102,22 @@ export class LeaderboardScreen extends Screen {
       rowHeight: TABLE_ROW_H,
       fontSize: TABLE_FONT,
     });
-    this.leaderboardMaxScroll = Math.max(
-      0,
-      TABLE_Y - PANEL_Y + tableHeight - PANEL_H,
-    );
-    this.applyLeaderboardScroll();
+    this.leaderboardMaxScroll = Math.max(0, tableHeight - visibleH);
+    this.thumbTrackY = TABLE_Y;
+    this.thumbTrackH = visibleH;
 
-    const needed =
-      TABLE_Y - PANEL_Y + leaderboardTableHeight(rows, TABLE_ROW_H, TABLE_FONT);
-    if (needed > PANEL_H) {
-      console.warn("[fishing] leaderboard overflows its panel", needed);
+    if (this.leaderboardMaxScroll > 0) {
+      const track = new Graphics();
+      track
+        .rect(PANEL_X + PANEL_W - 7, TABLE_Y, 2, visibleH)
+        .fill({ color: C.ink, alpha: 0.3 });
+      this.addChild(track);
+
+      this.leaderboardThumb = new Graphics();
+      this.leaderboardThumb.eventMode = "none";
+      this.addChild(this.leaderboardThumb);
     }
+    this.applyLeaderboardScroll();
 
     this.resetButton = new Button({
       label: "СБРОС",
@@ -164,6 +172,24 @@ export class LeaderboardScreen extends Screen {
 
   private applyLeaderboardScroll(): void {
     this.leaderboardContent.position.y = -this.leaderboardScroll;
+
+    const thumb = this.leaderboardThumb;
+    if (thumb === null) return;
+    const total = this.thumbTrackH + this.leaderboardMaxScroll;
+    const height = Math.max(16, (this.thumbTrackH * this.thumbTrackH) / total);
+    const progress =
+      this.leaderboardMaxScroll > 0
+        ? this.leaderboardScroll / this.leaderboardMaxScroll
+        : 0;
+    thumb.clear();
+    thumb
+      .rect(
+        PANEL_X + PANEL_W - 7,
+        this.thumbTrackY + (this.thumbTrackH - height) * progress,
+        2,
+        height,
+      )
+      .fill({ color: C.steel, alpha: 0.65 });
   }
 
   override handleWheel(event: WheelEvent): void {
