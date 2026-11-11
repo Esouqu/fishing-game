@@ -79,7 +79,18 @@ export class LeaderboardScreen extends Screen {
     subtitle.position.set(centerX, PANEL_Y + 26);
     this.addChild(subtitle);
 
-    const visibleH = PANEL_Y + PANEL_H - 8 - TABLE_Y;
+    const headerH = TABLE_FONT + 4;
+    drawLeaderboardTable(this, [], {
+      x: TABLE_X,
+      y: TABLE_Y,
+      width: TABLE_W,
+      rowHeight: TABLE_ROW_H,
+      fontSize: TABLE_FONT,
+    });
+
+    const available = PANEL_Y + PANEL_H - 8 - TABLE_Y;
+    const visibleH =
+      Math.floor((available - headerH) / TABLE_ROW_H) * TABLE_ROW_H;
     this.leaderboardViewport.eventMode = "none";
     this.addChild(this.leaderboardViewport);
 
@@ -88,28 +99,29 @@ export class LeaderboardScreen extends Screen {
 
     this.leaderboardMask.eventMode = "none";
     this.leaderboardMask
-      .rect(PANEL_X, TABLE_Y, PANEL_W, visibleH)
+      .rect(PANEL_X, TABLE_Y + headerH, PANEL_W, visibleH)
       .fill(0xffffff);
     this.leaderboardViewport.addChild(this.leaderboardMask);
     this.leaderboardContent.mask = this.leaderboardMask;
 
     const tableHeight = drawLeaderboardTable(this.leaderboardContent, entries, {
       x: TABLE_X,
-      y: TABLE_Y,
+      y: TABLE_Y + headerH,
       width: TABLE_W,
       rows,
       highlightId: view.highlightId ?? personal?.id,
       rowHeight: TABLE_ROW_H,
       fontSize: TABLE_FONT,
+      showHeader: false,
     });
     this.leaderboardMaxScroll = Math.max(0, tableHeight - visibleH);
-    this.thumbTrackY = TABLE_Y;
+    this.thumbTrackY = TABLE_Y + headerH;
     this.thumbTrackH = visibleH;
 
     if (this.leaderboardMaxScroll > 0) {
       const track = new Graphics();
       track
-        .rect(PANEL_X + PANEL_W - 7, TABLE_Y, 2, visibleH)
+        .rect(PANEL_X + PANEL_W - 7, this.thumbTrackY, 2, visibleH)
         .fill({ color: C.ink, alpha: 0.3 });
       this.addChild(track);
 

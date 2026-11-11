@@ -6,24 +6,56 @@ import { Backdrop } from "../ui/Backdrop";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
 import { drawLeaderboardTable } from "../ui/LeaderboardTable";
-import { drawPanel, makeText } from "../ui/theme";
+import { makeText } from "../ui/theme";
 import { clamp } from "../utils";
 
-const BLOCK_X = 12;
-const BLOCK_Y = 12;
-const BLOCK_W = 208;
+const MARGIN = 20;
+const PANEL_X = MARGIN;
+const PANEL_Y = MARGIN;
+const PANEL_W = 264;
+const PANEL_H = 230;
+const PAD = 16;
 
-const BOARD_PANEL_W = 160;
-const BOARD_PANEL_H = 176;
-const BOARD_X = VIEW.width - BOARD_PANEL_W - 10;
-const BOARD_Y = VIEW.height - BOARD_PANEL_H - 10;
-const BOARD_TITLE_X = BOARD_X + BOARD_PANEL_W / 2;
-const BOARD_TITLE_Y = BOARD_Y + 8;
+const BOARD_W = 160;
+const BOARD_H = PANEL_H;
+const BOARD_X = VIEW.width - MARGIN - BOARD_W;
+const BOARD_Y = MARGIN;
 const BOARD_TABLE_X = BOARD_X + 12;
-const BOARD_TABLE_W = BOARD_PANEL_W - 24;
-const BOARD_TABLE_Y = BOARD_Y + 36;
-const TABLE_ROW_H = 12;
+const BOARD_TABLE_Y = BOARD_Y + 48;
+const BOARD_TABLE_W = BOARD_W - 24;
+const TABLE_ROW_H = 13;
 const TABLE_FONT = 9;
+
+/** Rounded panel used by both menu columns. */
+function drawMenuPanel(
+  g: Graphics,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  alpha: number,
+): void {
+  g.roundRect(x + 3, y + 4, width, height, 8).fill({
+    color: C.ink,
+    alpha: 0.32,
+  });
+  g.roundRect(x, y, width, height, 8).fill({ color: C.panel, alpha });
+  g.roundRect(x + 0.5, y + 0.5, width - 1, height - 1, 8).stroke({
+    width: 1,
+    color: C.ink,
+    alignment: 0,
+  });
+  g.roundRect(x + 1.5, y + 1.5, width - 3, height - 3, 7).stroke({
+    width: 1,
+    color: C.steel,
+    alpha: 0.22,
+    alignment: 0,
+  });
+  g.roundRect(x + 10, y + 1.5, width - 20, 1, 0.5).fill({
+    color: C.cream,
+    alpha: 0.14,
+  });
+}
 
 export class MenuScreen extends Screen {
   private readonly game: Game;
@@ -47,8 +79,104 @@ export class MenuScreen extends Screen {
     this.backdrop = new Backdrop(game.assets);
     this.addChild(this.backdrop);
 
-    this.buildLeaderboard();
     this.buildActions();
+    this.buildLeaderboard();
+  }
+
+  private buildActions(): void {
+    const panel = new Graphics();
+    drawMenuPanel(panel, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 0.86);
+    this.addChild(panel);
+
+    const left = PANEL_X + PAD;
+    const width = PANEL_W - PAD * 2;
+
+    const title = makeText("ТИХАЯ ЗАВОДЬ", {
+      size: 36,
+      weight: 800,
+      color: C.cream,
+      letterSpacing: 0.5,
+    });
+    title.position.set(left, PANEL_Y + 18);
+    this.addChild(title);
+
+    // One short gold stroke reads as a water ripple under the wordmark.
+    const ripple = new Graphics();
+    ripple.rect(left, PANEL_Y + 68, 64, 3).fill(C.gold);
+    ripple.rect(left + 70, PANEL_Y + 69, 18, 1).fill({
+      color: C.gold,
+      alpha: 0.55,
+    });
+    ripple.rect(left + 94, PANEL_Y + 69, 7, 1).fill({
+      color: C.gold,
+      alpha: 0.3,
+    });
+    this.addChild(ripple);
+
+    const gap = 9;
+    const primaryH = 34;
+    const secondaryH = 28;
+    const stackH = primaryH + gap + secondaryH + gap + secondaryH;
+    let y = PANEL_Y + PANEL_H - PAD - stackH;
+
+    const play = new Button({
+      label: "ИГРАТЬ",
+      width,
+      height: primaryH,
+      variant: "primary",
+      size: 14,
+      onClick: () => this.game.startGame(),
+    });
+    play.position.set(left, y);
+    this.addChild(play);
+    this.buttons.push(play);
+    y += primaryH + gap;
+
+    const help = new Button({
+      label: "КАК ИГРАТЬ",
+      width,
+      height: secondaryH,
+      variant: "secondary",
+      size: 12,
+      onClick: () => this.game.showHelp(),
+    });
+    help.position.set(left, y);
+    this.addChild(help);
+    this.buttons.push(help);
+    y += secondaryH + gap;
+
+    const hasExit = this.game.options.onExit !== undefined;
+    const smallW = hasExit ? Math.floor((width - 8) / 2) : width;
+
+    this.muteButton = new Button({
+      label: this.muteLabel(),
+      width: smallW,
+      height: secondaryH,
+      size: hasExit ? 10 : 12,
+      onClick: () => {
+        this.game.toggleMute();
+        this.muteButton.setLabel(this.muteLabel());
+      },
+    });
+    this.muteButton.position.set(left, y);
+    this.addChild(this.muteButton);
+    this.buttons.push(this.muteButton);
+
+    if (hasExit) {
+      const exit = new Button({
+        label: "ВЫХОД",
+        width: smallW,
+        height: secondaryH,
+        size: 10,
+        onClick: () => this.game.exit(),
+      });
+      exit.position.set(left + smallW + 8, y);
+      this.addChild(exit);
+      this.buttons.push(exit);
+    }
+
+    this.focus.setItems(this.buttons);
+    this.focus.onMove = () => this.game.audio.hover();
   }
 
   private buildLeaderboard(): void {
@@ -60,24 +188,33 @@ export class MenuScreen extends Screen {
         : entries.length;
 
     const panel = new Graphics();
-    drawPanel(panel, BOARD_X, BOARD_Y, BOARD_PANEL_W, BOARD_PANEL_H, {
-      fill: C.panel,
-      alpha: 0.92,
-      shadow: true,
-    });
+    drawMenuPanel(panel, BOARD_X, BOARD_Y, BOARD_W, BOARD_H, 0.9);
     this.addChild(panel);
 
     const title = makeText("ЛИДЕРБОРД", {
-      size: 13,
+      size: 12,
       weight: 800,
       color: C.gold,
       align: "center",
-      letterSpacing: 1,
+      letterSpacing: 0.8,
     });
-    title.position.set(BOARD_TITLE_X, BOARD_TITLE_Y);
+    title.position.set(BOARD_X + BOARD_W / 2, BOARD_Y + 12);
     this.addChild(title);
 
-    const visibleH = BOARD_PANEL_H - (BOARD_TABLE_Y - BOARD_Y) - 8;
+    // Column header stays put while the rows scroll beneath it.
+    const headerH = TABLE_FONT + 4;
+    drawLeaderboardTable(this, [], {
+      x: BOARD_TABLE_X,
+      y: BOARD_TABLE_Y,
+      width: BOARD_TABLE_W,
+      rowHeight: TABLE_ROW_H,
+      fontSize: TABLE_FONT,
+    });
+
+    // Clip rows on a row boundary: a half-row would peek under the frame.
+    const available = BOARD_H - (BOARD_TABLE_Y - BOARD_Y) - 8;
+    const visibleH =
+      Math.floor((available - headerH) / TABLE_ROW_H) * TABLE_ROW_H;
     this.leaderboardViewport.eventMode = "none";
     this.addChild(this.leaderboardViewport);
 
@@ -86,29 +223,30 @@ export class MenuScreen extends Screen {
 
     this.leaderboardMask.eventMode = "none";
     this.leaderboardMask
-      .rect(BOARD_X, BOARD_TABLE_Y, BOARD_PANEL_W, visibleH)
+      .rect(BOARD_X, BOARD_TABLE_Y + headerH, BOARD_W, visibleH)
       .fill(0xffffff);
     this.leaderboardViewport.addChild(this.leaderboardMask);
     this.leaderboardContent.mask = this.leaderboardMask;
 
     const tableHeight = drawLeaderboardTable(this.leaderboardContent, entries, {
       x: BOARD_TABLE_X,
-      y: BOARD_TABLE_Y,
+      y: BOARD_TABLE_Y + headerH,
       width: BOARD_TABLE_W,
       rows,
       highlightId: personal?.id,
       rowHeight: TABLE_ROW_H,
       fontSize: TABLE_FONT,
+      showHeader: false,
     });
     this.leaderboardMaxScroll = Math.max(0, tableHeight - visibleH);
-    this.thumbTrackY = BOARD_TABLE_Y;
+    this.thumbTrackY = BOARD_TABLE_Y + headerH;
     this.thumbTrackH = visibleH;
 
     if (this.leaderboardMaxScroll > 0) {
       const track = new Graphics();
       track
-        .rect(BOARD_X + BOARD_PANEL_W - 7, BOARD_TABLE_Y, 2, visibleH)
-        .fill({ color: C.ink, alpha: 0.3 });
+        .rect(BOARD_X + BOARD_W - 6, this.thumbTrackY, 2, visibleH)
+        .fill({ color: C.ink, alpha: 0.35 });
       this.addChild(track);
 
       this.leaderboardThumb = new Graphics();
@@ -118,110 +256,13 @@ export class MenuScreen extends Screen {
     this.applyLeaderboardScroll();
   }
 
-  private buildActions(): void {
-    const labels = ["ИГРАТЬ", "КАК ИГРАТЬ"];
-    const actions: Array<() => void> = [
-      () => this.game.startGame(),
-      () => this.game.showHelp(),
-    ];
-
-    const pad = 12;
-    const gap = 8;
-    const buttonHeight = 28;
-    const width = BLOCK_W - pad * 2;
-    const x = BLOCK_X + pad;
-    const hasExit = this.game.options.onExit !== undefined;
-    const buttonCount = labels.length + 1 + (hasExit ? 1 : 0);
-    const titleY = BLOCK_Y + pad + 11;
-    const top = titleY + 20;
-
-    // One block: title and buttons share a single framed panel.
-    const block = new Graphics();
-    drawPanel(
-      block,
-      BLOCK_X,
-      BLOCK_Y,
-      BLOCK_W,
-      top -
-        BLOCK_Y +
-        buttonCount * buttonHeight +
-        (buttonCount - 1) * gap +
-        pad,
-      { fill: C.panel, alpha: 0.9, shadow: true },
-    );
-    this.addChild(block);
-
-    const title = makeText("ТИХАЯ ЗАВОДЬ", {
-      size: 24,
-      weight: 800,
-      color: C.cream,
-      align: "center",
-      letterSpacing: 0.5,
-    });
-    title.position.set(BLOCK_X + BLOCK_W / 2, titleY);
-    this.addChild(title);
-
-    const divider = new Graphics();
-    divider
-      .rect(x, titleY + 13, width, 1)
-      .fill({ color: C.steel, alpha: 0.25 });
-    this.addChild(divider);
-
-    let y = top;
-    for (let i = 0; i < labels.length; i += 1) {
-      const button = new Button({
-        label: labels[i],
-        width,
-        height: buttonHeight,
-        variant: i === 0 ? "primary" : "secondary",
-        size: 12,
-        onClick: actions[i],
-      });
-      button.position.set(x, y);
-      this.addChild(button);
-      this.buttons.push(button);
-      y += buttonHeight + gap;
-    }
-
-    this.muteButton = new Button({
-      label: this.muteLabel(),
-      width,
-      height: buttonHeight,
-      size: 12,
-      onClick: () => {
-        this.game.toggleMute();
-        this.muteButton.setLabel(this.muteLabel());
-      },
-    });
-    this.muteButton.position.set(x, y);
-    this.addChild(this.muteButton);
-    this.buttons.push(this.muteButton);
-    y += buttonHeight + gap;
-
-    if (hasExit) {
-      const exit = new Button({
-        label: "ВЫХОД",
-        width,
-        height: buttonHeight,
-        size: 12,
-        onClick: () => this.game.exit(),
-      });
-      exit.position.set(x, y);
-      this.addChild(exit);
-      this.buttons.push(exit);
-    }
-
-    this.focus.setItems(this.buttons);
-    this.focus.onMove = () => this.game.audio.hover();
-  }
-
   private applyLeaderboardScroll(): void {
     this.leaderboardContent.position.y = -this.leaderboardScroll;
 
     const thumb = this.leaderboardThumb;
     if (thumb === null) return;
     const total = this.thumbTrackH + this.leaderboardMaxScroll;
-    const height = Math.max(16, (this.thumbTrackH * this.thumbTrackH) / total);
+    const height = Math.max(18, (this.thumbTrackH * this.thumbTrackH) / total);
     const progress =
       this.leaderboardMaxScroll > 0
         ? this.leaderboardScroll / this.leaderboardMaxScroll
@@ -229,12 +270,12 @@ export class MenuScreen extends Screen {
     thumb.clear();
     thumb
       .rect(
-        BOARD_X + BOARD_PANEL_W - 7,
+        BOARD_X + BOARD_W - 6,
         this.thumbTrackY + (this.thumbTrackH - height) * progress,
         2,
         height,
       )
-      .fill({ color: C.steel, alpha: 0.65 });
+      .fill({ color: C.steelPale, alpha: 0.5 });
   }
 
   override handleWheel(event: WheelEvent): void {
