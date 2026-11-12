@@ -488,11 +488,11 @@ export const SPOOK_HOLD = 0.95;
 /** Scene layout in virtual pixels. */
 export const SCENE = {
   anglerX: 240,
-  anglerY: 186,
-  dockX: 218,
-  dockY: 150,
-  dockWidth: 44,
-  dockBottom: 268,
+  anglerY: 216,
+  dockX: 120,
+  dockY: 196,
+  dockWidth: 240,
+  dockBottom: 232,
   shoreY: 232,
   waterTop: 12,
   bobberMinY: 60,

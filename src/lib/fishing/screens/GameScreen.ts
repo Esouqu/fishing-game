@@ -329,7 +329,7 @@ export class GameScreen extends Screen {
       letterSpacing: 0.5,
     });
     this.powerLabel.style.stroke = { color: C.ink, width: 2.5 };
-    this.powerLabel.position.set(166, 205);
+    this.powerLabel.position.set(166, 165);
     this.powerLabel.visible = false;
     this.powerLabel.eventMode = "none";
     this.hud.addChild(this.powerLabel);
@@ -992,7 +992,7 @@ export class GameScreen extends Screen {
     this.powerLabel.visible = true;
 
     const x = 172;
-    const y = 204;
+    const y = 164;
     const width = 136;
     const height = 8;
     g.rect(x - 1, y - 1, width + 2, height + 2).fill(C.ink);

@@ -208,25 +208,35 @@ export class LakeScene extends Container {
     const width = SCENE.dockWidth;
     const height = SCENE.dockBottom - y;
 
+    // Horizontal walkway: shadow, deck and darker side edges.
     g.rect(x + 5, y + 5, width, height).fill({ color: C.ink, alpha: 0.3 });
     g.rect(x, y, width, height).fill(C.brown);
     g.rect(x, y, width, 3).fill(C.brownLight);
     g.rect(x, y, 2, height).fill(C.brownDark);
     g.rect(x + width - 2, y, 2, height).fill(C.brownDark);
+    g.rect(x + 2, y + height - 2, width - 4, 2).fill({
+      color: C.brownDark,
+      alpha: 0.75,
+    });
 
-    for (let py = y + 7; py < SCENE.dockBottom; py += 9) {
-      g.rect(x + 2, py, width - 4, 1).fill({ color: C.brownDark, alpha: 0.7 });
-      g.rect(x + 6 + ((py * 7) % 20), py + 2, 2, 1).fill({
+    // Cross-planks run vertically along the length of the pier.
+    for (let px = x + 7; px < x + width - 2; px += 9) {
+      g.rect(px, y + 2, 1, height - 4).fill({
+        color: C.brownDark,
+        alpha: 0.7,
+      });
+      g.rect(px + 2, y + 6 + ((px * 7) % 14), 1, 2).fill({
         color: C.brownDark,
         alpha: 0.4,
       });
     }
 
-    for (let py = y + 10; py < SCENE.dockBottom - 6; py += 30) {
-      g.rect(x - 3, py, 4, 9).fill(C.brownDark);
-      g.rect(x + width - 1, py, 4, 9).fill(C.brownDark);
-      g.rect(x - 3, py, 4, 2).fill(C.brownLight);
-      g.rect(x + width - 1, py, 4, 2).fill(C.brownLight);
+    // Support posts on the water and shore sides.
+    for (let px = x + 10; px < x + width - 6; px += 30) {
+      g.rect(px, y - 3, 9, 4).fill(C.brownDark);
+      g.rect(px, y + height - 1, 9, 4).fill(C.brownDark);
+      g.rect(px, y - 3, 9, 2).fill(C.brownLight);
+      g.rect(px, y + height - 1, 9, 2).fill(C.brownLight);
     }
 
     this.addChild(g);

@@ -954,7 +954,7 @@ export class Minigame extends Container {
   private drawGrip(): void {
     const g = this.gripG;
     const gx = SCENE.anglerX + 28;
-    const gy = SCENE.anglerY - 20;
+    const gy = SCENE.anglerY - 48;
     const locked = this.gripLock > 0;
     const advantage = this.advantage > 0;
     const pulse = (Math.sin(this.time * 10) + 1) / 2;
