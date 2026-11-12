@@ -254,6 +254,7 @@ export class Leaderboard {
 
 interface SettingsData {
   muted?: boolean;
+  tutorialSeen?: boolean;
 }
 
 export class SettingsStore {
@@ -274,6 +275,9 @@ export class SettingsStore {
       const record = parsed as Record<string, unknown>;
       const data: SettingsData = {};
       if (typeof record.muted === "boolean") data.muted = record.muted;
+      if (typeof record.tutorialSeen === "boolean") {
+        data.tutorialSeen = record.tutorialSeen;
+      }
       return data;
     } catch {
       return {};
@@ -294,6 +298,15 @@ export class SettingsStore {
 
   set muted(value: boolean) {
     this.data.muted = value;
+    this.write();
+  }
+
+  get tutorialSeen(): boolean {
+    return this.data.tutorialSeen === true;
+  }
+
+  set tutorialSeen(value: boolean) {
+    this.data.tutorialSeen = value;
     this.write();
   }
 }

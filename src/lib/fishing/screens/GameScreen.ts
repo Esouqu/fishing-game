@@ -43,6 +43,7 @@ import {
 import { LakeScene } from "../game/Scene";
 import { Atmosphere } from "../game/Atmosphere";
 import { Minigame, type MinigameResult } from "../game/Minigame";
+import { TutorialOverlay } from "./TutorialOverlay";
 
 type Phase =
   "idle" | "charging" | "waiting" | "bite" | "fighting" | "resolve" | "done";
@@ -91,6 +92,10 @@ export class GameScreen extends Screen {
   private readonly powerBar = new Graphics();
   private readonly reactionBar = new Graphics();
   private readonly pullKeys = new Set<PullKey>();
+  private readonly handleContextMenu = (event: MouseEvent): void => {
+    event.preventDefault();
+    this.finalPull();
+  };
 
   private scoreValue!: Text;
   private castLabel!: Text;
@@ -98,6 +103,9 @@ export class GameScreen extends Screen {
   private statusText!: Text;
   private biteText!: Text;
   private powerLabel!: Text;
+  private tapLanding = false;
+  private tapIconX = 0;
+  private tapIconY = 0;
   private soundButton!: Button;
   private pauseOverlay!: Container;
   private pauseSoundButton!: Button;
@@ -122,6 +130,8 @@ export class GameScreen extends Screen {
   private fish: FishSpecies | null = null;
   private water: WaterProfile = waterProfile(0);
   private minigame: Minigame | null = null;
+  private tutorial: TutorialOverlay | null = null;
+  private tutorialOpen = false;
   private readonly floaters: Floater[] = [];
   private pointerX = VIEW.width / 2;
   private pointerY = VIEW.height / 2;
@@ -167,6 +177,23 @@ export class GameScreen extends Screen {
     this.inputCatcher.hitArea = new Rectangle(0, 0, VIEW.width, VIEW.height);
     this.inputCatcher.on("pointerdown", (event) => {
       this.trackPointer(event);
+      // Right click is the final pull; the browser menu is suppressed.
+      if (event.button === 2) return;
+      const icon =
+        this.phase === "fighting" && !this.paused && !this.tutorialOpen
+          ? this.minigame?.landingIcon
+          : null;
+      if (icon) {
+        const dx = this.pointerX - icon.x;
+        const dy = this.pointerY - icon.y;
+        if (Math.hypot(dx, dy) <= 20) {
+          this.tapLanding = true;
+          this.tapIconX = icon.x;
+          this.tapIconY = icon.y;
+          return;
+        }
+      }
+      this.tapLanding = false;
       this.pressStart();
     });
     this.inputCatcher.on("pointermove", (event) => this.trackPointer(event));
@@ -174,12 +201,25 @@ export class GameScreen extends Screen {
       this.trackPointer(event),
     );
     this.inputCatcher.on("pointerup", () => {
+      if (this.tapLanding) {
+        const moved = Math.hypot(
+          this.pointerX - this.tapIconX,
+          this.pointerY - this.tapIconY,
+        );
+        this.tapLanding = false;
+        if (moved <= 22) {
+          this.finalPull();
+          return;
+        }
+      }
       this.pressEnd();
     });
     this.inputCatcher.on("pointerupoutside", () => {
+      this.tapLanding = false;
       this.pressEnd();
     });
     this.inputCatcher.on("pointercancel", () => {
+      this.tapLanding = false;
       this.pressEnd();
     });
     this.addChild(this.inputCatcher);
@@ -192,6 +232,10 @@ export class GameScreen extends Screen {
     this.fx.eventMode = "none";
     this.buildPause();
     this.addChild(this.pauseOverlay);
+    this.game.app.canvas.addEventListener(
+      "contextmenu",
+      this.handleContextMenu,
+    );
 
     this.setStatus(CAST_LABEL);
     this.updateHud();
@@ -464,7 +508,7 @@ export class GameScreen extends Screen {
     this.paused = true;
     this.pressed = false;
     this.pullKeys.clear();
-    this.minigame?.setStrikeHold(false);
+    this.minigame?.setHold(false);
     this.pauseOverlay.visible = true;
     this.pauseFocus.focus(0);
     this.game.audio.click();
@@ -481,7 +525,7 @@ export class GameScreen extends Screen {
   // ------------------------------------------------------------- cast flow
 
   private pressStart(): void {
-    if (this.paused || this.finished) return;
+    if (this.paused || this.finished || this.tutorialOpen) return;
     if (this.phase === "idle") {
       this.phase = "charging";
       this.charge = 0;
@@ -499,7 +543,7 @@ export class GameScreen extends Screen {
       this.hookFish();
     } else if (this.phase === "fighting") {
       this.pressed = true;
-      this.minigame?.setStrikeHold(true);
+      this.minigame?.setHold(true);
     }
     // No skip during the resolve phase: the player must watch the caught
     // fish land — there is nothing to skip past once it is over.
@@ -508,7 +552,20 @@ export class GameScreen extends Screen {
   private pressEnd(): void {
     this.pressed = false;
     if (this.phase === "charging") this.doCast();
-    this.minigame?.setStrikeHold(false);
+    this.minigame?.setHold(false);
+  }
+
+  /** Final pull: RMB/F on desktop, the hook hit area on touch. */
+  private finalPull(): void {
+    if (
+      this.phase !== "fighting" ||
+      this.paused ||
+      this.finished ||
+      this.tutorialOpen
+    ) {
+      return;
+    }
+    this.minigame?.finalPull();
   }
 
   private doCast(): void {
@@ -616,11 +673,28 @@ export class GameScreen extends Screen {
     this.fx.addChild(minigame);
     minigame.onFinish = (result) => this.resolveFight(result);
     this.minigame = minigame;
-    // The press that hooked the fish must not count as a landing strike.
-    this.pressed = false;
-    minigame.setStrikeHold(false);
+    minigame.setHold(this.pressed);
     minigame.setPointer(this.pointerX, this.pointerY);
     this.updatePerfectPips();
+
+    // The first fight pauses for a short illustrated tutorial.
+    if (!this.game.settings.tutorialSeen) this.openTutorial();
+  }
+
+  private openTutorial(): void {
+    if (this.tutorialOpen) return;
+    this.tutorialOpen = true;
+    this.pressed = false;
+    this.minigame?.setHold(false);
+    const tutorial = new TutorialOverlay();
+    tutorial.onClose = () => {
+      this.game.settings.tutorialSeen = true;
+      this.tutorialOpen = false;
+      this.tutorial = null;
+      this.minigame?.setHold(this.pressed);
+    };
+    this.tutorial = tutorial;
+    this.addChild(tutorial);
   }
 
   /** A too-early hook: the fish bolts and the cast is returned. */
@@ -720,7 +794,7 @@ export class GameScreen extends Screen {
 
     if (this.minigame) {
       this.minigame.visible = false;
-      this.minigame.setStrikeHold(false);
+      this.minigame.setHold(false);
     }
     this.updatePerfectPips();
     this.scene.catchFish(this.game.assets.fish[fish.id]);
@@ -1004,6 +1078,8 @@ export class GameScreen extends Screen {
     this.updateScore(dt);
     this.updatePerfectPips();
 
+    if (this.tutorialOpen) return;
+
     if (this.finished) return;
 
     if (this.phase === "charging") {
@@ -1041,7 +1117,7 @@ export class GameScreen extends Screen {
       const direction = this.readPullDirection();
       this.minigame?.setPointer(this.pointerX, this.pointerY);
       this.minigame?.setDirection(direction.x, direction.y);
-      this.minigame?.setStrikeHold(this.pressed);
+      this.minigame?.setHold(this.pressed);
       this.minigame?.update(dt);
       if (this.minigame?.isSteering) {
         this.reelTimer -= dt;
@@ -1064,6 +1140,9 @@ export class GameScreen extends Screen {
   // ------------------------------------------------------------------ input
 
   override handleKey(event: KeyboardEvent): boolean {
+    if (this.tutorialOpen && this.tutorial) {
+      return this.tutorial.handleKey(event);
+    }
     if (this.finished) return true;
     if (this.paused) {
       if (event.code === "Escape") {
@@ -1074,6 +1153,10 @@ export class GameScreen extends Screen {
     }
     if (event.code === "Escape") {
       this.openPause();
+      return true;
+    }
+    if (this.phase === "fighting" && event.code === "KeyF") {
+      if (!event.repeat) this.finalPull();
       return true;
     }
     if (this.phase === "fighting" && event.code in PULL_KEYS) {
@@ -1111,6 +1194,10 @@ export class GameScreen extends Screen {
 
   override onExit(): void {
     this.game.clock.persist();
+    this.game.app.canvas.removeEventListener(
+      "contextmenu",
+      this.handleContextMenu,
+    );
   }
 
   override onMuteChanged(): void {

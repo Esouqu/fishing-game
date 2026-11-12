@@ -1,5 +1,15 @@
 import { Container, Graphics, Sprite, type Texture } from "pixi.js";
-import { C, FIGHT, SCENE, TIMING, VIEW } from "../config";
+import {
+  C,
+  FIGHT,
+  RARE_SCORE,
+  SCENE,
+  TEMPERAMENTS,
+  TIMING,
+  VIEW,
+  pickTemperament,
+  type Temperament,
+} from "../config";
 import type { FishSpecies } from "../config";
 import { clamp, easeInOutQuad, lerp } from "../utils";
 import { buildScript, type Move } from "./behaviors";
@@ -20,7 +30,7 @@ export interface MinigameOptions {
   onCounter?: () => void;
   /** Called when the fish becomes landable. */
   onReady?: () => void;
-  /** Called when an early strike makes the fish resist. */
+  /** Called when an early final pull makes the fish resist. */
   onResist?: () => void;
   /** Called when the grip runs out. */
   onGripOut?: () => void;
@@ -55,11 +65,11 @@ function angleDelta(from: number, to: number): number {
 /**
  * Ring fight at the bobber.
  *
- * The fish is free inside the ring and its species script keeps trying to bolt
- * outside. Moving the cursor (or pressing a direction key) steers the fish and
- * spends grip; standing still restores grip. When the fish is tired and inside
- * the circle, a still press lands it. During a telegraphed burst, resting and
- * then pulling against it lands a counter-pull.
+ * Holding the pull button tires the fish and spends grip; releasing the button
+ * rests the fish and restores grip. Aim with the cursor or a direction key.
+ * Bubbles warn about a burst; resting first and then pulling against it lands a
+ * counter-pull. When the fish is tired and inside the circle, a separate final
+ * pull lands it.
  */
 export class Minigame extends Container {
   private readonly fish: FishSpecies;
@@ -108,18 +118,27 @@ export class Minigame extends Container {
   private ready = false;
   private lastReadyChime = -Infinity;
 
-  private strikeHeld = false;
-  private strikeTime = 0;
-  private strikeResolved = false;
-  private strikeCooldown = 0;
-  private strikeOriginX = 0;
-  private strikeOriginY = 0;
+  private readonly temperament: Temperament;
+  private readonly tempo: number;
+  private readonly runPower: number;
+  private readonly tirePower: number;
+  private readonly recoveryPower: number;
+  private readonly feintChance: number;
+  private readonly escapeHold: number;
+  private readonly recoveryRate: number;
+
+  private sameAimTime = 0;
+  private lastAimAngle: number | null = null;
+  private feintPending = false;
+  private lastRunPending = false;
+  private lastRunUsed = false;
+  private lastRunRolled = false;
+
+  private hold = false;
+  private finalCooldown = 0;
 
   private pointerX: number | null = null;
   private pointerY: number | null = null;
-  private prevPointerX: number | null = null;
-  private prevPointerY: number | null = null;
-  private pointerActive = 0;
   private directionX = 0;
   private directionY = 0;
   private steeringNow = false;
@@ -154,6 +173,19 @@ export class Minigame extends Container {
     this.onResist = options.onResist;
     this.onGripOut = options.onGripOut;
     this.eventMode = "none";
+
+    this.temperament = pickTemperament();
+    const mood = TEMPERAMENTS[this.temperament];
+    this.tempo = mood.tempo;
+    this.runPower = mood.run;
+    this.tirePower = mood.tire;
+    this.recoveryPower = mood.recovery;
+    this.feintChance = mood.feint;
+    this.escapeHold = ESCAPE_HOLD * mood.escape;
+    this.recoveryRate = Math.max(
+      0.012,
+      FIGHT.recoveryBase - fish.resistance * FIGHT.recoveryScale,
+    );
 
     this.centerX = clamp(options.anchor.x, RADIUS + 8, VIEW.width - RADIUS - 8);
     this.centerY = clamp(
@@ -206,19 +238,48 @@ export class Minigame extends Container {
     return { x: this.centerX, y: this.centerY };
   }
 
-  /** The button is only for the finishing strike; it does not pull. */
-  setStrikeHold(held: boolean): void {
-    if (held === this.strikeHeld) return;
-    this.strikeHeld = held;
-    this.strikeTime = 0;
-    this.strikeResolved = false;
-    if (held) {
-      this.strikeOriginX = this.pointerX ?? this.centerX;
-      this.strikeOriginY = this.pointerY ?? this.centerY;
-    }
+  /** True when the fish is tired and inside the circle. */
+  get canLand(): boolean {
+    return this.running && this.ready;
   }
 
-  /** Cursor position in screen space; steering follows recent movement. */
+  /** Screen position of the landing hook, used for the touch hit area. */
+  get landingIcon(): { x: number; y: number } | null {
+    if (!this.canLand) return null;
+    const barY = clamp(
+      this.centerY - RADIUS - 8,
+      28,
+      this.centerY - RADIUS + 2,
+    );
+    return { x: this.centerX + 38, y: barY + 2 };
+  }
+
+  /** Hold to pull; release to rest. */
+  setHold(held: boolean): void {
+    this.hold = held;
+  }
+
+  /** Separate final pull: RMB/F, or a tap on the landing hook. */
+  finalPull(): void {
+    if (!this.running || this.finalCooldown > 0) return;
+    this.finalCooldown = FIGHT.resistCooldown;
+
+    const inside = Math.hypot(this.fishX, this.fishY) <= RADIUS;
+    if (this.endurance <= FIGHT.landThreshold && inside) {
+      this.finish(true);
+      return;
+    }
+
+    // Too early: the fish tears away and costs grip.
+    this.endurance = clamp(this.endurance + FIGHT.resistEndurance);
+    this.grip = clamp(this.grip - FIGHT.resistGrip);
+    this.escapeAngle = this.fishAngle() + (Math.random() - 0.5) * 0.6;
+    this.bolt(0.45);
+    this.flash = 0.24;
+    this.onResist?.();
+  }
+
+  /** Cursor position in screen space; while held it sets the pull direction. */
   setPointer(x: number | null, y: number | null): void {
     this.pointerX = x;
     this.pointerY = y;
@@ -235,23 +296,42 @@ export class Minigame extends Container {
     this.time += dt;
     const step = Math.min(dt, 0.05);
 
-    this.trackPointer(step);
-    this.updateStrike(step);
-    if (!this.running) return;
+    this.finalCooldown = Math.max(0, this.finalCooldown - step);
 
     const canPull = this.gripLock <= 0;
-    const pull = canPull ? this.pullVector() : null;
+    const pull = this.hold && canPull ? this.pullVector() : null;
     this.steeringNow = pull !== null;
-    if (pull) this.lastSteerAngle = Math.atan2(pull.y, pull.x);
+    if (pull) {
+      const angle = Math.atan2(pull.y, pull.x);
+      this.lastSteerAngle = angle;
+      if (
+        this.lastAimAngle !== null &&
+        Math.abs(angleDelta(this.lastAimAngle, angle)) < 0.2
+      ) {
+        this.sameAimTime += step;
+        if (this.sameAimTime >= FIGHT.sameAimTime) {
+          this.feintPending = true;
+          this.sameAimTime = 0;
+        }
+      } else {
+        this.sameAimTime = 0;
+      }
+      this.lastAimAngle = angle;
+    } else {
+      this.sameAimTime = 0;
+      this.lastAimAngle = null;
+    }
 
     this.updateGrip(step, pull !== null);
     this.updateEndurance(step, pull !== null);
+    this.maybeDesperate();
     this.advantage = Math.max(0, this.advantage - step);
     this.counterFlash = Math.max(0, this.counterFlash - step);
 
     if (this.warnTime > 0) {
       this.warnTime = Math.max(0, this.warnTime - step);
-      this.warnRest = pull ? 0 : this.warnRest + step;
+      // Rest means releasing the pull button, as in the mod.
+      this.warnRest = this.hold ? 0 : this.warnRest + step;
       this.flash = Math.max(0, this.flash - step);
       // The fish holds still and shivers while the warning is shown.
       this.vx *= Math.max(0, 1 - 7 * step);
@@ -322,70 +402,8 @@ export class Minigame extends Container {
 
   // --------------------------------------------------------------- input
 
-  private trackPointer(step: number): void {
-    if (this.pointerX === null || this.pointerY === null) {
-      this.pointerActive = 0;
-      this.prevPointerX = null;
-      this.prevPointerY = null;
-      return;
-    }
-    if (this.prevPointerX === null || this.prevPointerY === null) {
-      this.prevPointerX = this.pointerX;
-      this.prevPointerY = this.pointerY;
-      this.pointerActive = 0;
-      return;
-    }
-    const moved = Math.hypot(
-      this.pointerX - this.prevPointerX,
-      this.pointerY - this.prevPointerY,
-    );
-    this.prevPointerX = this.pointerX;
-    this.prevPointerY = this.pointerY;
-    if (moved > 0.4) this.pointerActive = FIGHT.pointerActive;
-    else this.pointerActive = Math.max(0, this.pointerActive - step);
-  }
-
-  private updateStrike(step: number): void {
-    this.strikeCooldown = Math.max(0, this.strikeCooldown - step);
-    if (!this.strikeHeld || this.strikeResolved || this.strikeCooldown > 0) {
-      return;
-    }
-    if (this.pointerX !== null && this.pointerY !== null) {
-      const moved = Math.hypot(
-        this.pointerX - this.strikeOriginX,
-        this.pointerY - this.strikeOriginY,
-      );
-      // A drag is steering, not a landing strike.
-      if (moved > FIGHT.strikeMove) {
-        this.strikeResolved = true;
-        return;
-      }
-    }
-    this.strikeTime += step;
-    if (this.strikeTime < FIGHT.strikeHold) return;
-    this.strikeResolved = true;
-    this.resolveStrike();
-  }
-
-  private resolveStrike(): void {
-    const inside = Math.hypot(this.fishX, this.fishY) <= RADIUS;
-    if (this.endurance <= FIGHT.landThreshold && inside) {
-      this.finish(true);
-      return;
-    }
-    if (this.endurance > FIGHT.resistThreshold) return;
-
-    // Too early: the fish tears away and costs grip.
-    this.endurance = clamp(this.endurance + FIGHT.resistEndurance);
-    this.grip = clamp(this.grip - FIGHT.resistGrip);
-    this.escapeAngle = this.fishAngle() + (Math.random() - 0.5) * 0.6;
-    this.bolt(0.45);
-    this.flash = 0.24;
-    this.strikeCooldown = FIGHT.resistCooldown;
-    this.onResist?.();
-  }
-
   private pullVector(): { x: number; y: number } | null {
+    if (!this.hold) return null;
     const dirLength = Math.hypot(this.directionX, this.directionY);
     if (dirLength > 0.1) {
       return {
@@ -394,11 +412,7 @@ export class Minigame extends Container {
       };
     }
 
-    if (
-      this.pointerActive > 0 &&
-      this.pointerX !== null &&
-      this.pointerY !== null
-    ) {
+    if (this.pointerX !== null && this.pointerY !== null) {
       const dx = this.pointerX - (this.centerX + this.fishX);
       const dy = this.pointerY - (this.centerY + this.fishY);
       const length = Math.hypot(dx, dy);
@@ -432,12 +446,36 @@ export class Minigame extends Container {
   }
 
   private updateEndurance(step: number, steering: boolean): void {
-    if (!steering) return;
-    const rate = FIGHT.tireBase - this.fish.resistance * FIGHT.tireScale;
     const inside = Math.hypot(this.fishX, this.fishY) <= RADIUS;
-    const tire = rate * (inside ? 1 : 0.3);
-    const bonus = this.advantage > 0 ? FIGHT.advantageTire : 1;
-    this.endurance = clamp(this.endurance - tire * bonus * step);
+    if (steering) {
+      const rate = FIGHT.tireBase - this.fish.resistance * FIGHT.tireScale;
+      const tire = rate * (inside ? 1 : 0.3) * this.tirePower;
+      const bonus = this.advantage > 0 ? FIGHT.advantageTire : 1;
+      this.endurance = clamp(this.endurance - tire * bonus * step);
+      return;
+    }
+
+    // The fish catches its breath while the player rests inside the circle.
+    if (inside) {
+      this.endurance = clamp(
+        this.endurance + this.recoveryRate * this.recoveryPower * step,
+      );
+    }
+  }
+
+  private maybeDesperate(): void {
+    if (this.lastRunRolled) return;
+    if (this.endurance > FIGHT.lastRunThreshold) return;
+    this.lastRunRolled = true;
+    const chance =
+      FIGHT.lastRunChance +
+      (this.temperament === "aggressive"
+        ? 0.2
+        : this.temperament === "stubborn"
+          ? 0.15
+          : 0) +
+      (this.fish.points >= RARE_SCORE ? 0.15 : 0);
+    if (Math.random() < chance) this.lastRunPending = true;
   }
 
   private openCounterWindow(): void {
@@ -492,12 +530,17 @@ export class Minigame extends Container {
 
   private advanceScript(dt: number): void {
     if (this.current === null) return;
-    this.moveTime += dt;
+    this.moveTime += dt * this.tempo;
     if (this.moveTime >= this.current.dur) this.nextMove();
   }
 
   private nextMove(): void {
-    const move = this.script[this.moveIndex % this.script.length];
+    let move = this.script[this.moveIndex % this.script.length];
+    if (this.lastRunPending && !this.lastRunUsed) {
+      this.lastRunUsed = true;
+      this.lastRunPending = false;
+      move = { kind: "dash", dir: "away", dur: 0.55, strong: true };
+    }
     this.moveIndex += 1;
     this.current = move;
     this.moveTime = 0;
@@ -511,7 +554,9 @@ export class Minigame extends Container {
       this.lastAngle = this.escapeAngle;
     }
     if (move.strong) {
-      this.warnTime = TIMING.telegraph;
+      // A fish that senses an empty grip warns a little later.
+      const pressure = this.grip < FIGHT.lowGrip ? 0.88 : 1;
+      this.warnTime = TIMING.telegraph * pressure;
       this.warnAngle = this.escapeAngle;
       this.bubbleTimer = 0;
       this.onWarn?.();
@@ -525,18 +570,27 @@ export class Minigame extends Container {
     const here = this.fishAngle();
     const jitter = (spread: number) => (Math.random() - 0.5) * spread;
     const dir = move.dir ?? "flip";
+    let base: number;
 
     // Escape directions are relative to the ring, never to the cursor: the
     // player's pull stays a counter-force instead of choosing the escape side.
-    if (dir === "away") return here + jitter(0.55);
-    if (dir === "toward") return here + Math.PI + jitter(0.5);
-    if (dir === "same") return this.lastAngle + jitter(0.35);
-    return this.lastAngle + Math.PI + jitter(0.75);
+    if (dir === "away") base = here + jitter(0.55);
+    else if (dir === "toward") base = here + Math.PI + jitter(0.5);
+    else if (dir === "same") base = this.lastAngle + jitter(0.35);
+    else base = this.lastAngle + Math.PI + jitter(0.75);
+
+    const feint = this.feintPending || Math.random() < this.feintChance;
+    this.feintPending = false;
+    if (feint && dir !== "toward") {
+      base += (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.5);
+    }
+    return base;
   }
 
   /** A sudden burst, used by dash moves and after a telegraph ends. */
   private bolt(scale = 1): void {
-    const power = (110 + this.fish.speed * 70) * scale * this.wildness;
+    const power =
+      (110 + this.fish.speed * 70) * scale * this.wildness * this.runPower;
     this.vx += Math.cos(this.escapeAngle) * power;
     this.vy += Math.sin(this.escapeAngle) * power;
     this.flash = 0.16;
@@ -641,7 +695,7 @@ export class Minigame extends Container {
 
     if (distance > RADIUS + 4) {
       this.outsideTimer += dt;
-      if (this.outsideTimer >= ESCAPE_HOLD) {
+      if (this.outsideTimer >= this.escapeHold) {
         this.finish(false);
         return;
       }
@@ -744,13 +798,16 @@ export class Minigame extends Container {
 
     if (danger) {
       const angle = this.fishAngle();
-      const arc = Math.min(1.1, 0.35 + (this.outsideTimer / ESCAPE_HOLD) * 0.8);
+      const arc = Math.min(
+        1.1,
+        0.35 + (this.outsideTimer / this.escapeHold) * 0.8,
+      );
       this.arc(g, cx, cy, RADIUS + 1, angle - arc, angle + arc);
       g.stroke({ width: 2.5, color: C.red, alpha: 0.55 + pulse * 0.4 });
     }
 
     if (warn) {
-      const flash = 0.55 + pulse * 0.45;
+      const flash = 0.45 + pulse * 0.35;
       this.arc(
         g,
         cx,
@@ -759,7 +816,7 @@ export class Minigame extends Container {
         this.warnAngle - 0.55,
         this.warnAngle + 0.55,
       );
-      g.stroke({ width: 3, color: C.gold, alpha: flash });
+      g.stroke({ width: 2, color: C.gold, alpha: flash });
     }
   }
 

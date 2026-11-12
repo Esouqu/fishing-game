@@ -20,16 +20,15 @@ export const PERFECT_MULTIPLIER = 1.5;
 export const FIGHT = {
   /** Endurance is 0..1; at or below this the fish can be landed. */
   landThreshold: 0.2,
-  /** Grip is 0..1: steering drains it, standing still restores it. */
+  /** Grip is 0..1: holding a pull drains it, releasing restores it. */
   gripDrain: 0.34,
   gripRegen: 0.46,
   /** Lockout after burning the whole grip, then a small reserve. */
   gripLock: 1.2,
   gripRestore: 0.3,
-  pointerActive: 0.12,
-  /** A still press this long is a landing strike. */
-  strikeHold: 0.22,
-  strikeMove: 4,
+  /** Endurance the fish regains while it is not being pulled. */
+  recoveryBase: 0.04,
+  recoveryScale: 0.04,
   /** Hardcore counter window after a burst. */
   counterWindow: 0.2,
   counterRest: 0.15,
@@ -37,17 +36,92 @@ export const FIGHT = {
   advantage: 1,
   advantageTire: 1.5,
   advantageGrip: 0.75,
-  /** Endurance loss per second while steering. */
+  /** Endurance loss per second while pulling. */
   tireBase: 0.3,
   tireScale: 0.35,
-  /** A strike landed too early. */
-  resistThreshold: 0.35,
+  /** A final pull attempted too early. */
   resistEndurance: 0.05,
   resistGrip: 0.08,
-  resistCooldown: 0.6,
+  resistCooldown: 0.5,
+  /** Reactions to pressure. */
+  sameAimTime: 2.5,
+  lowGrip: 0.25,
+  lastRunThreshold: 0.3,
+  lastRunChance: 0.3,
   /** Minimum gap between landing chimes. */
   readyChime: 0.9,
 } as const;
+
+export type Temperament = "calm" | "aggressive" | "skittish" | "stubborn";
+
+/**
+ * Per-catch temperament. `tempo` > 1 shortens move durations, `run` scales the
+ * burst power, `tire` scales how fast endurance drops, `recovery` scales how
+ * fast it comes back, `feint` is the chance of a misdirection, `escape`
+ * lengthens or shortens the outside timer.
+ */
+export const TEMPERAMENTS: Record<
+  Temperament,
+  {
+    weight: number;
+    tempo: number;
+    run: number;
+    tire: number;
+    recovery: number;
+    feint: number;
+    escape: number;
+  }
+> = {
+  calm: {
+    weight: 0.3,
+    tempo: 0.82,
+    run: 0.94,
+    tire: 1.08,
+    recovery: 1.15,
+    feint: 0.15,
+    escape: 1.08,
+  },
+  aggressive: {
+    weight: 0.25,
+    tempo: 1.14,
+    run: 1.1,
+    tire: 0.95,
+    recovery: 0.9,
+    feint: 0.35,
+    escape: 0.95,
+  },
+  skittish: {
+    weight: 0.25,
+    tempo: 1.08,
+    run: 0.98,
+    tire: 1,
+    recovery: 1,
+    feint: 0.55,
+    escape: 0.9,
+  },
+  stubborn: {
+    weight: 0.2,
+    tempo: 0.92,
+    run: 1.04,
+    tire: 0.86,
+    recovery: 0.82,
+    feint: 0.2,
+    escape: 1.15,
+  },
+};
+
+export function pickTemperament(): Temperament {
+  const entries = Object.entries(TEMPERAMENTS) as Array<
+    [Temperament, { weight: number }]
+  >;
+  const total = entries.reduce((sum, [, value]) => sum + value.weight, 0);
+  let roll = Math.random() * total;
+  for (const [key, value] of entries) {
+    roll -= value.weight;
+    if (roll <= 0) return key;
+  }
+  return "calm";
+}
 
 /** Rosy-42 (+3 blues) palette used by the Tiny Coast Pack. */
 export const C = {
