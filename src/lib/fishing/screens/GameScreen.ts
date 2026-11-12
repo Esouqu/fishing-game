@@ -317,7 +317,7 @@ export class GameScreen extends Screen {
       align: "center",
     });
     this.statusText.anchor.set(0.5, 0);
-    this.statusText.position.set(SCENE.anglerX, 126);
+    this.statusText.position.set(VIEW.width / 2, 126);
     this.statusText.style.stroke = { color: C.ink, width: 2.5 };
     this.statusText.eventMode = "none";
     this.hud.addChild(this.statusText);
@@ -714,7 +714,7 @@ export class GameScreen extends Screen {
     this.game.audio.escape();
     this.addFloater(
       "РАНО!",
-      SCENE.anglerX,
+      VIEW.width / 2,
       SCENE.anglerY - 94,
       C.red,
       12,
@@ -725,24 +725,26 @@ export class GameScreen extends Screen {
     this.updateHud();
   }
 
-  /** The fish inspected the bait and moved on; the cast is not wasted. */
+  /** The fish inspected the bait and moved on; keep the bobber and wait. */
   private passBy(): void {
-    this.refundCast();
-    this.phase = "resolve";
-    this.resolveTimer = SPOOK_HOLD * 0.85;
+    this.phase = "waiting";
     this.pressed = false;
-    this.scene.escapeFish();
+    this.biteText.visible = false;
+    this.reactionBar.clear();
+    this.waitTimer = randRange(TIMING.waitMin * 0.65, TIMING.waitMax * 0.85);
+    this.nibbleLead = randRange(TIMING.nibbleLeadMin, TIMING.nibbleLeadMax);
+    this.nibblePlayed = false;
     this.game.audio.nibble();
     this.addFloater(
       "МИМО",
-      SCENE.anglerX,
+      VIEW.width / 2,
       SCENE.anglerY - 94,
       C.steelPale,
       11,
       1.1,
       -20,
     );
-    this.setStatus("РЫБА ПРОШЛА МИМО", C.steelPale);
+    this.setStatus(WAIT_LABEL);
     this.updateHud();
   }
 
@@ -835,7 +837,7 @@ export class GameScreen extends Screen {
     this.powerLabel.visible = false;
     this.addFloater(
       reason.replace("…", ""),
-      SCENE.anglerX,
+      VIEW.width / 2,
       SCENE.anglerY - 94,
       C.red,
       12,
@@ -908,7 +910,7 @@ export class GameScreen extends Screen {
   // ------------------------------------------------------------------- FX
 
   private showCatchFeedback(record: CatchRecord): void {
-    const ax = SCENE.anglerX;
+    const ax = VIEW.width / 2;
     const ay = SCENE.anglerY;
     const multiplier = record.multiplier > 1 ? ` ×${record.multiplier}` : "";
     const perfect = record.perfect ? " · ИДЕАЛЬНО" : "";

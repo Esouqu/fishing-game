@@ -91,7 +91,7 @@ export class LakeScene extends Container {
   private castT = 0;
   private castPower = 0;
   private bobberBaseX: number = SCENE.anglerX;
-  private bobberBaseY: number = SCENE.bobberMinY;
+  private bobberBaseY: number = SCENE.anglerY;
   private anglerTimer = 0;
   private anglerFrames: number[] = [10];
   private anglerFps = 10;
@@ -99,9 +99,9 @@ export class LakeScene extends Container {
   private nibbleTime = 0;
 
   private fightBobberX: number = SCENE.anglerX;
-  private fightBobberY: number = SCENE.bobberMinY;
+  private fightBobberY: number = SCENE.anglerY;
   private fightTargetX: number = SCENE.anglerX;
-  private fightTargetY: number = SCENE.bobberMinY;
+  private fightTargetY: number = SCENE.anglerY;
   private fightDirX = 1;
   private fightDirY = 0;
 
@@ -157,44 +157,60 @@ export class LakeScene extends Container {
 
   private drawWater(g: Graphics): void {
     g.rect(0, 0, VIEW.width, VIEW.height).fill(C.deep);
-    g.rect(0, 10, VIEW.width, 46).fill(0x0d5d99);
-    g.rect(0, 56, VIEW.width, 70).fill(C.ocean);
-    g.rect(0, 126, VIEW.width, 106).fill(0x0b78bd);
+    const shore = SCENE.shoreX;
+    const far = SCENE.farShoreX;
 
-    // Far shore with a dark treeline.
-    g.rect(0, 0, VIEW.width, 12).fill(0x1f4038);
-    g.rect(0, 10, VIEW.width, 4).fill(0x2f5753);
-    g.rect(0, 14, VIEW.width, 1).fill({ color: C.cream, alpha: 0.12 });
+    // Depth bands run from the near bank to the far one.
+    g.rect(shore, 0, 90, VIEW.height).fill(0x0d5d99);
+    g.rect(shore + 90, 0, 140, VIEW.height).fill(C.ocean);
+    g.rect(shore + 230, 0, far - (shore + 230), VIEW.height).fill(0x0b78bd);
 
-    for (let x = 0; x < VIEW.width; x += 24) {
-      const height = 3 + ((x * 7) % 5);
-      g.rect(x, 14 - height, 14, height).fill({
+    // Far bank on the right with a dark treeline.
+    g.rect(far, 0, VIEW.width - far, VIEW.height).fill(0x1f4038);
+    g.rect(far - 2, 0, 4, VIEW.height).fill(0x2f5753);
+    g.rect(far - 4, 0, 2, VIEW.height).fill({ color: C.cream, alpha: 0.12 });
+
+    for (let y = 0; y < VIEW.height; y += 24) {
+      const height = 3 + ((y * 7) % 5);
+      g.rect(far - height, y, height, 14).fill({
         color: 0x18342f,
         alpha: 0.55,
       });
     }
 
-    // Lazy wave crests.
-    for (let y = 34; y < SCENE.shoreY - 12; y += 21) {
+    // Lazy wave crests across the water.
+    for (let y = 34; y < VIEW.height - 12; y += 21) {
       const offset = (y * 13) % 60;
-      g.rect(20 + offset, y, 30, 1).fill({ color: C.cyan, alpha: 0.09 });
-      g.rect(140 + offset, y + 7, 18, 1).fill({ color: C.cyan, alpha: 0.07 });
-      g.rect(300 - offset, y + 3, 26, 1).fill({ color: C.cyan, alpha: 0.08 });
+      g.rect(shore + 24 + offset, y, 30, 1).fill({
+        color: C.cyan,
+        alpha: 0.09,
+      });
+      g.rect(shore + 120 + offset, y + 7, 18, 1).fill({
+        color: C.cyan,
+        alpha: 0.07,
+      });
+      g.rect(shore + 260 - offset, y + 3, 26, 1).fill({
+        color: C.cyan,
+        alpha: 0.08,
+      });
     }
   }
 
   private drawShore(g: Graphics): void {
-    const y = SCENE.shoreY;
-    g.rect(0, y - 4, VIEW.width, 4).fill({ color: C.cream, alpha: 0.45 });
-    g.rect(0, y - 2, VIEW.width, 3).fill(C.sand);
-    g.rect(0, y + 1, VIEW.width, VIEW.height - y).fill(C.greenDark);
-    g.rect(0, y + 1, VIEW.width, 5).fill(C.green);
-    g.rect(0, y + 6, VIEW.width, 2).fill({ color: C.teal, alpha: 0.55 });
+    const x = SCENE.shoreX;
+    g.rect(0, 0, x, VIEW.height).fill(C.greenDark);
+    g.rect(0, 0, x - 8, VIEW.height).fill(C.green);
+    g.rect(x - 7, 0, 5, VIEW.height).fill(C.sand);
+    g.rect(x - 3, 0, 3, VIEW.height).fill({ color: C.cream, alpha: 0.45 });
+    g.rect(x, 0, 1, VIEW.height).fill({ color: C.teal, alpha: 0.55 });
 
-    for (let x = 0; x < VIEW.width; x += 17) {
-      const height = 2 + ((x * 5) % 4);
-      g.rect(x + 3, y + 9, 2, height).fill({ color: C.green, alpha: 0.7 });
-      g.rect(x + 8, y + 13 + (x % 3), 1, 2).fill({
+    for (let y = 0; y < VIEW.height; y += 18) {
+      const height = 2 + ((y * 5) % 4);
+      g.rect(x - 16 + ((y * 7) % 8), y + 4, 3, height).fill({
+        color: C.green,
+        alpha: 0.7,
+      });
+      g.rect(x - 22 + ((y * 3) % 9), y + 11, 2, 2).fill({
         color: C.green,
         alpha: 0.5,
       });
@@ -249,10 +265,10 @@ export class LakeScene extends Container {
     const rock = this.assets.rock;
 
     const trees = [
-      { x: 24, y: 274, scale: 1.15, flip: false },
-      { x: 452, y: 274, scale: 1.15, flip: true },
-      { x: 64, y: 268, scale: 0.85, flip: false },
-      { x: 414, y: 268, scale: 0.85, flip: true },
+      { x: 22, y: 74, scale: 1.1, flip: false },
+      { x: 14, y: 166, scale: 0.95, flip: true },
+      { x: 30, y: 262, scale: 1.15, flip: false },
+      { x: 42, y: 44, scale: 0.85, flip: true },
     ];
     for (const item of trees) {
       const sprite = new Sprite(tree);
@@ -263,12 +279,11 @@ export class LakeScene extends Container {
     }
 
     const sideScenery = [
-      { x: 6, y: 246, s: 1.2 },
-      { x: 40, y: 252, s: 0.9 },
-      { x: 442, y: 248, s: 1.1 },
-      { x: 470, y: 254, s: 0.9 },
-      { x: 148, y: 244, s: 0.8 },
-      { x: 330, y: 246, s: 0.8 },
+      { x: 10, y: 104, s: 1.1 },
+      { x: 40, y: 112, s: 0.8 },
+      { x: 18, y: 210, s: 1.1 },
+      { x: 46, y: 226, s: 0.9 },
+      { x: 34, y: 282, s: 1 },
     ];
     for (const item of sideScenery) {
       const sprite = new Sprite(bush);
@@ -279,10 +294,9 @@ export class LakeScene extends Container {
     }
 
     const rocks = [
-      { x: 96, y: 248, s: 1 },
-      { x: 376, y: 250, s: 1.1 },
-      { x: 208, y: 240, s: 0.8 },
-      { x: 286, y: 242, s: 0.8 },
+      { x: 36, y: 196, s: 1 },
+      { x: 24, y: 58, s: 0.9 },
+      { x: 48, y: 244, s: 0.8 },
     ];
     for (const item of rocks) {
       const sprite = new Sprite(rock);
@@ -300,8 +314,8 @@ export class LakeScene extends Container {
     // opaque blue backgrounds and read as square patches on the lake.
     for (let i = 0; i < 14; i += 1) {
       this.waterMarks.push({
-        x: randRange(16, VIEW.width - 16),
-        y: randRange(34, SCENE.shoreY - 18),
+        x: randRange(SCENE.shoreX + 24, SCENE.farShoreX - 24),
+        y: randRange(30, VIEW.height - 14),
         radius: randRange(5, 13),
         phase: randRange(0, Math.PI * 2),
         speed: randRange(0.45, 1.15),
@@ -311,8 +325,8 @@ export class LakeScene extends Container {
 
     for (let i = 0; i < 2; i += 1) {
       this.whirls.push({
-        x: randRange(52, VIEW.width - 52),
-        y: randRange(62, 150),
+        x: randRange(SCENE.shoreX + 36, SCENE.farShoreX - 36),
+        y: randRange(60, 210),
         radius: randRange(8, 13),
         phase: randRange(0, Math.PI * 2),
         spin: randRange(0.16, 0.32),
@@ -332,7 +346,10 @@ export class LakeScene extends Container {
       sprite.scale.set(randRange(0.62, 0.95));
       const direction = Math.random() > 0.5 ? 1 : -1;
       sprite.scale.x = Math.abs(sprite.scale.x) * direction;
-      sprite.position.set(randRange(20, 460), randRange(50, 180));
+      sprite.position.set(
+        randRange(SCENE.shoreX + 30, SCENE.farShoreX - 30),
+        randRange(40, 230),
+      );
       this.fishShadows.push({
         sprite,
         speed: randRange(6, 14) * direction,
@@ -361,24 +378,29 @@ export class LakeScene extends Container {
   playCast(power: number): void {
     this.previewG.clear();
     this.castPower = clamp(power);
-    const targetY = lerp(SCENE.bobberMaxY, SCENE.bobberMinY, this.castPower);
-    const spread = 20 + this.castPower * 26;
     const targetX = clamp(
-      SCENE.anglerX + randRange(-spread, spread),
-      SCENE.dockX - 8,
-      SCENE.dockX + SCENE.dockWidth + 8,
+      lerp(SCENE.bobberMinX, SCENE.bobberMaxX, this.castPower) +
+        randRange(-6, 6),
+      SCENE.shoreX + 40,
+      SCENE.farShoreX - 20,
+    );
+    const spread = 18 + this.castPower * 22;
+    const targetY = clamp(
+      SCENE.anglerY + randRange(-spread, spread),
+      44,
+      VIEW.height - 28,
     );
 
     this.bobberBaseX = targetX;
     this.bobberBaseY = targetY;
-    this.bobber.position.set(SCENE.anglerX + 1, SCENE.anglerY - 30);
+    this.bobber.position.set(SCENE.anglerX + 14, SCENE.anglerY - 26);
     this.bobber.visible = true;
     this.bobber.alpha = 1;
     this.biteMark.visible = false;
     this.phase = "flying";
     this.castT = 0;
     this.setAngler([8, 9, 10], 11);
-    this.spawnSplash(SCENE.anglerX, SCENE.anglerY - 18, 6, 0.6);
+    this.spawnSplash(SCENE.anglerX + 6, SCENE.anglerY - 20, 6, 0.6);
   }
 
   beginWaiting(): void {
@@ -633,12 +655,12 @@ export class LakeScene extends Container {
       this.castT += dt;
       const t = clamp(this.castT / flight);
       const eased = easeOutCubic(t);
-      const fromX = SCENE.anglerX + 1;
-      const fromY = SCENE.anglerY - 30;
+      const fromX = SCENE.anglerX + 14;
+      const fromY = SCENE.anglerY - 26;
       const x = lerp(fromX, this.bobberBaseX, eased);
       const y =
         lerp(fromY, this.bobberBaseY, eased) -
-        Math.sin(Math.PI * t) * (34 + this.castPower * 26);
+        Math.sin(Math.PI * t) * (26 + this.castPower * 24);
       this.bobber.position.set(x, y);
       this.bobberBody.rotation = t * Math.PI * 2;
       if (t >= 1) {
@@ -687,8 +709,8 @@ export class LakeScene extends Container {
     // Line + bite marker.
     this.line.clear();
     if (this.bobber.visible) {
-      const rodX = SCENE.anglerX + 1;
-      const rodY = SCENE.anglerY - 32;
+      const rodX = SCENE.anglerX + 14;
+      const rodY = SCENE.anglerY - 28;
       const bx = this.bobber.x;
       const by = this.bobber.y - 6;
       const sag = this.phase === "fight" ? 2 : 8;
