@@ -364,6 +364,15 @@ export const FISH_BY_ID: Record<string, FishSpecies> = Object.fromEntries(
 export const LUCK_MAX = 3;
 export const LUCK_RARE_STEP = 0.4;
 
+/**
+ * Narrow luck zone on the cast bar. Its centre is re-rolled for every cast, so
+ * the player has to read the bar instead of memorising one perfect release.
+ */
+export const LUCK_BAND = { min: 0.5, max: 0.92, width: 0.07 } as const;
+
+/** Rare-fish weight multiplier after landing inside the luck zone. */
+export const LUCK_ZONE_MULT = 2.4;
+
 /** Chance that a fish swims past without biting. */
 export const PASS_BY_CHANCE = 0.12;
 

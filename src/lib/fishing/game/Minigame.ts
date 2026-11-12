@@ -19,7 +19,9 @@ export interface MinigameOptions {
 }
 
 const RADIUS = 34;
-const FISH_SCALE = 1.45;
+const FISH_SCALE = 1;
+const SILHOUETTE = 0x0b2233;
+const SILHOUETTE_WARN = 0x2a5a78;
 const TAU = Math.PI * 2;
 const MAX_SLIPS = 2;
 const ESCAPE_HOLD = 1.35;
@@ -54,6 +56,7 @@ export class Minigame extends Container {
   private readonly fishSprite: Sprite;
   private readonly ringG = new Graphics();
   private readonly wakeG = new Graphics();
+  private readonly arrowG = new Graphics();
   private readonly barG = new Graphics();
 
   private readonly centerX: number;
@@ -94,6 +97,7 @@ export class Minigame extends Container {
   private outsideTimer = 0;
   private slipCooldown = 0;
   private time = 0;
+  private arrowAngle = 0;
   private finishResult: MinigameResult | null = null;
 
   onFinish?: (result: MinigameResult) => void;
@@ -120,7 +124,10 @@ export class Minigame extends Container {
     this.fishSprite = new Sprite(icon);
     this.fishSprite.anchor.set(0.5);
     this.fishSprite.scale.set(FISH_SCALE);
+    this.fishSprite.alpha = 0.92;
+    this.fishSprite.tint = SILHOUETTE;
     this.addChild(this.fishSprite);
+    this.addChild(this.arrowG);
 
     this.addChild(this.barG);
 
@@ -224,7 +231,7 @@ export class Minigame extends Container {
             ? -1
             : 1;
     this.fishSprite.scale.set(face * FISH_SCALE, FISH_SCALE);
-    this.fishSprite.tint = this.warnTime > 0 ? 0xffe58a : 0xffffff;
+    this.fishSprite.tint = this.warnTime > 0 ? SILHOUETTE_WARN : SILHOUETTE;
 
     if (this.progress >= 1) this.finish(true);
     else if (
@@ -454,6 +461,7 @@ export class Minigame extends Container {
   private draw(pulling: boolean): void {
     this.drawRing(pulling);
     this.drawWake();
+    this.drawArrow();
     this.drawBar();
   }
 
@@ -561,6 +569,45 @@ export class Minigame extends Container {
         ).fill({ color: C.cream, alpha: 0.18 - i * 0.03 });
       }
     }
+  }
+
+  /** Heading chevron orbiting the fish, so the silhouette still reads. */
+  private drawArrow(): void {
+    const speed = Math.hypot(this.vx, this.vy);
+    if (speed > 12) {
+      const target = Math.atan2(this.vy, this.vx);
+      this.arrowAngle += angleDelta(this.arrowAngle, target) * 0.3;
+    }
+
+    const g = this.arrowG;
+    g.clear();
+    const x = this.centerX + this.fishX;
+    const y = this.centerY + this.fishY;
+    const dirX = Math.cos(this.arrowAngle);
+    const dirY = Math.sin(this.arrowAngle);
+    const orbit = 10;
+    const tipX = x + dirX * (orbit + 6);
+    const tipY = y + dirY * (orbit + 6);
+    const baseX = x + dirX * orbit;
+    const baseY = y + dirY * orbit;
+    const sideX = -dirY;
+    const sideY = dirX;
+    const alpha = 0.3 + Math.min(0.6, speed / 240) * 0.6;
+
+    g.poly([
+      tipX,
+      tipY,
+      baseX + sideX * 3.4,
+      baseY + sideY * 3.4,
+      baseX - sideX * 3.4,
+      baseY - sideY * 3.4,
+    ]).fill({ color: C.cream, alpha });
+    g.moveTo(
+      x + Math.cos(this.arrowAngle - 0.5) * (orbit + 2),
+      y + Math.sin(this.arrowAngle - 0.5) * (orbit + 2),
+    );
+    g.arc(x, y, orbit + 2, this.arrowAngle - 0.5, this.arrowAngle - 0.15);
+    g.stroke({ width: 1, color: C.cream, alpha: alpha * 0.5 });
   }
 
   private drawBar(): void {

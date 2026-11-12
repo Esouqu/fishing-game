@@ -380,6 +380,22 @@ export class LakeScene extends Container {
     this.biteMark.visible = true;
   }
 
+  /** Golden sparkle when the bobber lands inside the luck zone. */
+  celebrateLuck(): void {
+    this.spawnSplash(this.bobberBaseX, this.bobberBaseY, 18, 1, [
+      C.gold,
+      C.yellow,
+    ]);
+    this.rings.push({
+      x: this.bobberBaseX,
+      y: this.bobberBaseY,
+      radius: 3,
+      maxRadius: 28,
+      life: 0.62,
+      maxLife: 0.62,
+    });
+  }
+
   setFight(): void {
     this.phase = "fight";
     this.biteMark.visible = false;

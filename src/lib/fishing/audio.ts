@@ -233,6 +233,13 @@ export class AudioKit {
     this.tone(880, 0.07, { volume: 0.06, delay: 0.05, type: "square" });
   }
 
+  /** Landing inside the luck zone. */
+  luck(): void {
+    this.tone(880, 0.09, { volume: 0.1, type: "triangle" });
+    this.tone(1174, 0.11, { volume: 0.09, delay: 0.07, type: "triangle" });
+    this.tone(1568, 0.16, { volume: 0.08, delay: 0.15, type: "triangle" });
+  }
+
   thunder(): void {
     this.noise(1.8, {
       volume: 0.2,

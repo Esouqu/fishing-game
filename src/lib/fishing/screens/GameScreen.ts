@@ -5,8 +5,10 @@ import {
   C,
   CASTS_PER_SESSION,
   FISH,
+  LUCK_BAND,
   LUCK_MAX,
   LUCK_RARE_STEP,
+  LUCK_ZONE_MULT,
   PASS_BY_CHANCE,
   PERFECT_MULTIPLIER,
   SCENE,
@@ -124,6 +126,9 @@ export class GameScreen extends Screen {
   private pointerX = VIEW.width / 2;
   private pointerY = VIEW.height / 2;
   private pointerDown = false;
+  /** Re-rolled every cast; landing inside it boosts rare fish. */
+  private luckBandCenter = 0.75;
+  private luckZoneHit = false;
   /** Hidden streak of perfect catches; resets when a fish escapes. */
   private luck = 0;
 
@@ -146,7 +151,10 @@ export class GameScreen extends Screen {
     this.game = game;
 
     this.scene = new LakeScene(game.assets);
-    this.scene.onCastLanded = () => this.game.audio.splash();
+    this.scene.onCastLanded = () => {
+      this.game.audio.splash();
+      if (this.luckZoneHit) this.scene.celebrateLuck();
+    };
     this.addChild(this.scene);
 
     this.atmosphere.onThunder = () => this.game.audio.thunder();
@@ -485,6 +493,8 @@ export class GameScreen extends Screen {
       this.charge = 0;
       this.chargeDir = 1;
       this.chargeSoundTimer = 0;
+      this.luckZoneHit = false;
+      this.luckBandCenter = randRange(LUCK_BAND.min, LUCK_BAND.max);
       this.setStatus("ОТПУСТИ — ЗАБРОС");
     } else if (this.phase === "waiting") {
       this.earlyHook();
@@ -514,6 +524,9 @@ export class GameScreen extends Screen {
     this.castsLeft -= 1;
     this.charge = clamp(this.charge);
     this.water = waterProfile(this.charge);
+    this.luckZoneHit =
+      Math.abs(this.charge - this.luckBandCenter) <= LUCK_BAND.width / 2;
+    if (this.luckZoneHit) this.game.audio.luck();
     this.game.audio.cast();
     this.scene.playCast(this.charge);
     this.game.clock.persist();
@@ -554,6 +567,7 @@ export class GameScreen extends Screen {
       if (isRareFish(fish)) {
         weight *= weatherDef.rare;
         weight *= 1 + this.luck * LUCK_RARE_STEP;
+        if (this.luckZoneHit) weight *= LUCK_ZONE_MULT;
       } else {
         weight *= weatherDef.common;
       }
@@ -911,6 +925,26 @@ export class GameScreen extends Screen {
     g.rect(x, y, fill, height).fill(C.gold);
     g.rect(x, y, fill, 2).fill({ color: C.cream, alpha: 0.55 });
     g.rect(x + fill - 1, y - 1, 1, height + 2).fill(C.cream);
+
+    // Luck zone: re-rolled every cast, so it has to be read live.
+    const bandW = Math.max(4, width * LUCK_BAND.width);
+    const bandX = x + width * this.luckBandCenter - bandW / 2;
+    const pulse = 0.55 + Math.abs(Math.sin(this.time * 3)) * 0.45;
+    const inside =
+      Math.abs(this.charge - this.luckBandCenter) <= LUCK_BAND.width / 2;
+    g.rect(bandX - 2, y - 3, bandW + 4, height + 6).fill({
+      color: C.cyan,
+      alpha: (inside ? 0.3 : 0.12) * pulse,
+    });
+    g.rect(bandX, y, bandW, height).fill({
+      color: C.cyan,
+      alpha: inside ? 0.85 : 0.62,
+    });
+    g.rect(bandX, y, 1, height).fill({ color: C.cream, alpha: 0.95 });
+    g.rect(bandX + bandW - 1, y, 1, height).fill({
+      color: C.cream,
+      alpha: 0.95,
+    });
   }
 
   private drawBiteBar(): void {
