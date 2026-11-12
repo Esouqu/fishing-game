@@ -125,7 +125,6 @@ export class GameScreen extends Screen {
   private readonly floaters: Floater[] = [];
   private pointerX = VIEW.width / 2;
   private pointerY = VIEW.height / 2;
-  private pointerDown = false;
   /** Re-rolled every cast; landing inside it boosts rare fish. */
   private luckBandCenter = 0.75;
   private luckZoneHit = false;
@@ -168,7 +167,6 @@ export class GameScreen extends Screen {
     this.inputCatcher.hitArea = new Rectangle(0, 0, VIEW.width, VIEW.height);
     this.inputCatcher.on("pointerdown", (event) => {
       this.trackPointer(event);
-      this.pointerDown = true;
       this.pressStart();
     });
     this.inputCatcher.on("pointermove", (event) => this.trackPointer(event));
@@ -176,15 +174,12 @@ export class GameScreen extends Screen {
       this.trackPointer(event),
     );
     this.inputCatcher.on("pointerup", () => {
-      this.pointerDown = false;
       this.pressEnd();
     });
     this.inputCatcher.on("pointerupoutside", () => {
-      this.pointerDown = false;
       this.pressEnd();
     });
     this.inputCatcher.on("pointercancel", () => {
-      this.pointerDown = false;
       this.pressEnd();
     });
     this.addChild(this.inputCatcher);
@@ -468,9 +463,8 @@ export class GameScreen extends Screen {
     if (this.paused || this.finished) return;
     this.paused = true;
     this.pressed = false;
-    this.pointerDown = false;
     this.pullKeys.clear();
-    this.minigame?.setHold(false);
+    this.minigame?.setStrikeHold(false);
     this.pauseOverlay.visible = true;
     this.pauseFocus.focus(0);
     this.game.audio.click();
@@ -499,13 +493,13 @@ export class GameScreen extends Screen {
     } else if (this.phase === "waiting") {
       this.earlyHook();
     } else if (this.phase === "bite") {
-      // The player just pressed on the bite prompt — hook immediately and
-      // arm the reel hold so a single press-and-hold starts reeling.
+      // The player just pressed on the bite prompt — hook immediately. The
+      // fight starts with no strike held, so landing stays a deliberate press.
       this.pressed = true;
       this.hookFish();
     } else if (this.phase === "fighting") {
       this.pressed = true;
-      this.minigame?.setHold(true);
+      this.minigame?.setStrikeHold(true);
     }
     // No skip during the resolve phase: the player must watch the caught
     // fish land — there is nothing to skip past once it is over.
@@ -514,7 +508,7 @@ export class GameScreen extends Screen {
   private pressEnd(): void {
     this.pressed = false;
     if (this.phase === "charging") this.doCast();
-    this.minigame?.setHold(false);
+    this.minigame?.setStrikeHold(false);
   }
 
   private doCast(): void {
@@ -613,16 +607,19 @@ export class GameScreen extends Screen {
         anchor: this.scene.castPoint,
         wildness: this.water.wildness,
         onWarn: () => this.game.audio.warn(),
+        onCounter: () => this.game.audio.counter(),
+        onReady: () => this.game.audio.ready(),
+        onResist: () => this.game.audio.resist(),
+        onGripOut: () => this.game.audio.gripOut(),
       },
     );
     this.fx.addChild(minigame);
     minigame.onFinish = (result) => this.resolveFight(result);
-    minigame.setHold(this.pressed);
-    minigame.setPointer(
-      this.pointerDown ? this.pointerX : null,
-      this.pointerDown ? this.pointerY : null,
-    );
     this.minigame = minigame;
+    // The press that hooked the fish must not count as a landing strike.
+    this.pressed = false;
+    minigame.setStrikeHold(false);
+    minigame.setPointer(this.pointerX, this.pointerY);
     this.updatePerfectPips();
   }
 
@@ -723,7 +720,7 @@ export class GameScreen extends Screen {
 
     if (this.minigame) {
       this.minigame.visible = false;
-      this.minigame.setHold(false);
+      this.minigame.setStrikeHold(false);
     }
     this.updatePerfectPips();
     this.scene.catchFish(this.game.assets.fish[fish.id]);
@@ -785,7 +782,6 @@ export class GameScreen extends Screen {
     this.reactionBar.clear();
     this.scene.resetCast();
     this.pullKeys.clear();
-    this.pointerDown = false;
     this.charge = 0;
     this.chargeSoundTimer = 0;
     this.reelTimer = 0;
@@ -1043,14 +1039,11 @@ export class GameScreen extends Screen {
       }
     } else if (this.phase === "fighting") {
       const direction = this.readPullDirection();
-      this.minigame?.setPointer(
-        this.pointerDown ? this.pointerX : null,
-        this.pointerDown ? this.pointerY : null,
-      );
+      this.minigame?.setPointer(this.pointerX, this.pointerY);
       this.minigame?.setDirection(direction.x, direction.y);
-      this.minigame?.setHold(this.pressed);
+      this.minigame?.setStrikeHold(this.pressed);
       this.minigame?.update(dt);
-      if (this.pressed) {
+      if (this.minigame?.isSteering) {
         this.reelTimer -= dt;
         if (this.reelTimer <= 0) {
           this.game.audio.reel();

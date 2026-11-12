@@ -15,7 +15,39 @@ export function comboMultiplier(streak: number): number {
 }
 
 export const PERFECT_MULTIPLIER = 1.5;
-export const START_PROGRESS = 0.35;
+
+/** Ring-fight tuning: grip budget, counters and the landing strike. */
+export const FIGHT = {
+  /** Endurance is 0..1; at or below this the fish can be landed. */
+  landThreshold: 0.2,
+  /** Grip is 0..1: steering drains it, standing still restores it. */
+  gripDrain: 0.34,
+  gripRegen: 0.46,
+  /** Lockout after burning the whole grip, then a small reserve. */
+  gripLock: 1.2,
+  gripRestore: 0.3,
+  pointerActive: 0.12,
+  /** A still press this long is a landing strike. */
+  strikeHold: 0.22,
+  strikeMove: 4,
+  /** Hardcore counter window after a burst. */
+  counterWindow: 0.2,
+  counterRest: 0.15,
+  counterAngle: Math.PI / 4,
+  advantage: 1,
+  advantageTire: 1.5,
+  advantageGrip: 0.75,
+  /** Endurance loss per second while steering. */
+  tireBase: 0.3,
+  tireScale: 0.35,
+  /** A strike landed too early. */
+  resistThreshold: 0.35,
+  resistEndurance: 0.05,
+  resistGrip: 0.08,
+  resistCooldown: 0.6,
+  /** Minimum gap between landing chimes. */
+  readyChime: 0.9,
+} as const;
 
 /** Rosy-42 (+3 blues) palette used by the Tiny Coast Pack. */
 export const C = {
@@ -62,8 +94,8 @@ export interface FishSpecies {
   weight: number;
   /** Minigame difficulty knobs. */
   speed: number;
-  /** Progress lost per second while the fish is outside the ring. */
-  drain: number;
+  /** How hard the fish is to tire during the fight. */
+  resistance: number;
   tint: number;
   rarity: FishRarity;
   /** Movement script key in `game/behaviors.ts` (defaults to the fish id). */
@@ -88,7 +120,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 35,
     weight: 22,
     speed: 0.3,
-    drain: 0.18,
+    resistance: 0.18,
     tint: 0x63ab3f,
     rarity: "common",
     behavior: "bluegill",
@@ -102,7 +134,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 45,
     weight: 20,
     speed: 0.34,
-    drain: 0.185,
+    resistance: 0.185,
     tint: 0xa3a7c2,
     rarity: "common",
     behavior: "capelin",
@@ -115,7 +147,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 55,
     weight: 18,
     speed: 0.38,
-    drain: 0.19,
+    resistance: 0.19,
     tint: 0x4fa4b8,
     rarity: "common",
     behavior: "sardine",
@@ -129,7 +161,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 60,
     weight: 16,
     speed: 0.4,
-    drain: 0.195,
+    resistance: 0.195,
     tint: 0xcf752b,
     rarity: "common",
     behavior: "flounder",
@@ -143,7 +175,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 65,
     weight: 15,
     speed: 0.42,
-    drain: 0.2,
+    resistance: 0.2,
     tint: 0xff5277,
     rarity: "common",
     behavior: "tilapia",
@@ -156,7 +188,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 80,
     weight: 13,
     speed: 0.46,
-    drain: 0.21,
+    resistance: 0.21,
     tint: 0xf0b541,
     rarity: "common",
     behavior: "carp",
@@ -168,7 +200,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 95,
     weight: 11,
     speed: 0.5,
-    drain: 0.215,
+    resistance: 0.215,
     tint: 0xdfe0e8,
     rarity: "uncommon",
     behavior: "angelfish",
@@ -181,7 +213,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 110,
     weight: 9,
     speed: 0.54,
-    drain: 0.22,
+    resistance: 0.22,
     tint: 0x3b7d4f,
     rarity: "uncommon",
     behavior: "largemouthbass",
@@ -194,7 +226,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 120,
     weight: 8,
     speed: 0.57,
-    drain: 0.225,
+    resistance: 0.225,
     tint: 0x8f9a6a,
     rarity: "uncommon",
     behavior: "chub",
@@ -207,7 +239,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 130,
     weight: 7,
     speed: 0.6,
-    drain: 0.23,
+    resistance: 0.23,
     tint: 0x7d6a3f,
     rarity: "uncommon",
     behavior: "smallmouthbass",
@@ -221,7 +253,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 140,
     weight: 6,
     speed: 0.62,
-    drain: 0.235,
+    resistance: 0.235,
     tint: 0xff8933,
     rarity: "uncommon",
     behavior: "rainbowtrout",
@@ -235,7 +267,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 150,
     weight: 5,
     speed: 0.65,
-    drain: 0.24,
+    resistance: 0.24,
     tint: 0xab5130,
     rarity: "uncommon",
     behavior: "cod",
@@ -249,7 +281,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 160,
     weight: 4.5,
     speed: 0.68,
-    drain: 0.245,
+    resistance: 0.245,
     tint: 0xd6b04a,
     rarity: "uncommon",
     behavior: "walleye",
@@ -262,7 +294,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 200,
     weight: 3.5,
     speed: 0.74,
-    drain: 0.255,
+    resistance: 0.255,
     tint: 0x8f4d57,
     rarity: "rare",
     behavior: "catfish",
@@ -276,7 +308,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 210,
     weight: 3,
     speed: 0.78,
-    drain: 0.26,
+    resistance: 0.26,
     tint: 0x4a5a3a,
     rarity: "rare",
     behavior: "eel",
@@ -290,7 +322,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 220,
     weight: 2.6,
     speed: 0.8,
-    drain: 0.265,
+    resistance: 0.265,
     tint: 0x9a8a5a,
     rarity: "rare",
     behavior: "grouper",
@@ -303,7 +335,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 240,
     weight: 2.2,
     speed: 0.84,
-    drain: 0.27,
+    resistance: 0.27,
     tint: 0xe64539,
     rarity: "rare",
     behavior: "redsnapper",
@@ -317,7 +349,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 250,
     weight: 1.9,
     speed: 0.86,
-    drain: 0.275,
+    resistance: 0.275,
     tint: 0xff5277,
     rarity: "rare",
     behavior: "lionfish",
@@ -331,7 +363,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 320,
     weight: 1.2,
     speed: 0.92,
-    drain: 0.33,
+    resistance: 0.33,
     tint: 0x2f6fa8,
     rarity: "legendary",
     behavior: "tuna",
@@ -345,7 +377,7 @@ export const FISH: readonly FishSpecies[] = [
     points: 400,
     weight: 0.6,
     speed: 1,
-    drain: 0.31,
+    resistance: 0.31,
     tint: 0x2ce8f5,
     rarity: "legendary",
     behavior: "sturgeon",

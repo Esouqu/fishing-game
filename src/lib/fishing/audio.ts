@@ -233,6 +233,35 @@ export class AudioKit {
     this.tone(880, 0.07, { volume: 0.06, delay: 0.05, type: "square" });
   }
 
+  /** Successful counter-pull. */
+  counter(): void {
+    this.tone(880, 0.06, { volume: 0.1, type: "triangle" });
+    this.tone(1320, 0.1, { volume: 0.09, delay: 0.04, type: "triangle" });
+    this.tone(1760, 0.14, { volume: 0.07, delay: 0.1, type: "triangle" });
+  }
+
+  /** The fish is tired and can be landed. */
+  ready(): void {
+    this.tone(1046, 0.09, { volume: 0.08, type: "sine" });
+    this.tone(1318, 0.14, { volume: 0.07, delay: 0.08, type: "sine" });
+  }
+
+  /** Landing strike attempted too early. */
+  resist(): void {
+    this.tone(190, 0.18, {
+      slideTo: 110,
+      volume: 0.13,
+      type: "sawtooth",
+    });
+    this.noise(0.12, { volume: 0.08, filter: 520 });
+  }
+
+  /** Grip reserve burned out. */
+  gripOut(): void {
+    this.tone(96, 0.14, { slideTo: 58, volume: 0.12, type: "sine" });
+    this.noise(0.1, { volume: 0.06, filter: 300 });
+  }
+
   /** Landing inside the luck zone. */
   luck(): void {
     this.tone(880, 0.09, { volume: 0.1, type: "triangle" });
