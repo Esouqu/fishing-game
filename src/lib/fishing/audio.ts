@@ -162,10 +162,27 @@ export class AudioKit {
     this.tone(180, 0.2, { slideTo: 90, volume: 0.1, type: "sine" });
   }
 
+  /** Bobber touches the water: a low, rounded "bulk". */
+  plop(): void {
+    this.tone(230, 0.09, { slideTo: 75, volume: 0.16, type: "sine" });
+    this.tone(110, 0.11, {
+      slideTo: 55,
+      volume: 0.1,
+      delay: 0.01,
+      type: "sine",
+    });
+    this.noise(0.06, { volume: 0.045, filter: 700, filterEnd: 260 });
+  }
+
   bite(): void {
-    this.tone(980, 0.09, { volume: 0.2 });
-    this.tone(1320, 0.12, { volume: 0.18, delay: 0.1 });
-    this.tone(1320, 0.1, { volume: 0.1, delay: 0.28 });
+    this.tone(320, 0.08, { slideTo: 120, volume: 0.17, type: "sine" });
+    this.tone(260, 0.09, {
+      slideTo: 95,
+      volume: 0.13,
+      delay: 0.09,
+      type: "sine",
+    });
+    this.noise(0.06, { volume: 0.05, filter: 900, filterEnd: 300 });
   }
 
   hook(): void {
@@ -185,8 +202,8 @@ export class AudioKit {
   }
 
   nibble(): void {
-    this.tone(190, 0.055, { volume: 0.07, type: "sine" });
-    this.tone(250, 0.04, { volume: 0.04, delay: 0.05, type: "sine" });
+    this.tone(240, 0.06, { slideTo: 100, volume: 0.08, type: "sine" });
+    this.noise(0.04, { volume: 0.025, filter: 800, filterEnd: 300 });
   }
 
   comboBreak(): void {

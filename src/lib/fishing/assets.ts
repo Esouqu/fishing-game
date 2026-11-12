@@ -1,14 +1,19 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
 import { FISH, FONT_FAMILY } from "./config";
+import treeAUrl from "../../assets/fishing/tree-a.png";
+import treeBUrl from "../../assets/fishing/tree-b.png";
+import bushAUrl from "../../assets/fishing/bush-a.png";
+import rockAUrl from "../../assets/fishing/rock-a.png";
+import rockBUrl from "../../assets/fishing/rock-b.png";
 
 export interface AssetBag {
   base: string;
   fontLoaded: boolean;
   /** 4x4 character sheet, row-major, 32px frames. */
   angler: Texture[];
-  tree: Texture;
-  bush: Texture;
-  rock: Texture;
+  trees: Texture[];
+  bushes: Texture[];
+  rocks: Texture[];
   fish: Record<string, Texture>;
 }
 
@@ -146,18 +151,28 @@ export async function loadGameAssets(
       fallback: () => fallbackTexture(0xe64539, 32, "person"),
     },
     {
-      key: "tree",
-      url: `${base}/tree.png`,
+      key: "tree-a",
+      url: treeAUrl,
       fallback: () => fallbackTexture(0x63ab3f, 48, "plant"),
     },
     {
-      key: "bush",
-      url: `${base}/bush.png`,
+      key: "tree-b",
+      url: treeBUrl,
+      fallback: () => fallbackTexture(0x63ab3f, 48, "plant"),
+    },
+    {
+      key: "bush-a",
+      url: bushAUrl,
       fallback: () => fallbackTexture(0x3b7d4f, 16, "plant"),
     },
     {
-      key: "rock",
-      url: `${base}/rock.png`,
+      key: "rock-a",
+      url: rockAUrl,
+      fallback: () => fallbackTexture(0x686f99, 16, "rock"),
+    },
+    {
+      key: "rock-b",
+      url: rockBUrl,
       fallback: () => fallbackTexture(0x686f99, 16, "rock"),
     },
     ...fishList.map((fish) => ({
@@ -202,9 +217,15 @@ export async function loadGameAssets(
     base,
     fontLoaded,
     angler,
-    tree: loaded.get("tree") ?? Texture.WHITE,
-    bush: loaded.get("bush") ?? Texture.WHITE,
-    rock: loaded.get("rock") ?? Texture.WHITE,
+    trees: [
+      loaded.get("tree-a") ?? Texture.WHITE,
+      loaded.get("tree-b") ?? Texture.WHITE,
+    ],
+    bushes: [loaded.get("bush-a") ?? Texture.WHITE],
+    rocks: [
+      loaded.get("rock-a") ?? Texture.WHITE,
+      loaded.get("rock-b") ?? Texture.WHITE,
+    ],
     fish,
   };
 }

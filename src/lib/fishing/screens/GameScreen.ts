@@ -43,7 +43,7 @@ import {
 import { LakeScene } from "../game/Scene";
 import { Atmosphere } from "../game/Atmosphere";
 import { Minigame, type MinigameResult } from "../game/Minigame";
-import { TutorialOverlay } from "./TutorialOverlay";
+import { FightHint } from "./FightHint";
 
 type Phase =
   "idle" | "charging" | "waiting" | "bite" | "fighting" | "resolve" | "done";
@@ -101,7 +101,6 @@ export class GameScreen extends Screen {
   private castLabel!: Text;
   private comboText!: Text;
   private statusText!: Text;
-  private biteText!: Text;
   private powerLabel!: Text;
   private tapLanding = false;
   private tapIconX = 0;
@@ -130,8 +129,7 @@ export class GameScreen extends Screen {
   private fish: FishSpecies | null = null;
   private water: WaterProfile = waterProfile(0);
   private minigame: Minigame | null = null;
-  private tutorial: TutorialOverlay | null = null;
-  private tutorialOpen = false;
+  private hint: FightHint | null = null;
   private readonly floaters: Floater[] = [];
   private pointerX = VIEW.width / 2;
   private pointerY = VIEW.height / 2;
@@ -161,7 +159,7 @@ export class GameScreen extends Screen {
 
     this.scene = new LakeScene(game.assets);
     this.scene.onCastLanded = () => {
-      this.game.audio.splash();
+      this.game.audio.plop();
       if (this.luckZoneHit) this.scene.celebrateLuck();
     };
     this.addChild(this.scene);
@@ -180,7 +178,7 @@ export class GameScreen extends Screen {
       // Right click is the final pull; the browser menu is suppressed.
       if (event.button === 2) return;
       const icon =
-        this.phase === "fighting" && !this.paused && !this.tutorialOpen
+        this.phase === "fighting" && !this.paused
           ? this.minigame?.landingIcon
           : null;
       if (icon) {
@@ -336,18 +334,6 @@ export class GameScreen extends Screen {
     this.powerBar.eventMode = "none";
     this.hud.addChild(this.powerBar);
 
-    this.biteText = makeText("КЛЮЁТ! ЖМИ!", {
-      size: 19,
-      weight: 800,
-      color: C.gold,
-      align: "center",
-      letterSpacing: 1,
-    });
-    this.biteText.position.set(240, 126);
-    this.biteText.style.stroke = { color: C.ink, width: 4 };
-    this.biteText.visible = false;
-    this.biteText.eventMode = "none";
-    this.hud.addChild(this.biteText);
     this.reactionBar.eventMode = "none";
     this.hud.addChild(this.reactionBar);
   }
@@ -525,7 +511,7 @@ export class GameScreen extends Screen {
   // ------------------------------------------------------------- cast flow
 
   private pressStart(): void {
-    if (this.paused || this.finished || this.tutorialOpen) return;
+    if (this.paused || this.finished) return;
     if (this.phase === "idle") {
       this.phase = "charging";
       this.charge = 0;
@@ -557,12 +543,7 @@ export class GameScreen extends Screen {
 
   /** Final pull: RMB/F on desktop, the hook hit area on touch. */
   private finalPull(): void {
-    if (
-      this.phase !== "fighting" ||
-      this.paused ||
-      this.finished ||
-      this.tutorialOpen
-    ) {
+    if (this.phase !== "fighting" || this.paused || this.finished) {
       return;
     }
     this.minigame?.finalPull();
@@ -638,18 +619,12 @@ export class GameScreen extends Screen {
     this.biteTimer = this.biteWindow;
     this.scene.showBite();
     this.game.audio.bite();
-    this.biteText.visible = true;
-    this.biteText.scale.set(1);
-    this.setStatus("КЛЮЁТ! ЖМИ!", C.gold);
-    // The big prompt above the angler already carries this moment; hide the
-    // bottom duplicate so the bite reads as a single focal beat.
     this.statusText.visible = false;
   }
 
   private hookFish(): void {
     if (!this.fish || this.phase !== "bite") return;
     this.phase = "fighting";
-    this.biteText.visible = false;
     this.reactionBar.clear();
     this.scene.setFight();
     this.game.audio.hook();
@@ -682,25 +657,18 @@ export class GameScreen extends Screen {
       minigame.fishVelocity.y,
     );
     this.updatePerfectPips();
-
-    // The first fight pauses for a short illustrated tutorial.
-    if (!this.game.settings.tutorialSeen) this.openTutorial();
+    this.showHint();
   }
 
-  private openTutorial(): void {
-    if (this.tutorialOpen) return;
-    this.tutorialOpen = true;
-    this.pressed = false;
-    this.minigame?.setHold(false);
-    const tutorial = new TutorialOverlay();
-    tutorial.onClose = () => {
+  private showHint(): void {
+    if (this.hint || this.game.settings.tutorialSeen) return;
+    const hint = new FightHint();
+    hint.onClose = () => {
       this.game.settings.tutorialSeen = true;
-      this.tutorialOpen = false;
-      this.tutorial = null;
-      this.minigame?.setHold(this.pressed);
+      this.hint = null;
     };
-    this.tutorial = tutorial;
-    this.addChild(tutorial);
+    this.hint = hint;
+    this.hud.addChild(hint);
   }
 
   /** A too-early hook: the fish bolts and the cast is returned. */
@@ -729,21 +697,11 @@ export class GameScreen extends Screen {
   private passBy(): void {
     this.phase = "waiting";
     this.pressed = false;
-    this.biteText.visible = false;
     this.reactionBar.clear();
     this.waitTimer = randRange(TIMING.waitMin * 0.65, TIMING.waitMax * 0.85);
     this.nibbleLead = randRange(TIMING.nibbleLeadMin, TIMING.nibbleLeadMax);
     this.nibblePlayed = false;
     this.game.audio.nibble();
-    this.addFloater(
-      "МИМО",
-      VIEW.width / 2,
-      SCENE.anglerY - 94,
-      C.steelPale,
-      11,
-      1.1,
-      -20,
-    );
     this.setStatus(WAIT_LABEL);
     this.updateHud();
   }
@@ -795,7 +753,6 @@ export class GameScreen extends Screen {
     this.resolveTimer = TIMING.resultHold;
     this.pressed = false;
     this.pullKeys.clear();
-    this.biteText.visible = false;
     this.reactionBar.clear();
     this.powerBar.clear();
     this.powerLabel.visible = false;
@@ -831,7 +788,6 @@ export class GameScreen extends Screen {
     if (brokenStreak >= 2) this.game.audio.comboBreak();
     if (this.minigame) this.minigame.visible = false;
     this.updatePerfectPips();
-    this.biteText.visible = false;
     this.reactionBar.clear();
     this.powerBar.clear();
     this.powerLabel.visible = false;
@@ -860,7 +816,6 @@ export class GameScreen extends Screen {
     }
     this.updatePerfectPips();
     this.fish = null;
-    this.biteText.visible = false;
     this.reactionBar.clear();
     this.scene.resetCast();
     this.pullKeys.clear();
@@ -1086,8 +1041,6 @@ export class GameScreen extends Screen {
     this.updateScore(dt);
     this.updatePerfectPips();
 
-    if (this.tutorialOpen) return;
-
     if (this.finished) return;
 
     if (this.phase === "charging") {
@@ -1117,7 +1070,6 @@ export class GameScreen extends Screen {
     } else if (this.phase === "bite") {
       this.biteTimer -= dt;
       this.drawBiteBar();
-      this.biteText.scale.set(1 + Math.abs(Math.sin(this.time * 12)) * 0.05);
       if (this.biteTimer <= 0) {
         this.failCast("НЕ УСПЕЛ ПОДСЕЧЬ");
       }
@@ -1143,7 +1095,6 @@ export class GameScreen extends Screen {
       }
     } else if (this.phase === "resolve") {
       this.resolveTimer -= dt;
-      this.biteText.visible = false;
       if (this.resolveTimer <= 0) this.advanceCast();
     }
 
@@ -1153,9 +1104,6 @@ export class GameScreen extends Screen {
   // ------------------------------------------------------------------ input
 
   override handleKey(event: KeyboardEvent): boolean {
-    if (this.tutorialOpen && this.tutorial) {
-      return this.tutorial.handleKey(event);
-    }
     if (this.finished) return true;
     if (this.paused) {
       if (event.code === "Escape") {

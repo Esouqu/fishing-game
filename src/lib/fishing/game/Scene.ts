@@ -93,7 +93,7 @@ export class LakeScene extends Container {
   private bobberBaseX: number = SCENE.anglerX;
   private bobberBaseY: number = SCENE.anglerY;
   private anglerTimer = 0;
-  private anglerFrames: number[] = [10];
+  private anglerFrames: number[] = [12];
   private anglerFps = 10;
 
   private nibbleTime = 0;
@@ -123,7 +123,7 @@ export class LakeScene extends Container {
     this.addWaterMarks();
     this.drawDock();
 
-    this.angler.texture = assets.angler[10] ?? Texture.WHITE;
+    this.angler.texture = assets.angler[12] ?? Texture.WHITE;
     this.angler.anchor.set(0.5, 1);
     this.angler.position.set(SCENE.anglerX, SCENE.anglerY);
     this.addChild(this.angler);
@@ -260,51 +260,54 @@ export class LakeScene extends Container {
 
   private addScenery(): void {
     const scenery = new Container();
-    const tree = this.assets.tree;
-    const bush = this.assets.bush;
-    const rock = this.assets.rock;
+    const treeTextures = this.assets.trees;
+    const bushTextures = this.assets.bushes;
+    const rockTextures = this.assets.rocks;
 
-    const trees = [
+    const treeSpots = [
       { x: 22, y: 74, scale: 1.1, flip: false },
       { x: 14, y: 166, scale: 0.95, flip: true },
       { x: 30, y: 262, scale: 1.15, flip: false },
       { x: 42, y: 44, scale: 0.85, flip: true },
     ];
-    for (const item of trees) {
-      const sprite = new Sprite(tree);
+    treeSpots.forEach((item, index) => {
+      const texture = treeTextures[index % treeTextures.length];
+      const sprite = new Sprite(texture);
       sprite.anchor.set(0.5, 1);
       sprite.position.set(item.x, item.y);
       sprite.scale.set(item.flip ? -item.scale : item.scale, item.scale);
       scenery.addChild(sprite);
-    }
+    });
 
-    const sideScenery = [
+    const bushSpots = [
       { x: 10, y: 104, s: 1.1 },
       { x: 40, y: 112, s: 0.8 },
       { x: 18, y: 210, s: 1.1 },
       { x: 46, y: 226, s: 0.9 },
       { x: 34, y: 282, s: 1 },
     ];
-    for (const item of sideScenery) {
-      const sprite = new Sprite(bush);
+    bushSpots.forEach((item, index) => {
+      const texture = bushTextures[index % bushTextures.length];
+      const sprite = new Sprite(texture);
       sprite.anchor.set(0.5, 1);
       sprite.position.set(item.x, item.y);
       sprite.scale.set(item.s);
       scenery.addChild(sprite);
-    }
+    });
 
-    const rocks = [
+    const rockSpots = [
       { x: 36, y: 196, s: 1 },
       { x: 24, y: 58, s: 0.9 },
       { x: 48, y: 244, s: 0.8 },
     ];
-    for (const item of rocks) {
-      const sprite = new Sprite(rock);
+    rockSpots.forEach((item, index) => {
+      const texture = rockTextures[index % rockTextures.length];
+      const sprite = new Sprite(texture);
       sprite.anchor.set(0.5, 1);
       sprite.position.set(item.x, item.y);
       sprite.scale.set(item.s);
       scenery.addChild(sprite);
-    }
+    });
 
     this.addChildAt(scenery, this.getChildIndex(this.angler));
   }
@@ -399,7 +402,7 @@ export class LakeScene extends Container {
     this.biteMark.visible = false;
     this.phase = "flying";
     this.castT = 0;
-    this.setAngler([8, 9, 10], 11);
+    this.setAngler([12, 13, 14, 15], 11);
     this.spawnSplash(SCENE.anglerX + 6, SCENE.anglerY - 20, 6, 0.6);
   }
 
@@ -444,7 +447,7 @@ export class LakeScene extends Container {
     this.fightTargetY = this.bobberBaseY;
     this.fightDirX = 0;
     this.fightDirY = 1;
-    this.setAngler([11], 8);
+    this.setAngler([13], 8);
     this.spawnSplash(this.bobberBaseX, this.bobberBaseY, 14, 1);
   }
 
@@ -484,7 +487,7 @@ export class LakeScene extends Container {
       hold: true,
     });
 
-    this.setAngler([11], 6);
+    this.setAngler([15], 6);
     this.bobber.visible = false;
   }
 
@@ -493,7 +496,7 @@ export class LakeScene extends Container {
     this.biteMark.visible = false;
     this.spawnSplash(this.bobber.x, this.bobber.y, 10, 0.9);
     this.bobber.visible = false;
-    this.setAngler([10], 8);
+    this.setAngler([12], 8);
   }
 
   resetCast(): void {
@@ -502,7 +505,7 @@ export class LakeScene extends Container {
     this.biteMark.visible = false;
     this.bobber.visible = false;
     this.line.clear();
-    this.setAngler([10], 8);
+    this.setAngler([12], 8);
     this.castT = 0;
     this.nibbleTime = 0;
     this.bobberRipple.clear();
@@ -526,7 +529,7 @@ export class LakeScene extends Container {
     this.anglerFps = fps;
     this.anglerTimer = 0;
     this.angler.texture =
-      this.assets.angler[frames[0]] ?? this.assets.angler[10] ?? Texture.WHITE;
+      this.assets.angler[frames[0]] ?? this.assets.angler[12] ?? Texture.WHITE;
   }
 
   private spawnSplash(
@@ -581,7 +584,7 @@ export class LakeScene extends Container {
     if (this.anglerFrames.length <= 1) {
       this.angler.texture =
         this.assets.angler[this.anglerFrames[0]] ??
-        this.assets.angler[10] ??
+        this.assets.angler[12] ??
         this.angler.texture;
       return;
     }
@@ -674,7 +677,7 @@ export class LakeScene extends Container {
           0.7 + this.castPower * 0.4,
         );
         this.onCastLanded?.();
-        this.setAngler([10], 8);
+        this.setAngler([12], 8);
       }
     } else if (this.phase === "waiting" || this.phase === "bite") {
       const bob = Math.sin(this.time * 3.1) * 1.2;
