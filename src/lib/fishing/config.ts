@@ -487,7 +487,7 @@ export const SPOOK_HOLD = 0.95;
 
 /** Scene layout in virtual pixels. */
 export const SCENE = {
-  anglerX: 112,
+  anglerX: 156,
   anglerY: 144,
   dockX: 48,
   dockY: 122,
@@ -495,8 +495,8 @@ export const SCENE = {
   dockBottom: 152,
   shoreX: 54,
   farShoreX: 462,
-  bobberMinX: 230,
-  bobberMaxX: 420,
+  bobberMinX: 210,
+  bobberMaxX: 300,
 } as const;
 
 export interface WaterProfile {
