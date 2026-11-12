@@ -1,7 +1,9 @@
 import { Container, Graphics, Sprite } from "pixi.js";
 import { C, VIEW } from "../config";
 import type { AssetBag } from "../assets";
+import type { WorldClock } from "../world";
 import { randRange } from "../utils";
+import { Atmosphere } from "../game/Atmosphere";
 
 interface Swimmer {
   sprite: Sprite;
@@ -27,9 +29,10 @@ export class Backdrop extends Container {
   private readonly swimmers: Swimmer[] = [];
   private readonly marks: WaterMark[] = [];
   private readonly marksG = new Graphics();
+  private readonly atmosphere = new Atmosphere();
   private time = 0;
 
-  constructor(assets: AssetBag) {
+  constructor(assets: AssetBag, clock?: WorldClock) {
     super();
 
     const g = new Graphics();
@@ -100,6 +103,13 @@ export class Backdrop extends Container {
       this.addChild(sprite);
     }
 
+    // Weather sits above the fish but below the dark vignette.
+    this.addChild(this.atmosphere);
+    if (clock) {
+      this.atmosphere.setWorld(clock.palette, clock.weatherDef);
+      this.tint = clock.palette.tint;
+    }
+
     // Soft vignette so panels read clearly.
     const vignette = new Graphics();
     for (let i = 0; i < 5; i += 1) {
@@ -121,6 +131,7 @@ export class Backdrop extends Container {
   update(dt: number): void {
     this.time += dt;
     this.drawWaterMarks();
+    this.atmosphere.update(dt);
     for (const item of this.swimmers) {
       const sprite = item.sprite;
       sprite.x += item.speed * dt;

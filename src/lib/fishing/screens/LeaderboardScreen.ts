@@ -56,7 +56,7 @@ export class LeaderboardScreen extends Screen {
     super();
     this.game = game;
     this.view = view;
-    this.backdrop = new Backdrop(game.assets);
+    this.backdrop = new Backdrop(game.assets, game.clock);
     this.addChild(this.backdrop);
 
     const panel = new Graphics();

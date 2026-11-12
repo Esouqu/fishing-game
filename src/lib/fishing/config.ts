@@ -1,3 +1,5 @@
+import type { TimePhase, WeatherId } from "./types";
+
 /** Virtual resolution — every screen is laid out in these units. */
 export const VIEW = { width: 480, height: 270 } as const;
 
@@ -47,6 +49,8 @@ export const C = {
   ocean: 0x0a6cb0,
 } as const;
 
+export type FishRarity = "common" | "uncommon" | "rare" | "legendary";
+
 export interface FishSpecies {
   id: string;
   /** Russian display name. */
@@ -58,140 +62,313 @@ export interface FishSpecies {
   weight: number;
   /** Minigame difficulty knobs. */
   speed: number;
-  /** Green zone size as a fraction of the column. */
-  zone: number;
-  /** Progress lost per second outside the zone. */
+  /** Progress lost per second while the fish is outside the ring. */
   drain: number;
   tint: number;
+  rarity: FishRarity;
+  /** Movement script key in `game/behaviors.ts` (defaults to the fish id). */
+  behavior: string;
+  /** Time-of-day windows where this fish bites. Omitted = any time. */
+  time?: readonly TimePhase[];
+  /** Weather fronts where this fish bites. Omitted = any weather. */
+  weather?: readonly WeatherId[];
 }
 
+/** Fish at or above this score count as rare for the bonus multipliers. */
+export const RARE_SCORE = 180;
+
+export function isRareFish(fish: FishSpecies): boolean {
+  return fish.points >= RARE_SCORE;
+}
 export const FISH: readonly FishSpecies[] = [
   {
-    id: "minnow",
-    name: "Плотва",
-    latin: "Minnow",
-    points: 35,
-    weight: 26,
-    speed: 0.3,
-    zone: 0.31,
-    drain: 0.16,
-    tint: 0xa3a7c2,
-  },
-  {
-    id: "perch",
-    name: "Окунь",
-    latin: "Perch",
-    points: 50,
-    weight: 20,
-    speed: 0.37,
-    zone: 0.3,
-    drain: 0.18,
-    tint: 0xf0b541,
-  },
-  {
     id: "bluegill",
-    name: "Карась",
+    name: "Солнечник",
     latin: "Bluegill",
+    points: 35,
+    weight: 22,
+    speed: 0.3,
+    drain: 0.16,
+    tint: 0x63ab3f,
+    rarity: "common",
+    behavior: "bluegill",
+    time: ["day"],
+    weather: ["clear", "overcast"],
+  },
+  {
+    id: "capelin",
+    name: "Шэд",
+    latin: "Capelin",
+    points: 45,
+    weight: 20,
+    speed: 0.34,
+    drain: 0.17,
+    tint: 0xa3a7c2,
+    rarity: "common",
+    behavior: "capelin",
+    time: ["day"],
+  },
+  {
+    id: "sardine",
+    name: "Сардина",
+    latin: "Sardine",
+    points: 55,
+    weight: 18,
+    speed: 0.38,
+    drain: 0.18,
+    tint: 0x4fa4b8,
+    rarity: "common",
+    behavior: "sardine",
+    time: ["day"],
+    weather: ["clear"],
+  },
+  {
+    id: "flounder",
+    name: "Песковник",
+    latin: "Flounder",
+    points: 60,
+    weight: 16,
+    speed: 0.4,
+    drain: 0.18,
+    tint: 0xcf752b,
+    rarity: "common",
+    behavior: "flounder",
+    time: ["day"],
+    weather: ["clear"],
+  },
+  {
+    id: "tilapia",
+    name: "Тиляпия",
+    latin: "Tilapia",
     points: 65,
     weight: 15,
-    speed: 0.44,
-    zone: 0.29,
-    drain: 0.2,
-    tint: 0x4fa4b8,
+    speed: 0.42,
+    drain: 0.19,
+    tint: 0xff5277,
+    rarity: "common",
+    behavior: "tilapia",
+    time: ["day"],
   },
   {
     id: "carp",
     name: "Карп",
     latin: "Carp",
-    points: 85,
-    weight: 12,
+    points: 80,
+    weight: 13,
+    speed: 0.46,
+    drain: 0.2,
+    tint: 0xf0b541,
+    rarity: "common",
+    behavior: "carp",
+  },
+  {
+    id: "angelfish",
+    name: "Лещ",
+    latin: "Angelfish",
+    points: 95,
+    weight: 11,
     speed: 0.5,
-    zone: 0.28,
+    drain: 0.21,
+    tint: 0xdfe0e8,
+    rarity: "uncommon",
+    behavior: "angelfish",
+    time: ["dawn", "dusk", "night"],
+  },
+  {
+    id: "largemouthbass",
+    name: "Большеротый окунь",
+    latin: "Largemouth Bass",
+    points: 110,
+    weight: 9,
+    speed: 0.54,
     drain: 0.22,
-    tint: 0xcf752b,
+    tint: 0x3b7d4f,
+    rarity: "uncommon",
+    behavior: "largemouthbass",
+    time: ["day", "dusk"],
   },
   {
     id: "chub",
-    name: "Лещ",
+    name: "Голавль",
     latin: "Chub",
-    points: 110,
-    weight: 9,
-    speed: 0.56,
-    zone: 0.27,
-    drain: 0.24,
-    tint: 0xdfe0e8,
+    points: 120,
+    weight: 8,
+    speed: 0.57,
+    drain: 0.23,
+    tint: 0x8f9a6a,
+    rarity: "uncommon",
+    behavior: "chub",
+    time: ["dawn", "day", "dusk"],
   },
   {
-    id: "pike",
-    name: "Щука",
-    latin: "Pike",
-    points: 140,
+    id: "smallmouthbass",
+    name: "Лесоплюх",
+    latin: "Smallmouth Bass",
+    points: 130,
     weight: 7,
-    speed: 0.64,
-    zone: 0.26,
-    drain: 0.27,
-    tint: 0x3b7d4f,
+    speed: 0.6,
+    drain: 0.24,
+    tint: 0x7d6a3f,
+    rarity: "uncommon",
+    behavior: "smallmouthbass",
+    time: ["dawn", "dusk"],
+    weather: ["fog"],
+  },
+  {
+    id: "rainbowtrout",
+    name: "Тигровая форель",
+    latin: "Rainbow Trout",
+    points: 140,
+    weight: 6,
+    speed: 0.62,
+    drain: 0.24,
+    tint: 0xff8933,
+    rarity: "uncommon",
+    behavior: "rainbowtrout",
+    time: ["day"],
+    weather: ["clear"],
+  },
+  {
+    id: "cod",
+    name: "Сомик",
+    latin: "Cod",
+    points: 150,
+    weight: 5,
+    speed: 0.65,
+    drain: 0.25,
+    tint: 0xab5130,
+    rarity: "uncommon",
+    behavior: "cod",
+    time: ["night"],
+    weather: ["rain", "storm"],
   },
   {
     id: "walleye",
-    name: "Судак",
+    name: "Жёлтый судак",
     latin: "Walleye",
-    points: 170,
-    weight: 5,
-    speed: 0.71,
-    zone: 0.25,
-    drain: 0.3,
-    tint: 0xffae70,
+    points: 160,
+    weight: 4.5,
+    speed: 0.68,
+    drain: 0.26,
+    tint: 0xd6b04a,
+    rarity: "uncommon",
+    behavior: "walleye",
+    time: ["dusk", "night"],
   },
   {
     id: "catfish",
     name: "Сом",
     latin: "Catfish",
-    points: 210,
-    weight: 3.4,
-    speed: 0.79,
-    zone: 0.24,
-    drain: 0.33,
+    points: 200,
+    weight: 3.5,
+    speed: 0.74,
+    drain: 0.29,
     tint: 0x8f4d57,
+    rarity: "rare",
+    behavior: "catfish",
+    time: ["night"],
+    weather: ["rain", "storm"],
   },
   {
-    id: "salmon",
-    name: "Лосось",
-    latin: "Salmon",
+    id: "eel",
+    name: "Угорь",
+    latin: "Eel",
+    points: 210,
+    weight: 3,
+    speed: 0.78,
+    drain: 0.3,
+    tint: 0x4a5a3a,
+    rarity: "rare",
+    behavior: "eel",
+    time: ["night"],
+    weather: ["rain", "storm"],
+  },
+  {
+    id: "grouper",
+    name: "Пятнистый криворот",
+    latin: "Grouper",
+    points: 220,
+    weight: 2.6,
+    speed: 0.8,
+    drain: 0.31,
+    tint: 0x9a8a5a,
+    rarity: "rare",
+    behavior: "grouper",
+    time: ["dusk", "night"],
+  },
+  {
+    id: "redsnapper",
+    name: "Берикс",
+    latin: "Red Snapper",
+    points: 240,
+    weight: 2.2,
+    speed: 0.84,
+    drain: 0.32,
+    tint: 0xe64539,
+    rarity: "rare",
+    behavior: "redsnapper",
+    time: ["night"],
+    weather: ["fog"],
+  },
+  {
+    id: "lionfish",
+    name: "Иглобрюх",
+    latin: "Lionfish",
     points: 250,
-    weight: 2.1,
+    weight: 1.9,
     speed: 0.86,
-    zone: 0.23,
-    drain: 0.36,
+    drain: 0.33,
     tint: 0xff5277,
+    rarity: "rare",
+    behavior: "lionfish",
+    time: ["day"],
+    weather: ["clear", "storm"],
   },
   {
-    id: "koi",
-    name: "Золотая",
-    latin: "Koi",
-    points: 300,
-    weight: 1,
-    speed: 0.93,
-    zone: 0.22,
-    drain: 0.4,
-    tint: 0xff8933,
+    id: "tuna",
+    name: "Тунец",
+    latin: "Tuna",
+    points: 320,
+    weight: 1.2,
+    speed: 0.92,
+    drain: 0.38,
+    tint: 0x2f6fa8,
+    rarity: "legendary",
+    behavior: "tuna",
+    time: ["day"],
+    weather: ["storm"],
   },
   {
     id: "sturgeon",
-    name: "Легендарная",
+    name: "Осётр",
     latin: "Sturgeon",
     points: 400,
-    weight: 0.45,
+    weight: 0.6,
     speed: 1,
-    zone: 0.21,
     drain: 0.44,
     tint: 0x2ce8f5,
+    rarity: "legendary",
+    behavior: "sturgeon",
+    time: ["night"],
+    weather: ["storm", "fog"],
   },
 ] as const;
 
 export const FISH_BY_ID: Record<string, FishSpecies> = Object.fromEntries(
   FISH.map((fish) => [fish.id, fish]),
 );
+
+/**
+ * Hidden luck: +1 per perfect catch, reset on a lost fish.
+ */
+export const LUCK_MAX = 3;
+export const LUCK_RARE_STEP = 0.4;
+
+/** Chance that a fish swims past without biting. */
+export const PASS_BY_CHANCE = 0.12;
+
+/** Short beat after spooking a fish, before the next cast is allowed. */
+export const SPOOK_HOLD = 0.95;
 
 /** Scene layout in virtual pixels. */
 export const SCENE = {
@@ -204,73 +381,30 @@ export const SCENE = {
   shoreY: 232,
   waterTop: 12,
   bobberMinY: 60,
-  bobberMaxY: 134,
+  bobberMaxY: 96,
 } as const;
 
-export type WaterZoneId = "shallow" | "deep" | "abyss";
-
-export interface WaterZone {
-  id: WaterZoneId;
-  name: string;
-  /** Vertical band in scene pixels, from far (low y) to near shore. */
-  minY: number;
-  maxY: number;
-  color: number;
+export interface WaterProfile {
   /** Weight multiplier applied to common fish. */
   commonFactor: number;
   /** Weight multiplier applied to rare fish. */
   rareFactor: number;
+  /** How wild the fish behave in this water (0.82 calm .. 1.2 rough). */
+  wildness: number;
 }
 
 /**
- * Cast distance is a real choice: close water is safe and common, the far
- * pool is rarer and more valuable. The bands match the bobber Y range.
+ * Cast distance is still a real choice: close water is calm and common, the
+ * far pool is rough, rarer and more valuable. There are no visible zones any
+ * more — the further the bobber lands, the stronger the effect.
  */
-export const WATER_ZONES: readonly WaterZone[] = [
-  {
-    id: "shallow",
-    name: "МЕЛЬ",
-    minY: 106,
-    maxY: 136,
-    color: C.green,
-    commonFactor: 1.5,
-    rareFactor: 0.55,
-  },
-  {
-    id: "deep",
-    name: "ГЛУБИНА",
-    minY: 80,
-    maxY: 106,
-    color: C.gold,
-    commonFactor: 1,
-    rareFactor: 1,
-  },
-  {
-    id: "abyss",
-    name: "ОМУТ",
-    minY: 58,
-    maxY: 80,
-    color: C.red,
-    commonFactor: 0.55,
-    rareFactor: 1.85,
-  },
-] as const;
-
-export const DEFAULT_WATER_ZONE = WATER_ZONES[0];
-
-/** Charge fractions where one water zone becomes the next. */
-export const WATER_ZONE_MARKERS = WATER_ZONES.slice(0, -1).map(
-  (zone) =>
-    (SCENE.bobberMaxY - zone.minY) / (SCENE.bobberMaxY - SCENE.bobberMinY),
-);
-
-export function zoneForPower(power: number): WaterZone {
-  const clamped = Math.min(1, Math.max(0, power));
-  const y = SCENE.bobberMaxY + (SCENE.bobberMinY - SCENE.bobberMaxY) * clamped;
-  return (
-    WATER_ZONES.find((zone) => y >= zone.minY && y < zone.maxY) ??
-    DEFAULT_WATER_ZONE
-  );
+export function waterProfile(power: number): WaterProfile {
+  const t = power < 0 ? 0 : power > 1 ? 1 : power;
+  return {
+    commonFactor: 1.5 + (0.55 - 1.5) * t,
+    rareFactor: 0.55 + (1.85 - 0.55) * t,
+    wildness: 0.82 + (1.2 - 0.82) * t,
+  };
 }
 
 export const TIMING = {
@@ -285,4 +419,6 @@ export const TIMING = {
   nibbleLeadMin: 0.5,
   nibbleLeadMax: 0.9,
   nibbleDuration: 0.34,
+  /** Warning window before a strong fish dash. */
+  telegraph: 0.36,
 } as const;

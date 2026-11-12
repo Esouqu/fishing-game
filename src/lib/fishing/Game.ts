@@ -2,7 +2,8 @@ import { Application, Container, Graphics } from "pixi.js";
 import { C, VIEW } from "./config";
 import { AudioKit } from "./audio";
 import { loadGameAssets, type AssetBag } from "./assets";
-import { Leaderboard, SettingsStore } from "./storage";
+import { Leaderboard, SettingsStore, WorldStore } from "./storage";
+import { WorldClock } from "./world";
 import type {
   FishingGameInstance,
   FishingGameOptions,
@@ -35,6 +36,7 @@ export class Game implements FishingGameInstance {
   private audioKit: AudioKit | null = null;
   private leaderboardStore: Leaderboard | null = null;
   private settingsStore: SettingsStore | null = null;
+  private worldClock: WorldClock | null = null;
 
   private bootLayer: Container | null = null;
   private bootMarker: Graphics | null = null;
@@ -74,6 +76,7 @@ export class Game implements FishingGameInstance {
   private readonly onVisibility = (): void => {
     if (this.destroyed) return;
     if (document.hidden) {
+      this.worldClock?.persist();
       this.screens.onHostPause(true);
     } else {
       this.screens.onHostPause(this.hostPaused);
@@ -162,6 +165,14 @@ export class Game implements FishingGameInstance {
     return this.settingsStore;
   }
 
+  /** Persistent time of day and weather front, shared by every screen. */
+  get clock(): WorldClock {
+    if (!this.worldClock) {
+      throw new Error("[fishing] world clock is not ready yet");
+    }
+    return this.worldClock;
+  }
+
   get muted(): boolean {
     return this.audioKit?.isMuted ?? this.options.muted;
   }
@@ -178,6 +189,9 @@ export class Game implements FishingGameInstance {
     this.assetBag = bag;
     this.settingsStore = new SettingsStore(this.options.storagePrefix);
     this.leaderboardStore = new Leaderboard(this.options.storagePrefix);
+    this.worldClock = new WorldClock(
+      new WorldStore(this.options.storagePrefix),
+    );
     this.audioKit = new AudioKit(
       this.settingsStore.muted ?? this.options.muted,
     );
@@ -378,6 +392,7 @@ export class Game implements FishingGameInstance {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.worldClock?.persist();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     this.app.canvas.removeEventListener("wheel", this.onWheel);

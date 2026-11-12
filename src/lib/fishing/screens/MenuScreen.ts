@@ -90,7 +90,7 @@ export class MenuScreen extends Screen {
   constructor(game: Game) {
     super();
     this.game = game;
-    this.backdrop = new Backdrop(game.assets);
+    this.backdrop = new Backdrop(game.assets, game.clock);
     this.addChild(this.backdrop);
 
     this.buildActions();

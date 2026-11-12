@@ -227,6 +227,22 @@ export class AudioKit {
     });
   }
 
+  /** Telegraph ping: a strong dash is about to happen. */
+  warn(): void {
+    this.tone(1180, 0.05, { volume: 0.07, type: "square" });
+    this.tone(880, 0.07, { volume: 0.06, delay: 0.05, type: "square" });
+  }
+
+  thunder(): void {
+    this.noise(1.8, {
+      volume: 0.2,
+      filter: 320,
+      filterEnd: 70,
+      type: "lowpass",
+    });
+    this.tone(64, 1.1, { slideTo: 38, volume: 0.12, type: "sine" });
+  }
+
   newRecord(): void {
     [523, 784, 1046, 1568].forEach((note, index) => {
       this.tone(note, 0.22, {

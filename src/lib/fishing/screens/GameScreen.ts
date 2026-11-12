@@ -1,22 +1,33 @@
 import { Container, Graphics, Rectangle, Text } from "pixi.js";
+import type { FederatedPointerEvent } from "pixi.js";
 import type { Game } from "../Game";
 import {
   C,
   CASTS_PER_SESSION,
-  DEFAULT_WATER_ZONE,
   FISH,
+  LUCK_MAX,
+  LUCK_RARE_STEP,
+  PASS_BY_CHANCE,
   PERFECT_MULTIPLIER,
   SCENE,
+  SPOOK_HOLD,
   TIMING,
   VIEW,
-  WATER_ZONE_MARKERS,
   comboMultiplier,
-  zoneForPower,
+  isRareFish,
+  waterProfile,
   type FishSpecies,
-  type WaterZone,
+  type WaterProfile,
 } from "../config";
 import type { CatchRecord, SessionResult } from "../types";
-import { clamp, formatScore, lerp, pickWeighted, randRange } from "../utils";
+import {
+  chance,
+  clamp,
+  formatScore,
+  lerp,
+  pickWeighted,
+  randRange,
+} from "../utils";
 import { Screen } from "../ui/Screen";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
@@ -28,11 +39,8 @@ import {
   setText,
 } from "../ui/theme";
 import { LakeScene } from "../game/Scene";
-import {
-  Minigame,
-  MINIGAME_WIDTH,
-  type MinigameResult,
-} from "../game/Minigame";
+import { Atmosphere } from "../game/Atmosphere";
+import { Minigame, type MinigameResult } from "../game/Minigame";
 
 type Phase =
   "idle" | "charging" | "waiting" | "bite" | "fighting" | "resolve" | "done";
@@ -54,20 +62,33 @@ const HUD_INFO_RIGHT = VIEW.width / 2 + HUD_INFO_WIDTH / 2;
 const HUD_ATTEMPT_SPAN = (CASTS_PER_SESSION - 1) * 10 + 6;
 const HUD_ATTEMPT_START = Math.round((HUD_INFO_WIDTH - HUD_ATTEMPT_SPAN) / 2);
 const WAIT_LABEL = "ЖДЁМ ПОКЛЁВКИ";
-const FIGHT_LABEL = "УДЕРЖИВАЙ — ЗОНА ВВЕРХ";
+
+const PULL_KEYS = {
+  ArrowLeft: [-1, 0],
+  KeyA: [-1, 0],
+  ArrowRight: [1, 0],
+  KeyD: [1, 0],
+  ArrowUp: [0, -1],
+  KeyW: [0, -1],
+  ArrowDown: [0, 1],
+  KeyS: [0, 1],
+} as const;
+
+type PullKey = keyof typeof PULL_KEYS;
 
 export class GameScreen extends Screen {
   private readonly game: Game;
   private readonly scene: LakeScene;
+  private readonly atmosphere = new Atmosphere();
   private readonly hud = new Container();
   private readonly castInfo = new Container();
   private readonly fx = new Container();
-  private readonly fightDim = new Graphics();
   private readonly inputCatcher: Graphics;
   private readonly dots = new Graphics();
   private readonly perfectPips = new Graphics();
   private readonly powerBar = new Graphics();
   private readonly reactionBar = new Graphics();
+  private readonly pullKeys = new Set<PullKey>();
 
   private scoreValue!: Text;
   private castLabel!: Text;
@@ -97,9 +118,14 @@ export class GameScreen extends Screen {
   private nibbleLead: number = TIMING.nibbleLeadMax;
 
   private fish: FishSpecies | null = null;
-  private castZone: WaterZone = DEFAULT_WATER_ZONE;
+  private water: WaterProfile = waterProfile(0);
   private minigame: Minigame | null = null;
   private readonly floaters: Floater[] = [];
+  private pointerX = VIEW.width / 2;
+  private pointerY = VIEW.height / 2;
+  private pointerDown = false;
+  /** Hidden streak of perfect catches; resets when a fish escapes. */
+  private luck = 0;
 
   private score = 0;
   private displayScore = 0;
@@ -123,21 +149,37 @@ export class GameScreen extends Screen {
     this.scene.onCastLanded = () => this.game.audio.splash();
     this.addChild(this.scene);
 
+    this.atmosphere.onThunder = () => this.game.audio.thunder();
+    const palette = game.clock.palette;
+    this.scene.tint = palette.tint;
+    this.atmosphere.setWorld(palette, game.clock.weatherDef);
+    this.addChild(this.atmosphere);
+
     this.inputCatcher = new Graphics();
     this.inputCatcher.eventMode = "static";
     this.inputCatcher.hitArea = new Rectangle(0, 0, VIEW.width, VIEW.height);
-    this.inputCatcher.on("pointerdown", () => this.pressStart());
-    this.inputCatcher.on("pointerup", () => this.pressEnd());
-    this.inputCatcher.on("pointerupoutside", () => this.pressEnd());
-    this.inputCatcher.on("pointercancel", () => this.pressEnd());
+    this.inputCatcher.on("pointerdown", (event) => {
+      this.trackPointer(event);
+      this.pointerDown = true;
+      this.pressStart();
+    });
+    this.inputCatcher.on("pointermove", (event) => this.trackPointer(event));
+    this.inputCatcher.on("globalpointermove", (event) =>
+      this.trackPointer(event),
+    );
+    this.inputCatcher.on("pointerup", () => {
+      this.pointerDown = false;
+      this.pressEnd();
+    });
+    this.inputCatcher.on("pointerupoutside", () => {
+      this.pointerDown = false;
+      this.pressEnd();
+    });
+    this.inputCatcher.on("pointercancel", () => {
+      this.pointerDown = false;
+      this.pressEnd();
+    });
     this.addChild(this.inputCatcher);
-
-    this.fightDim
-      .rect(0, 0, VIEW.width, VIEW.height)
-      .fill({ color: C.ink, alpha: 0.28 });
-    this.fightDim.eventMode = "none";
-    this.fightDim.visible = false;
-    this.addChild(this.fightDim);
 
     this.buildHud();
     this.addChild(this.hud);
@@ -418,6 +460,8 @@ export class GameScreen extends Screen {
     if (this.paused || this.finished) return;
     this.paused = true;
     this.pressed = false;
+    this.pointerDown = false;
+    this.pullKeys.clear();
     this.minigame?.setHold(false);
     this.pauseOverlay.visible = true;
     this.pauseFocus.focus(0);
@@ -442,6 +486,8 @@ export class GameScreen extends Screen {
       this.chargeDir = 1;
       this.chargeSoundTimer = 0;
       this.setStatus("ОТПУСТИ — ЗАБРОС");
+    } else if (this.phase === "waiting") {
+      this.earlyHook();
     } else if (this.phase === "bite") {
       // The player just pressed on the bite prompt — hook immediately and
       // arm the reel hold so a single press-and-hold starts reeling.
@@ -467,10 +513,10 @@ export class GameScreen extends Screen {
     this.castsUsed += 1;
     this.castsLeft -= 1;
     this.charge = clamp(this.charge);
-    this.castZone = zoneForPower(this.charge);
-    this.scene.setCastPreview(null);
+    this.water = waterProfile(this.charge);
     this.game.audio.cast();
     this.scene.playCast(this.charge);
+    this.game.clock.persist();
     this.waitTimer = randRange(TIMING.waitMin, TIMING.waitMax);
     this.nibbleLead = randRange(TIMING.nibbleLeadMin, TIMING.nibbleLeadMax);
     this.chargeSoundTimer = 0;
@@ -483,19 +529,43 @@ export class GameScreen extends Screen {
   }
 
   private pickFish(): FishSpecies {
+    const clock = this.game.clock;
+    const phase = clock.phase;
+    const weather = clock.weather;
+    const weatherDef = clock.weatherDef;
+    const pool = FISH.filter(
+      (fish) =>
+        (!fish.time || fish.time.includes(phase)) &&
+        (!fish.weather || fish.weather.includes(weather)),
+    );
+    const source = pool.length > 0 ? pool : FISH;
     const progress = this.castsUsed / CASTS_PER_SESSION;
-    return pickWeighted(FISH, (fish) => {
+
+    return pickWeighted(source, (fish) => {
       const rarity = fish.points / 400;
-      const zoneFactor = lerp(
-        this.castZone.commonFactor,
-        this.castZone.rareFactor,
+      const distanceFactor = lerp(
+        this.water.commonFactor,
+        this.water.rareFactor,
         rarity,
       );
-      return fish.weight * (1 + rarity * (0.5 + progress * 1.6)) * zoneFactor;
+      let weight =
+        fish.weight * (1 + rarity * (0.5 + progress * 1.6)) * distanceFactor;
+
+      if (isRareFish(fish)) {
+        weight *= weatherDef.rare;
+        weight *= 1 + this.luck * LUCK_RARE_STEP;
+      } else {
+        weight *= weatherDef.common;
+      }
+      return weight;
     });
   }
 
   private beginBite(): void {
+    if (chance(PASS_BY_CHANCE)) {
+      this.passBy();
+      return;
+    }
     const fish = this.pickFish();
     this.fish = fish;
     this.phase = "bite";
@@ -518,20 +588,78 @@ export class GameScreen extends Screen {
     this.reactionBar.clear();
     this.scene.setFight();
     this.game.audio.hook();
-    this.fightDim.visible = true;
     this.reelTimer = 0;
-    this.setStatus(FIGHT_LABEL, C.cream);
+    this.statusText.visible = false;
+    this.pullKeys.clear();
 
     const minigame = new Minigame(
       this.fish,
       this.game.assets.fish[this.fish.id],
+      {
+        anchor: this.scene.castPoint,
+        wildness: this.water.wildness,
+        onWarn: () => this.game.audio.warn(),
+      },
     );
-    minigame.position.set(VIEW.width - MINIGAME_WIDTH - 14, 28);
     this.fx.addChild(minigame);
     minigame.onFinish = (result) => this.resolveFight(result);
     minigame.setHold(this.pressed);
+    minigame.setPointer(
+      this.pointerDown ? this.pointerX : null,
+      this.pointerDown ? this.pointerY : null,
+    );
     this.minigame = minigame;
     this.updatePerfectPips();
+  }
+
+  /** A too-early hook: the fish bolts and the cast is returned. */
+  private earlyHook(): void {
+    if (this.phase !== "waiting") return;
+    this.refundCast();
+    this.phase = "resolve";
+    this.resolveTimer = SPOOK_HOLD;
+    this.pressed = false;
+    this.scene.escapeFish();
+    this.game.audio.escape();
+    this.addFloater(
+      "РАНО!",
+      SCENE.anglerX,
+      SCENE.anglerY - 94,
+      C.red,
+      12,
+      1.2,
+      -24,
+    );
+    this.setStatus("РАНО! РЫБА УШЛА", C.red);
+    this.updateHud();
+  }
+
+  /** The fish inspected the bait and moved on; the cast is not wasted. */
+  private passBy(): void {
+    this.refundCast();
+    this.phase = "resolve";
+    this.resolveTimer = SPOOK_HOLD * 0.85;
+    this.pressed = false;
+    this.scene.escapeFish();
+    this.game.audio.nibble();
+    this.addFloater(
+      "МИМО",
+      SCENE.anglerX,
+      SCENE.anglerY - 94,
+      C.steelPale,
+      11,
+      1.1,
+      -20,
+    );
+    this.setStatus("РЫБА ПРОШЛА МИМО", C.steelPale);
+    this.updateHud();
+  }
+
+  private refundCast(): void {
+    if (this.castsUsed <= 0) return;
+    this.outcomes[this.castsUsed - 1] = null;
+    this.castsUsed -= 1;
+    this.castsLeft = CASTS_PER_SESSION - this.castsUsed;
   }
 
   private resolveFight(result: MinigameResult): void {
@@ -554,7 +682,10 @@ export class GameScreen extends Screen {
     this.bestMultiplier = Math.max(this.bestMultiplier, multiplier);
     this.score += points;
     this.scorePunch = 0.22;
-    if (perfect) this.perfectCount += 1;
+    if (perfect) {
+      this.perfectCount += 1;
+      this.luck = Math.min(LUCK_MAX, this.luck + 1);
+    }
 
     const record: CatchRecord = {
       fishId: fish.id,
@@ -570,7 +701,7 @@ export class GameScreen extends Screen {
     this.phase = "resolve";
     this.resolveTimer = TIMING.resultHold;
     this.pressed = false;
-    this.fightDim.visible = false;
+    this.pullKeys.clear();
     this.biteText.visible = false;
     this.reactionBar.clear();
     this.powerBar.clear();
@@ -597,9 +728,10 @@ export class GameScreen extends Screen {
     this.phase = "resolve";
     this.resolveTimer = TIMING.escapedHold;
     this.combo = 0;
+    this.luck = 0;
     if (this.castsUsed > 0) this.outcomes[this.castsUsed - 1] = "lost";
     this.pressed = false;
-    this.fightDim.visible = false;
+    this.pullKeys.clear();
     this.reelTimer = 0;
     this.scene.escapeFish();
     this.game.audio.escape();
@@ -638,7 +770,8 @@ export class GameScreen extends Screen {
     this.biteText.visible = false;
     this.reactionBar.clear();
     this.scene.resetCast();
-    this.fightDim.visible = false;
+    this.pullKeys.clear();
+    this.pointerDown = false;
     this.charge = 0;
     this.chargeSoundTimer = 0;
     this.reelTimer = 0;
@@ -677,6 +810,7 @@ export class GameScreen extends Screen {
       date: Date.now(),
     };
     const name = this.game.options.playerName || "Рыбак";
+    this.game.clock.persist();
     const standing = this.game.submitScore(name, result);
     this.game.showResults(result, true, standing);
   }
@@ -766,9 +900,6 @@ export class GameScreen extends Screen {
       return;
     }
     this.powerLabel.visible = true;
-    const zone = zoneForPower(this.charge);
-    setText(this.powerLabel, `СИЛА · ${zone.name}`);
-    this.powerLabel.style.fill = zone.color;
 
     const x = 172;
     const y = 204;
@@ -777,14 +908,9 @@ export class GameScreen extends Screen {
     g.rect(x - 1, y - 1, width + 2, height + 2).fill(C.ink);
     g.rect(x, y, width, height).fill(0x232a44);
     const fill = Math.round(width * this.charge);
-    g.rect(x, y, fill, height).fill(zone.color);
-    g.rect(x, y, fill, 2).fill({ color: C.cream, alpha: 0.45 });
-    for (const marker of WATER_ZONE_MARKERS) {
-      g.rect(x + Math.round(width * marker), y, 1, height).fill({
-        color: C.cream,
-        alpha: 0.45,
-      });
-    }
+    g.rect(x, y, fill, height).fill(C.gold);
+    g.rect(x, y, fill, 2).fill({ color: C.cream, alpha: 0.55 });
+    g.rect(x + fill - 1, y - 1, 1, height + 2).fill(C.cream);
   }
 
   private drawBiteBar(): void {
@@ -808,11 +934,40 @@ export class GameScreen extends Screen {
     setText(this.statusText, `${WAIT_LABEL}${".".repeat(dots)}`);
   }
 
+  /** Cursor position in virtual screen units, not canvas pixels. */
+  private trackPointer(event: FederatedPointerEvent): void {
+    const point = event.getLocalPosition(this);
+    this.pointerX = point.x;
+    this.pointerY = point.y;
+  }
+
+  private readPullDirection(): { x: number; y: number } {
+    let x = 0;
+    let y = 0;
+    for (const key of this.pullKeys) {
+      const [dx, dy] = PULL_KEYS[key];
+      x += dx;
+      y += dy;
+    }
+    const length = Math.hypot(x, y);
+    return length > 0 ? { x: x / length, y: y / length } : { x: 0, y: 0 };
+  }
+
   // ----------------------------------------------------------------- update
 
   override update(dt: number): void {
     if (this.paused) return;
     this.time += dt;
+
+    const clock = this.game.clock;
+    if (!this.finished) {
+      const changed = clock.update(dt);
+      if (changed) clock.persist();
+    }
+    const palette = clock.palette;
+    this.scene.tint = palette.tint;
+    this.atmosphere.setWorld(palette, clock.weatherDef);
+    this.atmosphere.update(dt);
 
     this.scene.update(dt);
     this.updateFloaters(dt);
@@ -836,7 +991,6 @@ export class GameScreen extends Screen {
         this.chargeSoundTimer = 0.1;
       }
       this.drawPowerBar();
-      this.scene.setCastPreview(this.charge);
     } else if (this.phase === "waiting") {
       this.waitTimer -= dt;
       this.updateWaitingStatus();
@@ -854,6 +1008,12 @@ export class GameScreen extends Screen {
         this.failCast("НЕ УСПЕЛ ПОДСЕЧЬ");
       }
     } else if (this.phase === "fighting") {
+      const direction = this.readPullDirection();
+      this.minigame?.setPointer(
+        this.pointerDown ? this.pointerX : null,
+        this.pointerDown ? this.pointerY : null,
+      );
+      this.minigame?.setDirection(direction.x, direction.y);
       this.minigame?.setHold(this.pressed);
       this.minigame?.update(dt);
       if (this.pressed) {
@@ -889,6 +1049,10 @@ export class GameScreen extends Screen {
       this.openPause();
       return true;
     }
+    if (this.phase === "fighting" && event.code in PULL_KEYS) {
+      this.pullKeys.add(event.code as PullKey);
+      return true;
+    }
     if (
       event.code === "Space" ||
       event.code === "Enter" ||
@@ -902,6 +1066,7 @@ export class GameScreen extends Screen {
   }
 
   override handleKeyUp(event: KeyboardEvent): void {
+    if (this.pullKeys.delete(event.code as PullKey)) return;
     if (
       event.code === "Space" ||
       event.code === "Enter" ||
@@ -915,6 +1080,10 @@ export class GameScreen extends Screen {
   override onHostPause(paused: boolean): void {
     if (paused) this.openPause();
     else this.closePause();
+  }
+
+  override onExit(): void {
+    this.game.clock.persist();
   }
 
   override onMuteChanged(): void {

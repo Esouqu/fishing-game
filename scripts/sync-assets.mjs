@@ -13,12 +13,13 @@ const root = resolve(import.meta.dirname, "..");
 const out = join(root, "public", "assets", "fishing");
 
 const tinyCoast = join(root, "assetspacks", "Tiny Coast Pack");
-const critters = join(
+const crittersRoot = join(
   root,
   "assetspacks",
   "Critters of Yonder - Gone Fishing",
-  "Freshwater Fish",
 );
+const critters = join(crittersRoot, "Freshwater Fish");
+const crittersSalt = join(crittersRoot, "Saltwater Fish");
 const fontFiles = join(
   root,
   "node_modules",
@@ -68,22 +69,35 @@ const files = [
   ],
 ];
 
+/** Freshwater icons plus the saltwater ones the lake roster borrows. */
 const fish = [
-  "Minnow",
-  "Perch",
-  "Bluegill",
-  "Carp",
-  "Chub",
-  "Pike",
-  "Walleye",
-  "Catfish",
-  "Salmon",
-  "Koi",
-  "Sturgeon",
+  ["Freshwater Fish", "Bluegill"],
+  ["Saltwater Fish", "Capelin"],
+  ["Saltwater Fish", "Sardine"],
+  ["Saltwater Fish", "Flounder"],
+  ["Freshwater Fish", "Tilapia"],
+  ["Freshwater Fish", "Carp"],
+  ["Freshwater Fish", "Angelfish"],
+  ["Freshwater Fish", "LargemouthBass"],
+  ["Freshwater Fish", "Chub"],
+  ["Freshwater Fish", "SmallmouthBass"],
+  ["Freshwater Fish", "RainbowTrout"],
+  ["Saltwater Fish", "Cod"],
+  ["Freshwater Fish", "Walleye"],
+  ["Freshwater Fish", "Catfish"],
+  ["Saltwater Fish", "Eel"],
+  ["Saltwater Fish", "Grouper"],
+  ["Saltwater Fish", "RedSnapper"],
+  ["Saltwater Fish", "Lionfish"],
+  ["Saltwater Fish", "Tuna"],
+  ["Freshwater Fish", "Sturgeon"],
 ];
 
-for (const name of fish) {
-  files.push([join(critters, `${name}.png`), `fish/${name.toLowerCase()}.png`]);
+for (const [folder, name] of fish) {
+  files.push([
+    join(crittersRoot, folder, `${name}.png`),
+    `fish/${name.toLowerCase()}.png`,
+  ]);
 }
 
 async function exists(path) {

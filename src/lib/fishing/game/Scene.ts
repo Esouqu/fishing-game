@@ -1,6 +1,6 @@
 import { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { AssetBag } from "../assets";
-import { C, SCENE, TIMING, VIEW, zoneForPower } from "../config";
+import { C, SCENE, TIMING, VIEW } from "../config";
 import { clamp, easeOutCubic, lerp, randRange } from "../utils";
 import { makeText } from "../ui/theme";
 
@@ -332,87 +332,13 @@ export class LakeScene extends Container {
     return { x: this.bobber.x, y: this.bobber.y };
   }
 
+  /** Where the bobber settled after the cast. */
+  get castPoint(): { x: number; y: number } {
+    return { x: this.bobberBaseX, y: this.bobberBaseY };
+  }
+
   get isLineOut(): boolean {
     return this.bobber.visible && this.phase !== "idle";
-  }
-
-  /**
-   * Zone tint plus a dashed cast cone shown while the player charges. The cone
-   * matches the real landing spread, so it never promises a spot the bobber
-   * cannot actually reach.
-   */
-  setCastPreview(power: number | null): void {
-    const g = this.previewG;
-    if (power === null) {
-      g.clear();
-      return;
-    }
-
-    const clamped = clamp(power);
-    const zone = zoneForPower(clamped);
-    const targetY = lerp(SCENE.bobberMaxY, SCENE.bobberMinY, clamped);
-    const fromX = SCENE.anglerX + 1;
-    const fromY = SCENE.anglerY - 32;
-    const spread = 20 + clamped * 26;
-    const minX = Math.max(SCENE.dockX - 8, SCENE.anglerX - spread);
-    const maxX = Math.min(
-      SCENE.dockX + SCENE.dockWidth + 8,
-      SCENE.anglerX + spread,
-    );
-
-    g.clear();
-    g.rect(0, zone.minY, VIEW.width, zone.maxY - zone.minY).fill({
-      color: zone.color,
-      alpha: 0.06,
-    });
-    g.rect(0, zone.minY, VIEW.width, 1).fill({
-      color: zone.color,
-      alpha: 0.18,
-    });
-    g.rect(0, zone.maxY - 1, VIEW.width, 1).fill({
-      color: zone.color,
-      alpha: 0.18,
-    });
-
-    g.moveTo(fromX, fromY)
-      .lineTo(minX, targetY)
-      .lineTo(maxX, targetY)
-      .closePath()
-      .fill({ color: zone.color, alpha: 0.05 });
-
-    this.dashedLine(g, fromX, fromY, minX, targetY, zone.color);
-    this.dashedLine(g, fromX, fromY, maxX, targetY, zone.color);
-
-    g.ellipse((minX + maxX) / 2, targetY, (maxX - minX) / 2, 3.5).stroke({
-      width: 1,
-      color: zone.color,
-      alpha: 0.85,
-    });
-    g.circle((minX + maxX) / 2, targetY, 2).fill({
-      color: zone.color,
-      alpha: 0.4,
-    });
-  }
-
-  private dashedLine(
-    g: Graphics,
-    x0: number,
-    y0: number,
-    x1: number,
-    y1: number,
-    color: number,
-  ): void {
-    const distance = Math.hypot(x1 - x0, y1 - y0);
-    const step = 7;
-    const dash = 4;
-    const count = Math.max(1, Math.floor(distance / step));
-    for (let i = 0; i < count; i += 1) {
-      const t0 = (i * step) / distance;
-      const t1 = Math.min(1, (i * step + dash) / distance);
-      g.moveTo(x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0)
-        .lineTo(x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1)
-        .stroke({ width: 1, color, alpha: 0.42 });
-    }
   }
 
   playCast(power: number): void {
@@ -534,6 +460,7 @@ export class LakeScene extends Container {
     y: number,
     count: number,
     strength: number,
+    colors: [number, number] = [C.cream, C.cyan],
   ): void {
     for (let i = 0; i < count; i += 1) {
       const maxLife = randRange(0.3, 0.7);
@@ -545,7 +472,7 @@ export class LakeScene extends Container {
         life: maxLife,
         maxLife,
         size: Math.random() > 0.7 ? 2 : 1,
-        color: Math.random() > 0.4 ? C.cream : C.cyan,
+        color: Math.random() > 0.4 ? colors[0] : colors[1],
       });
     }
     this.rings.push({

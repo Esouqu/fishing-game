@@ -1,80 +1,133 @@
 import { Container, Graphics, Sprite, type Texture } from "pixi.js";
-import { C, START_PROGRESS } from "../config";
+import { C, START_PROGRESS, TIMING, VIEW } from "../config";
 import type { FishSpecies } from "../config";
-import { chance, clamp, randRange } from "../utils";
+import { chance, clamp, easeInOutQuad, lerp } from "../utils";
+import { buildScript, type Move } from "./behaviors";
 
 export interface MinigameResult {
   won: boolean;
   perfect: boolean;
 }
 
-const WIDTH = 84;
-const HEIGHT = 208;
-const COL_X = 15;
-const COL_Y = 17;
-const COL_W = 44;
-const COL_H = 174;
-const PROG_X = 63;
-const PROG_Y = 17;
-const PROG_W = 8;
-const PROG_H = 174;
-const MAX_SLIPS = 2;
+export interface MinigameOptions {
+  /** Where the bobber landed; the circle is built around this point. */
+  anchor: { x: number; y: number };
+  /** Water roughness from the cast distance: 0.82 calm .. 1.2 rough. */
+  wildness?: number;
+  /** Called when a strong dash is telegraphed. */
+  onWarn?: () => void;
+}
 
-/** Panel width, used by the HUD to right-align it. */
-export const MINIGAME_WIDTH = WIDTH;
+const RADIUS = 34;
+const FISH_SCALE = 1.45;
+const TAU = Math.PI * 2;
+const MAX_SLIPS = 2;
+const ESCAPE_HOLD = 1.35;
+const PULL_ACCEL = 300;
+const MAX_SPEED = 230;
+
+function darken(color: number, amount: number): number {
+  const r = Math.round(((color >> 16) & 0xff) * (1 - amount));
+  const g = Math.round(((color >> 8) & 0xff) * (1 - amount));
+  const b = Math.round((color & 0xff) * (1 - amount));
+  return (r << 16) | (g << 8) | b;
+}
+
+function angleDelta(from: number, to: number): number {
+  let delta = (to - from + Math.PI) % TAU;
+  if (delta < 0) delta += TAU;
+  return delta - Math.PI;
+}
 
 /**
- * Stardew-style reeling minigame: hold to lift the green zone, keep the fish
- * inside it, fill the progress bar before it drains.
+ * Stardew-style reeling, but played inside a dashed circle in the water.
  *
- * The panel is deliberately textless: a cream outer frame, a wooden inner
- * frame, a water column, and a gold progress channel in the right rail.
+ * The fish is free inside the ring and its species script keeps trying to bolt
+ * outside. The player holds the mouse button and pulls the fish toward the
+ * cursor (arrow keys work too) while a small bar above the ring fills. Leaving
+ * the ring costs one perfect attempt and drains the bar; staying outside for
+ * too long lets the fish escape for good.
  */
 export class Minigame extends Container {
   private readonly fish: FishSpecies;
+  private readonly wildness: number;
   private readonly fishSprite: Sprite;
-  private readonly ambientG = new Graphics();
-  private readonly zoneG = new Graphics();
-  private readonly progressG = new Graphics();
+  private readonly ringG = new Graphics();
+  private readonly wakeG = new Graphics();
+  private readonly barG = new Graphics();
 
-  private fishPos = 0.5;
-  private fishVel = 0;
-  private fishTarget = 0.5;
-  private retarget = 0.5;
+  private readonly centerX: number;
+  private readonly centerY: number;
 
-  private zonePos = 0.65;
-  private zoneVel = 0;
+  private fishX = 0;
+  private fishY = 0;
+  private vx = 0;
+  private vy = 0;
+  private targetX = 0;
+  private targetY = 0;
+
+  private script: Move[] = [];
+  private moveIndex = 0;
+  private current: Move | null = null;
+  private moveTime = 0;
+  private moveStartAngle = 0;
+  private moveStartRadius = 0;
+  private escapeAngle = 0;
+  private lastAngle = 0;
+  private warnTime = 0;
+  private warnAngle = 0;
+  private flash = 0;
 
   private progress = START_PROGRESS;
   private hold = false;
+  private pointerX: number | null = null;
+  private pointerY: number | null = null;
+  private directionX = 0;
+  private directionY = 0;
+  private biasX = 0;
+  private biasY = 0;
+
   private running = true;
   private perfect = true;
   private slips = 0;
-  private wasOverlapping = true;
+  private outside = false;
+  private outsideTimer = 0;
+  private slipCooldown = 0;
   private time = 0;
   private finishResult: MinigameResult | null = null;
 
   onFinish?: (result: MinigameResult) => void;
+  /** Fired once per telegraphed strong dash. */
+  onWarn?: () => void;
 
-  constructor(fish: FishSpecies, icon: Texture) {
+  constructor(fish: FishSpecies, icon: Texture, options: MinigameOptions) {
     super();
     this.fish = fish;
+    this.wildness = options.wildness ?? 1;
+    this.onWarn = options.onWarn;
+    this.eventMode = "none";
 
-    this.addChild(this.buildFrame());
-    this.addChild(this.ambientG);
-    this.addChild(this.zoneG);
+    this.centerX = clamp(options.anchor.x, RADIUS + 8, VIEW.width - RADIUS - 8);
+    this.centerY = clamp(
+      options.anchor.y + 24,
+      RADIUS + 28,
+      VIEW.height - RADIUS - 8,
+    );
+
+    this.addChild(this.ringG);
+    this.addChild(this.wakeG);
 
     this.fishSprite = new Sprite(icon);
     this.fishSprite.anchor.set(0.5);
-    this.fishSprite.scale.set(1.3);
-    this.fishSprite.scale.x *= -1;
+    this.fishSprite.scale.set(FISH_SCALE);
     this.addChild(this.fishSprite);
 
-    this.addChild(this.buildProgress());
-    this.addChild(this.progressG);
-    this.addChild(this.buildRod());
+    this.addChild(this.barG);
 
-    this.zonePos = this.fishPos;
+    this.lastAngle = Math.random() * TAU;
+    this.escapeAngle = this.lastAngle;
+    this.script = buildScript(fish);
+    this.nextMove();
     this.update(0);
   }
 
@@ -90,270 +143,454 @@ export class Minigame extends Container {
   get slipsLeft(): number {
     return Math.max(0, MAX_SLIPS - this.slips);
   }
+  /** Anchor of the dashed ring, mostly for debugging and screenshots. */
+  get ringCenter(): { x: number; y: number } {
+    return { x: this.centerX, y: this.centerY };
+  }
 
   setHold(hold: boolean): void {
     this.hold = hold;
   }
 
+  /** Cursor position in screen space; `null` falls back to pulling inward. */
+  setPointer(x: number | null, y: number | null): void {
+    this.pointerX = x;
+    this.pointerY = y;
+  }
+
+  /** Optional keyboard pull direction (normalized by the caller). */
+  setDirection(x: number, y: number): void {
+    this.directionX = x;
+    this.directionY = y;
+  }
+
   update(dt: number): void {
     if (!this.running) return;
     this.time += dt;
-    dt = Math.min(dt, 0.05);
+    const step = Math.min(dt, 0.05);
 
-    // Fish movement: springy target chasing with occasional darts.
-    this.retarget -= dt;
-    if (this.retarget <= 0) {
-      const dart = chance(0.14);
-      this.fishTarget = dart
-        ? Math.random() > 0.5
-          ? randRange(0.78, 1.05)
-          : randRange(-0.05, 0.22)
-        : randRange(-0.05, 1.05);
-      this.retarget = randRange(0.35, 1.1) - this.fish.speed * 0.14;
-    }
-    const stiffness = 8 + this.fish.speed * 30;
-    this.fishVel += (this.fishTarget - this.fishPos) * stiffness * dt;
-    this.fishVel *= Math.max(0, 1 - (5 + this.fish.speed * 5) * dt);
-    this.fishPos += this.fishVel * dt;
-    if (this.fishPos < 0.02) {
-      this.fishPos = 0.02;
-      this.fishVel = Math.abs(this.fishVel) * 0.35;
-    } else if (this.fishPos > 0.98) {
-      this.fishPos = 0.98;
-      this.fishVel = -Math.abs(this.fishVel) * 0.35;
+    const pull = this.pullVector();
+    if (pull) {
+      this.biasX += (pull.x - this.biasX) * Math.min(1, step * 3.2);
+      this.biasY += (pull.y - this.biasY) * Math.min(1, step * 3.2);
     }
 
-    // Green zone movement.
-    this.zoneVel += (this.hold ? -2.7 : 2.5) * dt;
-    this.zoneVel *= Math.max(0, 1 - 5.2 * dt);
-    this.zonePos += this.zoneVel * dt;
-    const half = this.fish.zone / 2;
-    if (this.zonePos < half) {
-      this.zonePos = half;
-      this.zoneVel = Math.max(0, this.zoneVel);
-    } else if (this.zonePos > 1 - half) {
-      this.zonePos = 1 - half;
-      this.zoneVel = Math.min(0, this.zoneVel);
+    if (this.warnTime > 0) {
+      this.warnTime = Math.max(0, this.warnTime - step);
+      this.flash = Math.max(0, this.flash - step);
+      // The fish holds still and shivers while the warning is shown.
+      this.vx *= Math.max(0, 1 - 7 * step);
+      this.vy *= Math.max(0, 1 - 7 * step);
+      if (this.warnTime === 0) this.bolt();
+    } else {
+      if (step > 0) this.advanceScript(step);
+      this.updateTarget();
+      this.steer(step);
     }
 
-    const overlap = Math.abs(this.fishPos - this.zonePos) <= half + 0.055;
-    if (this.wasOverlapping && !overlap) {
-      this.slips = Math.min(MAX_SLIPS, this.slips + 1);
-      if (this.slips >= MAX_SLIPS) this.perfect = false;
+    if (pull) {
+      this.vx += pull.x * PULL_ACCEL * step;
+      this.vy += pull.y * PULL_ACCEL * step;
     }
-    this.wasOverlapping = overlap;
-    this.progress += (overlap ? 0.4 : -this.fish.drain) * dt;
-    this.progress = clamp(this.progress);
 
-    this.draw(overlap);
+    // Water drag plus a hard speed cap keeps the pull responsive but fair.
+    this.vx *= Math.max(0, 1 - 0.9 * step);
+    this.vy *= Math.max(0, 1 - 0.9 * step);
+    const speed = Math.hypot(this.vx, this.vy);
+    if (speed > MAX_SPEED) {
+      const k = MAX_SPEED / speed;
+      this.vx *= k;
+      this.vy *= k;
+    }
+
+    this.fishX += this.vx * step;
+    this.fishY += this.vy * step;
+
+    this.updateZone(step);
+    if (!this.running) return;
+
+    this.draw(pull !== null);
+    this.fishSprite.position.set(
+      this.centerX + this.fishX,
+      this.centerY + this.fishY,
+    );
+    this.fishSprite.rotation = clamp(this.vx / 420, -0.45, 0.45);
+    const face =
+      this.vx < -6
+        ? -1
+        : this.vx > 6
+          ? 1
+          : this.fishSprite.scale.x < 0
+            ? -1
+            : 1;
+    this.fishSprite.scale.set(face * FISH_SCALE, FISH_SCALE);
+    this.fishSprite.tint = this.warnTime > 0 ? 0xffe58a : 0xffffff;
 
     if (this.progress >= 1) this.finish(true);
-    else if (this.progress <= 0) this.finish(false);
+    else if (
+      this.progress <= 0 ||
+      Math.hypot(this.fishX, this.fishY) > RADIUS * 1.65
+    ) {
+      this.finish(false);
+    }
   }
 
-  // ------------------------------------------------------------------ layout
+  // ---------------------------------------------------------------- movement
 
-  private buildFrame(): Graphics {
-    const g = new Graphics();
+  private advanceScript(dt: number): void {
+    if (this.current === null) return;
+    this.moveTime += dt;
+    if (this.moveTime >= this.current.dur) this.nextMove();
+  }
 
-    // Soft drop shadow + cream outer shell.
-    g.roundRect(2, 3, WIDTH, HEIGHT, 9).fill({
-      color: C.ink,
-      alpha: 0.35,
-    });
-    g.roundRect(0, 0, WIDTH, HEIGHT, 9).fill(C.cream);
-    g.roundRect(0, 0, WIDTH, HEIGHT, 9).stroke({
-      width: 1,
-      color: C.ink,
-      alignment: 0,
-    });
-    g.roundRect(1, 1, WIDTH - 2, HEIGHT - 2, 8).stroke({
-      width: 1,
-      color: C.white,
-      alpha: 0.7,
-      alignment: 0,
-    });
-    g.roundRect(2, 2, WIDTH - 4, HEIGHT - 4, 7).stroke({
-      width: 1,
-      color: C.steelPale,
-      alpha: 0.5,
-      alignment: 0,
-    });
+  private nextMove(): void {
+    const move = this.script[this.moveIndex % this.script.length];
+    this.moveIndex += 1;
+    this.current = move;
+    this.moveTime = 0;
+    this.flash = 0;
+    this.moveStartAngle = this.fishAngle();
+    this.moveStartRadius = this.fishRadius();
+    this.escapeAngle = this.resolveAngle(move);
+    if (move.kind === "dash" || move.kind === "arc") {
+      this.lastAngle = this.escapeAngle;
+    }
+    if (move.strong) {
+      this.warnTime = TIMING.telegraph;
+      this.warnAngle = this.escapeAngle;
+      this.onWarn?.();
+      return;
+    }
+    this.warnTime = 0;
+    if (move.kind === "dash") this.bolt(0.7);
+  }
 
-    // Wooden inner frame.
-    g.rect(5, 5, 74, 198).fill(C.brown);
-    g.rect(5, 5, 74, 198).stroke({ width: 1, color: C.ink, alignment: 0 });
+  private resolveAngle(move: Move): number {
+    const here = this.fishAngle();
+    const bias = Math.hypot(this.biasX, this.biasY);
+    const feint =
+      bias > 0.3 && chance(0.4 + Math.min(0.35, bias * 0.3))
+        ? Math.atan2(-this.biasY, -this.biasX)
+        : null;
+    const dir = move.dir ?? "flip";
 
-    // Top rail.
-    g.rect(5, 5, 74, 12).fill(C.brown);
-    g.rect(6, 6, 72, 1).fill(C.brownLight);
-    g.rect(5, 15, 74, 2).fill(C.brownDark);
-    for (const x of [26, 44, 62]) g.rect(x, 5, 1, 12).fill(C.brownDark);
+    // Without a green zone the pull direction replaces it: "away" means
+    // fighting the rod, "toward" means giving in for a beat.
+    if (dir === "away") {
+      if (bias > 0.15) {
+        return (
+          Math.atan2(-this.biasY, -this.biasX) + (Math.random() - 0.5) * 0.7
+        );
+      }
+      return here + (Math.random() - 0.5) * 0.7;
+    }
+    if (dir === "toward") {
+      if (bias > 0.15) {
+        return Math.atan2(this.biasY, this.biasX) + (Math.random() - 0.5) * 0.6;
+      }
+      return here + Math.PI + (Math.random() - 0.5) * 0.6;
+    }
+    if (dir === "same") return this.lastAngle + (Math.random() - 0.5) * 0.4;
+    if (feint !== null) return feint + (Math.random() - 0.5) * 0.5;
+    return this.lastAngle + Math.PI + (Math.random() - 0.5) * 0.9;
+  }
 
-    // Bottom rail.
-    g.rect(5, 191, 74, 12).fill(C.brown);
-    g.rect(6, 192, 72, 1).fill({ color: C.brownLight, alpha: 0.7 });
-    g.rect(5, 201, 74, 2).fill(C.brownDark);
-    for (const x of [26, 44, 62]) g.rect(x, 191, 1, 12).fill(C.brownDark);
+  /** A sudden burst, used by dash moves and after a telegraph ends. */
+  private bolt(scale = 1): void {
+    const power = (110 + this.fish.speed * 70) * scale * this.wildness;
+    this.vx += Math.cos(this.escapeAngle) * power;
+    this.vy += Math.sin(this.escapeAngle) * power;
+    this.flash = 0.16;
+  }
 
-    // Left rail (the rod sits in this gutter).
-    g.rect(5, 17, 10, 174).fill(C.brown);
-    g.rect(5, 17, 1, 174).fill(C.brownDark);
-    g.rect(14, 17, 1, 174).fill(C.brownDark);
-    g.rect(6, 17, 1, 174).fill({ color: C.brownLight, alpha: 0.55 });
+  private updateTarget(): void {
+    const move = this.current;
+    if (!move) return;
+    const t = move.dur <= 0 ? 1 : clamp(this.moveTime / move.dur);
+    const kind = move.kind;
 
-    // Right rail.
-    g.rect(71, 17, 8, 174).fill(C.brown);
-    g.rect(71, 17, 1, 174).fill(C.brownDark);
-    g.rect(62, 17, 1, 174).fill(C.brownDark);
-    g.rect(72, 17, 1, 174).fill({ color: C.brownLight, alpha: 0.4 });
-
-    // Thin wooden separator between water and progress.
-    g.rect(59, 17, 4, 174).fill(C.brown);
-    g.rect(59, 17, 1, 174).fill(C.brownDark);
-    g.rect(62, 17, 1, 174).fill(C.brownDark);
-
-    // Plank seams.
-    for (let y = 39; y < 190; y += 26) {
-      g.rect(5, y, 10, 1).fill({ color: C.brownDark, alpha: 0.7 });
-      g.rect(59, y, 4, 1).fill({ color: C.brownDark, alpha: 0.7 });
-      g.rect(71, y, 8, 1).fill({ color: C.brownDark, alpha: 0.7 });
+    if (kind === "dash") {
+      this.targetX = Math.cos(this.escapeAngle) * RADIUS * 1.28;
+      this.targetY = Math.sin(this.escapeAngle) * RADIUS * 1.28;
+      return;
     }
 
-    // Recessed water field.
-    g.rect(COL_X - 1, COL_Y - 1, COL_W + 2, COL_H + 2).fill(C.ink);
-    g.rect(COL_X, COL_Y, COL_W, COL_H).fill(C.ocean);
-    g.rect(COL_X, COL_Y + COL_H * 0.34, COL_W, COL_H * 0.36).fill(C.deep);
-    g.rect(COL_X, COL_Y + COL_H * 0.7, COL_W, COL_H * 0.3).fill(0x0d3f70);
-    g.rect(COL_X, COL_Y, COL_W, 5).fill({ color: C.ink, alpha: 0.25 });
-    g.rect(COL_X, COL_Y, 2, COL_H).fill({ color: C.ink, alpha: 0.18 });
-    g.rect(COL_X + COL_W - 2, COL_Y, 2, COL_H).fill({
-      color: C.ink,
-      alpha: 0.18,
-    });
+    if (kind === "arc") {
+      const eased = easeInOutQuad(t);
+      const angle =
+        this.moveStartAngle +
+        angleDelta(this.moveStartAngle, this.escapeAngle) * eased;
+      const radius = lerp(this.moveStartRadius, 0.95, eased) * RADIUS;
+      this.targetX = Math.cos(angle) * radius;
+      this.targetY = Math.sin(angle) * radius;
+      return;
+    }
 
-    // Light shafts and a couple of weeds near the bottom.
-    g.rect(COL_X + 12, COL_Y + 10, 1, COL_H - 24).fill({
-      color: C.cream,
-      alpha: 0.05,
-    });
-    g.rect(COL_X + 34, COL_Y + 6, 1, COL_H - 20).fill({
-      color: C.cream,
-      alpha: 0.04,
-    });
-    g.rect(COL_X + 32, COL_Y + 14, 1, COL_H - 28).fill({
-      color: C.cream,
-      alpha: 0.035,
-    });
-    g.rect(COL_X + 9, COL_Y + COL_H - 9, 1, 7).fill({
-      color: C.greenDark,
-      alpha: 0.75,
-    });
-    g.rect(COL_X + 12, COL_Y + COL_H - 7, 1, 5).fill({
-      color: C.greenDark,
-      alpha: 0.6,
-    });
-    g.rect(COL_X + 34, COL_Y + COL_H - 8, 1, 6).fill({
-      color: C.greenDark,
-      alpha: 0.65,
-    });
+    if (kind === "wave") {
+      const cycles = move.cycles ?? 1;
+      const amp = (move.amplitude ?? 0.3) * 2.2;
+      const angle = this.moveStartAngle + Math.sin(t * TAU * cycles) * amp;
+      const radius = lerp(this.moveStartRadius, 1.03, t) * RADIUS;
+      this.targetX = Math.cos(angle) * radius;
+      this.targetY = Math.sin(angle) * radius;
+      return;
+    }
 
-    return g;
+    if (kind === "zigzag") {
+      const count = Math.max(1, move.count ?? 3);
+      const amp = (move.amplitude ?? 0.28) * 3;
+      const slot = Math.min(count - 1, Math.floor(t * count));
+      const angle = this.moveStartAngle + (slot % 2 === 0 ? amp : -amp);
+      const radius = RADIUS * 1.06;
+      this.targetX = Math.cos(angle) * radius;
+      this.targetY = Math.sin(angle) * radius;
+      return;
+    }
+
+    // Pause: drift back toward the middle and catch a breath.
+    const angle = this.moveStartAngle;
+    this.targetX = Math.cos(angle) * RADIUS * 0.3;
+    this.targetY = Math.sin(angle) * RADIUS * 0.3;
   }
 
-  private buildProgress(): Graphics {
-    const g = new Graphics();
-    g.rect(PROG_X - 1, PROG_Y - 1, PROG_W + 2, PROG_H + 2).fill(C.ink);
-    g.rect(PROG_X, PROG_Y, PROG_W, PROG_H).fill(0x1c2440);
-    g.rect(PROG_X, PROG_Y, PROG_W, 2).fill({ color: C.ink, alpha: 0.55 });
-    g.rect(PROG_X + 1, PROG_Y + 2, 1, PROG_H - 4).fill({
-      color: C.steel,
-      alpha: 0.18,
-    });
-    return g;
+  private steer(dt: number): void {
+    const kind = this.current?.kind ?? "pause";
+    let speed = 40;
+    let steer = 4;
+    if (kind === "dash") {
+      speed = 105 + this.fish.speed * 65;
+      steer = 11;
+    } else if (kind === "arc") {
+      speed = 44 + this.fish.speed * 34;
+      steer = 3.4;
+    } else if (kind === "wave") {
+      speed = 40 + this.fish.speed * 30;
+      steer = 4;
+    } else if (kind === "zigzag") {
+      speed = 66 + this.fish.speed * 42;
+      steer = 8;
+    } else if (kind === "pause") {
+      speed = 12;
+      steer = 2;
+    }
+
+    speed *= this.wildness;
+    const dx = this.targetX - this.fishX;
+    const dy = this.targetY - this.fishY;
+    const distance = Math.hypot(dx, dy);
+    const desiredX = distance > 1 ? (dx / distance) * speed : 0;
+    const desiredY = distance > 1 ? (dy / distance) * speed : 0;
+    const blend = Math.min(1, steer * dt);
+    this.vx += (desiredX - this.vx) * blend;
+    this.vy += (desiredY - this.vy) * blend;
   }
 
-  private buildRod(): Graphics {
-    const g = new Graphics();
-    // Steel rod running down the left gutter.
-    g.rect(9, 22, 2, 160).fill(C.steelPale);
-    g.rect(9, 22, 1, 160).fill(C.cream);
-    g.rect(10, 22, 1, 160).fill({ color: C.ink, alpha: 0.45 });
-    g.rect(8, 22, 4, 2).fill(C.ink);
+  private pullVector(): { x: number; y: number } | null {
+    if (!this.hold) return null;
+    const dirLength = Math.hypot(this.directionX, this.directionY);
+    if (dirLength > 0.1) {
+      return {
+        x: this.directionX / dirLength,
+        y: this.directionY / dirLength,
+      };
+    }
 
-    // Small wooden reel and crank at the bottom.
-    g.circle(10, 184, 5).fill(C.brownLight);
-    g.circle(10, 184, 5).stroke({ width: 1, color: C.ink, alignment: 0 });
-    g.circle(10, 184, 2).fill(C.brownDark);
-    g.rect(12, 182, 4, 2).fill(C.brownDark);
-    g.rect(15, 180, 2, 4).fill(C.brownLight);
-    g.rect(15, 180, 2, 1).fill(C.cream);
-    return g;
+    if (this.pointerX !== null && this.pointerY !== null) {
+      const dx = this.pointerX - (this.centerX + this.fishX);
+      const dy = this.pointerY - (this.centerY + this.fishY);
+      const length = Math.hypot(dx, dy);
+      if (length > 10) return { x: dx / length, y: dy / length };
+    }
+
+    // Keyboard without a mouse: gently reel straight back toward the middle.
+    const distance = Math.hypot(this.fishX, this.fishY);
+    if (distance > 5) {
+      return { x: -this.fishX / distance, y: -this.fishY / distance };
+    }
+    return null;
+  }
+
+  private updateZone(dt: number): void {
+    const distance = Math.hypot(this.fishX, this.fishY);
+    const outside = distance > RADIUS - 2;
+
+    if (outside && !this.outside && this.slipCooldown <= 0) {
+      // Two slips are still a perfect catch; the third breaks it.
+      this.slips += 1;
+      this.perfect = this.slips <= MAX_SLIPS;
+      this.slipCooldown = 0.5;
+      this.flash = 0.2;
+    }
+    this.outside = outside;
+    this.slipCooldown = Math.max(0, this.slipCooldown - dt);
+
+    if (distance > RADIUS + 3) {
+      this.outsideTimer += dt;
+      if (this.outsideTimer >= ESCAPE_HOLD) {
+        this.finish(false);
+        return;
+      }
+    } else {
+      this.outsideTimer = Math.max(0, this.outsideTimer - dt * 2);
+    }
+
+    const fill = 0.24 - this.fish.speed * 0.08;
+    const drain = this.fish.drain + 0.06;
+    this.progress += (outside ? -drain : fill) * dt;
+    this.progress = clamp(this.progress);
+  }
+
+  private fishAngle(): number {
+    if (Math.hypot(this.fishX, this.fishY) < 0.5) return this.lastAngle;
+    return Math.atan2(this.fishY, this.fishX);
+  }
+
+  private fishRadius(): number {
+    return clamp(Math.hypot(this.fishX, this.fishY) / RADIUS, 0, 1.4);
   }
 
   // -------------------------------------------------------------------- draw
 
-  private draw(overlap: boolean): void {
-    this.drawAmbient();
+  private draw(pulling: boolean): void {
+    this.drawRing(pulling);
+    this.drawWake();
+    this.drawBar();
+  }
 
-    const zoneHeight = COL_H * this.fish.zone;
-    const center = COL_Y + this.zonePos * COL_H;
-    const top = clamp(
-      center - zoneHeight / 2,
-      COL_Y + 1,
-      COL_Y + COL_H - zoneHeight - 1,
-    );
-    this.zoneG.clear();
-    this.zoneG
-      .rect(COL_X + 2, top, COL_W - 4, zoneHeight)
-      .fill(overlap ? 0x7ed957 : C.green);
-    this.zoneG
-      .rect(COL_X + 2, top, COL_W - 4, zoneHeight)
-      .stroke({ width: 1, color: C.greenDark, alignment: 0 });
-    this.zoneG
-      .rect(COL_X + 2, top, COL_W - 4, 1)
-      .fill(overlap ? C.cream : C.yellow);
-    this.zoneG
-      .rect(COL_X + 2, top + zoneHeight - 1, COL_W - 4, 1)
-      .fill({ color: C.greenDark, alpha: 0.9 });
+  private drawRing(pulling: boolean): void {
+    const g = this.ringG;
+    const cx = this.centerX;
+    const cy = this.centerY;
+    const pulse = (Math.sin(this.time * 3.2) + 1) / 2;
+    const danger = this.outside;
+    const warn = this.warnTime > 0;
 
-    const fishY = clamp(
-      COL_Y + this.fishPos * COL_H,
-      COL_Y + 11,
-      COL_Y + COL_H - 11,
-    );
-    this.fishSprite.position.set(COL_X + COL_W / 2, fishY);
-    this.fishSprite.y += Math.sin(this.time * 8) * 0.6;
+    g.clear();
+    g.circle(cx, cy, RADIUS).fill({ color: C.cyan, alpha: 0.035 });
+    g.circle(cx, cy, RADIUS + 4).stroke({
+      width: 1,
+      color: C.cream,
+      alpha: 0.08 + pulse * 0.04,
+    });
 
-    const innerHeight = PROG_H - 2;
-    const fillHeight = Math.max(0, innerHeight * this.progress);
-    this.progressG.clear();
-    if (fillHeight > 0) {
-      const fillTop = PROG_Y + 1 + (innerHeight - fillHeight);
-      this.progressG
-        .rect(PROG_X + 1, fillTop, PROG_W - 2, fillHeight)
-        .fill(C.gold);
-      this.progressG.rect(PROG_X + 1, fillTop, PROG_W - 2, 1).fill(C.cream);
-      this.progressG
-        .rect(PROG_X + 1, fillTop, 1, fillHeight)
-        .fill({ color: C.cream, alpha: 0.35 });
+    const color = danger ? C.red : C.cream;
+    const alpha = danger
+      ? 0.75 + pulse * 0.25
+      : (pulling ? 0.82 : 0.62) + pulse * 0.16;
+    const segments = 24;
+    for (let i = 0; i < segments; i += 1) {
+      const start = (i / segments) * TAU + this.time * 0.06;
+      this.arc(g, cx, cy, RADIUS, start, start + (TAU / segments) * 0.56);
+      g.stroke({ width: 1.4, color, alpha });
+    }
+
+    if (this.flash > 0) {
+      g.circle(cx, cy, RADIUS + 2).stroke({
+        width: 2,
+        color: C.cream,
+        alpha: this.flash * 2.2,
+      });
+    }
+
+    if (danger) {
+      const angle = this.fishAngle();
+      const arc = Math.min(1.1, 0.35 + (this.outsideTimer / ESCAPE_HOLD) * 0.8);
+      this.arc(g, cx, cy, RADIUS + 1, angle - arc, angle + arc);
+      g.stroke({ width: 2.5, color: C.red, alpha: 0.55 + pulse * 0.4 });
+    }
+
+    if (warn) {
+      const flash = 0.55 + pulse * 0.45;
+      this.arc(
+        g,
+        cx,
+        cy,
+        RADIUS + 1,
+        this.warnAngle - 0.55,
+        this.warnAngle + 0.55,
+      );
+      g.stroke({ width: 3, color: C.gold, alpha: flash });
+      const tipX = cx + Math.cos(this.warnAngle) * (RADIUS + 13);
+      const tipY = cy + Math.sin(this.warnAngle) * (RADIUS + 13);
+      const side = this.warnAngle + Math.PI / 2;
+      const baseX = cx + Math.cos(this.warnAngle) * (RADIUS + 6);
+      const baseY = cy + Math.sin(this.warnAngle) * (RADIUS + 6);
+      g.poly([
+        tipX,
+        tipY,
+        baseX + Math.cos(side) * 4,
+        baseY + Math.sin(side) * 4,
+        baseX - Math.cos(side) * 4,
+        baseY - Math.sin(side) * 4,
+      ]).fill({ color: C.gold, alpha: flash });
     }
   }
 
-  private drawAmbient(): void {
-    const g = this.ambientG;
+  /** Arc without the stray line Pixi draws from the previous path point. */
+  private arc(
+    g: Graphics,
+    cx: number,
+    cy: number,
+    radius: number,
+    start: number,
+    end: number,
+  ): void {
+    g.moveTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius);
+    g.arc(cx, cy, radius, start, end);
+  }
+
+  private drawWake(): void {
+    const g = this.wakeG;
     g.clear();
-    for (let i = 0; i < 4; i += 1) {
-      const speed = 0.045 + i * 0.012;
-      const rise = (this.time * speed + i * 0.27) % 1;
-      const x = COL_X + 8 + i * 9 + Math.sin(this.time * 1.4 + i * 2.1) * 1.6;
-      const y = COL_Y + COL_H - 12 - rise * (COL_H - 34);
-      const radius = i % 2 === 0 ? 1.5 : 1;
-      g.circle(x, y, radius).fill({
-        color: C.cream,
-        alpha: 0.12 + (1 - rise) * 0.12,
+    const speed = Math.hypot(this.vx, this.vy);
+    const x = this.centerX + this.fishX;
+    const y = this.centerY + this.fishY;
+    const angle = Math.atan2(this.vy, this.vx);
+
+    g.ellipse(x, y + 5, 8 + Math.min(8, speed * 0.035), 2.4).fill({
+      color: C.ink,
+      alpha: 0.16,
+    });
+    if (speed > 45) {
+      for (let i = 1; i <= 3; i += 1) {
+        const back = i * 7;
+        g.circle(
+          x - Math.cos(angle) * back + Math.sin(this.time * 9 + i) * 1.5,
+          y - Math.sin(angle) * back + Math.cos(this.time * 8 + i) * 1.2,
+          0.8 + i * 0.25,
+        ).fill({ color: C.cream, alpha: 0.18 - i * 0.03 });
+      }
+    }
+  }
+
+  private drawBar(): void {
+    const g = this.barG;
+    const width = 62;
+    const height = 6;
+    const x = this.centerX - width / 2;
+    const y = clamp(this.centerY - RADIUS - 8, 28, this.centerY - RADIUS + 2);
+    const pulse = (Math.sin(this.time * 8) + 1) / 2;
+    const danger = this.outside || this.progress < 0.22;
+
+    g.clear();
+    g.roundRect(x - 1, y - 1, width + 2, height + 2, 2).fill(C.ink);
+    g.rect(x, y, width, height).fill(
+      danger ? darken(C.red, 0.25) : darken(C.orange, 0.18),
+    );
+
+    const fill = Math.max(0, Math.round(width * this.progress));
+    if (fill > 0) {
+      g.rect(x, y, fill, height).fill(danger ? C.red : C.green);
+      g.rect(x, y, fill, 1).fill({
+        color: danger ? C.cream : C.yellow,
+        alpha: 0.7,
       });
     }
+    g.roundRect(x - 1, y - 1, width + 2, height + 2, 2).stroke({
+      width: 1,
+      color: this.warnTime > 0 ? C.gold : C.steel,
+      alpha: this.warnTime > 0 ? 0.6 + pulse * 0.4 : 0.6,
+    });
   }
 
   private finish(won: boolean): void {

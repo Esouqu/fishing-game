@@ -10,7 +10,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Марина",
     score: 3180,
     caught: 10,
-    best: "Легендарная",
+    best: "Осётр",
     date: 0,
     bot: true,
   },
@@ -19,7 +19,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Кот-Рыбак",
     score: 2760,
     caught: 10,
-    best: "Золотая",
+    best: "Тунец",
     date: 0,
     bot: true,
   },
@@ -28,7 +28,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Тихий Плёс",
     score: 2430,
     caught: 10,
-    best: "Лосось",
+    best: "Берикс",
     date: 0,
     bot: true,
   },
@@ -46,7 +46,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Соня",
     score: 1840,
     caught: 9,
-    best: "Судак",
+    best: "Угорь",
     date: 0,
     bot: true,
   },
@@ -55,7 +55,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Лещ-Мастер",
     score: 1600,
     caught: 8,
-    best: "Щука",
+    best: "Голавль",
     date: 0,
     bot: true,
   },
@@ -82,7 +82,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Старый Нил",
     score: 1010,
     caught: 7,
-    best: "Карась",
+    best: "Тиляпия",
     date: 0,
     bot: true,
   },
@@ -91,7 +91,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Щучка",
     score: 870,
     caught: 6,
-    best: "Окунь",
+    best: "Сомик",
     date: 0,
     bot: true,
   },
@@ -100,7 +100,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Баллада",
     score: 990,
     caught: 9,
-    best: "Щука",
+    best: "Голавль",
     date: 0,
     bot: true,
   },
@@ -136,7 +136,7 @@ const BOTS: readonly LeaderboardEntry[] = [
     name: "Ольга",
     score: 1680,
     caught: 7,
-    best: "Окунь",
+    best: "Сомик",
     date: 0,
     bot: true,
   },
@@ -295,5 +295,43 @@ export class SettingsStore {
   set muted(value: boolean) {
     this.data.muted = value;
     this.write();
+  }
+}
+
+export interface WorldData {
+  /** Minutes since midnight, 0..1439. */
+  minutes: number;
+  weather: string;
+}
+
+/** Time of day and current weather front, shared between sessions. */
+export class WorldStore {
+  private readonly key: string;
+
+  constructor(prefix: string) {
+    this.key = `${prefix}:world:v1`;
+  }
+
+  read(): WorldData | null {
+    try {
+      const raw = localStorage.getItem(this.key);
+      if (!raw) return null;
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      const record = parsed as Record<string, unknown>;
+      if (typeof record.minutes !== "number") return null;
+      if (typeof record.weather !== "string") return null;
+      return { minutes: record.minutes, weather: record.weather };
+    } catch {
+      return null;
+    }
+  }
+
+  write(minutes: number, weather: string): void {
+    try {
+      localStorage.setItem(this.key, JSON.stringify({ minutes, weather }));
+    } catch {
+      // ignore
+    }
   }
 }

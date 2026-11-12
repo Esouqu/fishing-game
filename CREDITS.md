@@ -10,7 +10,7 @@
 
 ## Critters of Yonder — Gone Fishing
 
-- Used for: freshwater fish icons.
+- Used for: freshwater and saltwater fish icons for the 20-species lake roster.
 - License: commercial and non-commercial games, personal projects and promotional materials; modification allowed; credit appreciated.
 - Restrictions: do not resell, repackage or redistribute the asset (even modified); do not use it to train AI image generators; do not use it in logos, trademarks or service marks; do not include it in game-making tools or code templates; do not use it in crypto, NFT, p2e or meta projects.
 - The original pack is **not** included in this repository. Run `pnpm assets` with your own copy of `assetspacks/Critters of Yonder - Gone Fishing` to generate `public/assets/fishing`.

@@ -1,5 +1,8 @@
 import type { Application } from "pixi.js";
 
+export type WeatherId = "clear" | "overcast" | "rain" | "storm" | "fog";
+export type TimePhase = "dawn" | "day" | "dusk" | "night";
+
 export interface CatchRecord {
   fishId: string;
   name: string;
