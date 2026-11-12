@@ -57,90 +57,131 @@ const zigzag = (count: number, dur: number, amplitude = 0.28): Move => ({
 /**
  * Species scripts, keyed by `FishSpecies.behavior`. They are deliberately
  * short and loop forever: each fish keeps re-reading the player's position.
+ *
+ * Every cycle gives the player at least one clear recovery beat: dashing
+ * without a pause is what used to make some fish impossible.
  */
 const SCRIPTS: Record<string, () => Move[]> = {
-  // Широкая дуга, затем короткий прямой рывок.
-  bluegill: () => [arc("toward", 1.15), dash("away", 0.3)],
-  // Два противоположных рывка, затем долгое затишье.
-  catfish: () => [
-    dash("away", 0.45, true),
-    pause(0.3),
-    dash("toward", 0.45, true),
-    pause(1.8),
+  // Широкая дуга, короткий прямой рывок и пауза.
+  bluegill: () => [arc("away", 1.1), dash("away", 0.3), pause(0.55)],
+  // Два быстрых противоположных рывка, затем отдых.
+  capelin: () => [
+    dash("flip", 0.26),
+    pause(0.35),
+    dash("same", 0.26),
+    pause(0.8),
   ],
-  // Два последовательных рывка в одном направлении.
-  capelin: () => [dash("flip", 0.26), pause(0.12), dash("same", 0.26)],
-  // Рывок, затем движения по диагонали.
-  rainbowtrout: () => [dash("flip", 0.32, true), wave(0.9, 0.26, 1.2)],
-  // Широкие боковые движения, затем рывок за пределы круга.
-  largemouthbass: () => [
-    arc("toward", 1),
-    arc("away", 1),
-    dash("away", 0.34, true),
-  ],
-  // Плавные широкие дуги, рывки, долгое затишье.
-  carp: () => [
-    arc("away", 1.15),
-    arc("toward", 1.15),
-    dash("away", 0.3),
-    dash("toward", 0.3),
-    pause(1.5),
-  ],
-  // Уплывает от рыбака, затем поворачивает с малыми амплитудами.
-  cod: () => [dash("away", 0.5, true), wave(1.1, 0.2, 1), wave(1.1, 0.2, 1)],
-  // Длинный прямой рывок, затем короткий вбок.
-  sturgeon: () => [
-    dash("away", 0.95, true),
-    pause(0.15),
-    dash("toward", 0.26, true),
-  ],
-  // Три коротких рывка в разные стороны, затем длительное затишье.
+  // Три коротких рывка в разные стороны и длинное затишье.
   sardine: () => [
     dash("flip", 0.24),
-    pause(0.1),
+    pause(0.18),
     dash("flip", 0.24),
-    pause(0.1),
+    pause(0.18),
     dash("flip", 0.24),
-    pause(1.4),
+    pause(1),
   ],
-  // Длинные и прямые выпады в противоположную сторону.
-  tuna: () => [
-    dash("away", 0.62, true),
-    pause(0.25),
-    dash("away", 0.62, true),
-    pause(0.6),
-  ],
-  // Несколько рывков по диагонали в противоположных направлениях.
-  redsnapper: () => [dash("flip", 0.28), dash("flip", 0.28), pause(0.35)],
-  // Дугообразные рывки.
-  tilapia: () => [arc("away", 0.95), arc("toward", 0.95)],
-  // Долгое затишье, затем короткий прямой рывок.
-  walleye: () => [pause(2), dash("flip", 0.28, true)],
-  // Короткий рывок вбок, затем движение по кривой.
-  angelfish: () => [dash("flip", 0.22), arc("flip", 0.9)],
-  // Рывки по траектории в форме буквы S.
-  eel: () => [wave(1.5, 0.4, 2), dash("flip", 0.3)],
-  // Медленно, с переменными рывками за пределы круга.
-  lionfish: () => [
-    pause(0.9),
-    dash("away", 0.48, true),
+  // Рывок вбок, пауза, прямой рывок от рыбака.
+  flounder: () => [
+    dash("flip", 0.3),
+    pause(0.4),
+    dash("away", 0.35),
     pause(0.7),
-    dash("toward", 0.48, true),
+  ],
+  // Плавные широкие дуги и короткий рывок.
+  tilapia: () => [
+    arc("away", 1),
+    arc("toward", 0.8),
+    pause(0.45),
+    dash("away", 0.3),
+  ],
+  // Широкие дуги, два рывка и долгое затишье.
+  carp: () => [
+    arc("away", 1),
+    arc("toward", 0.8),
+    pause(0.4),
+    dash("away", 0.32),
+    dash("toward", 0.3),
+    pause(0.9),
+  ],
+  // Короткий рывок вбок, движение по кривой и пауза.
+  angelfish: () => [
+    dash("flip", 0.22),
+    arc("flip", 0.9),
+    pause(0.5),
+    dash("away", 0.3),
+  ],
+  // Широкие боковые движения, затем сильный рывок.
+  largemouthbass: () => [
+    arc("toward", 0.9),
+    arc("away", 0.9),
+    dash("away", 0.5, true),
+    pause(0.65),
+  ],
+  // Рывок, кривая и сильный прямой рывок.
+  chub: () => [
+    dash("flip", 0.24),
+    arc("flip", 0.6),
+    dash("away", 0.52, true),
     pause(0.6),
   ],
-  // Медленно, поворачивает плавно, чередуя стороны.
-  grouper: () => [wave(2.4, 0.3, 1.5)],
-  // Два прямых рывка, второй под углом к первому.
-  flounder: () => [dash("flip", 0.3), pause(0.2), dash("away", 0.4)],
-  // Диагональные рывки ближе к границе круга.
+  // Два диагональных рывка и восстановление.
   smallmouthbass: () => [
-    dash("away", 0.34),
-    pause(0.15),
-    dash("flip", 0.34),
-    pause(0.15),
+    dash("away", 0.32),
+    pause(0.3),
+    dash("flip", 0.32),
+    pause(0.7),
   ],
-  // Короткий рывок, небольшая дуга, длинный изогнутый рывок.
-  chub: () => [dash("flip", 0.24), arc("flip", 0.6), arc("away", 1, true)],
+  // Сильный рывок вбок, волна и пауза.
+  rainbowtrout: () => [dash("flip", 0.4, true), wave(0.8, 0.22, 1), pause(0.6)],
+  // Сильный уход от рыбака и две волны.
+  cod: () => [
+    dash("away", 0.8, true),
+    wave(0.9, 0.2, 1),
+    wave(0.9, 0.2, 1),
+    pause(0.6),
+  ],
+  // Долгое затишье, затем короткий сильный рывок.
+  walleye: () => [pause(1.2), dash("flip", 0.3, true), pause(0.7)],
+  // Два тяжёлых рывка в противоположные стороны и долгий отдых.
+  catfish: () => [
+    dash("away", 0.62, true),
+    pause(0.5),
+    dash("toward", 0.58, true),
+    pause(1.1),
+  ],
+  // Рывки по траектории в форме буквы S, затем короткий рывок.
+  eel: () => [wave(1.2, 0.38, 2), pause(0.4), dash("flip", 0.3), pause(0.5)],
+  // Медленная широкая волна, затем рывок за пределы круга.
+  grouper: () => [wave(1.6, 0.34, 1.3), pause(0.45), dash("away", 0.35)],
+  // Два резких рывка вбок и пауза.
+  redsnapper: () => [
+    dash("flip", 0.28),
+    pause(0.3),
+    dash("flip", 0.28),
+    pause(0.6),
+  ],
+  // Затишье, тяжёлый рывок, снова затишье.
+  lionfish: () => [
+    pause(0.5),
+    dash("away", 0.62, true),
+    pause(0.55),
+    dash("toward", 0.58, true),
+    pause(0.55),
+  ],
+  // Два длинных прямых выпада с паузами.
+  tuna: () => [
+    dash("away", 1.06, true),
+    pause(0.5),
+    dash("toward", 0.96, true),
+    pause(0.8),
+  ],
+  // Один длинный мощный рывок, отдых и короткий ответный.
+  sturgeon: () => [
+    dash("away", 0.82, true),
+    pause(0.6),
+    dash("toward", 0.42, true),
+    pause(0.5),
+  ],
 };
 
 const FALLBACK: Move[] = [

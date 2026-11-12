@@ -1,7 +1,7 @@
 import { Container, Graphics, Sprite, type Texture } from "pixi.js";
 import { C, START_PROGRESS, TIMING, VIEW } from "../config";
 import type { FishSpecies } from "../config";
-import { chance, clamp, easeInOutQuad, lerp } from "../utils";
+import { clamp, easeInOutQuad, lerp } from "../utils";
 import { buildScript, type Move } from "./behaviors";
 
 export interface MinigameResult {
@@ -12,7 +12,7 @@ export interface MinigameResult {
 export interface MinigameOptions {
   /** Where the bobber landed; the circle is built around this point. */
   anchor: { x: number; y: number };
-  /** Water roughness from the cast distance: 0.82 calm .. 1.2 rough. */
+  /** Water roughness from the cast distance: 0.88 calm .. 1.05 rough. */
   wildness?: number;
   /** Called when a strong dash is telegraphed. */
   onWarn?: () => void;
@@ -25,8 +25,8 @@ const SILHOUETTE_WARN = 0x2a5a78;
 const TAU = Math.PI * 2;
 const MAX_SLIPS = 2;
 const ESCAPE_HOLD = 1.35;
-const PULL_ACCEL = 300;
-const MAX_SPEED = 230;
+const PULL_ACCEL = 430;
+const MAX_SPEED = 235;
 
 function darken(color: number, amount: number): number {
   const r = Math.round(((color >> 16) & 0xff) * (1 - amount));
@@ -46,9 +46,9 @@ function angleDelta(from: number, to: number): number {
  *
  * The fish is free inside the ring and its species script keeps trying to bolt
  * outside. The player holds the mouse button and pulls the fish toward the
- * cursor (arrow keys work too) while a small bar above the ring fills. Leaving
- * the ring costs one perfect attempt and drains the bar; staying outside for
- * too long lets the fish escape for good.
+ * cursor (arrow keys work too) while a small bar above the ring fills; only a
+ * real reel rebuilds progress. Leaving the ring costs one perfect attempt and
+ * drains the bar; staying outside for too long lets the fish escape for good.
  */
 export class Minigame extends Container {
   private readonly fish: FishSpecies;
@@ -87,8 +87,6 @@ export class Minigame extends Container {
   private pointerY: number | null = null;
   private directionX = 0;
   private directionY = 0;
-  private biasX = 0;
-  private biasY = 0;
 
   private running = true;
   private perfect = true;
@@ -177,10 +175,6 @@ export class Minigame extends Container {
     const step = Math.min(dt, 0.05);
 
     const pull = this.pullVector();
-    if (pull) {
-      this.biasX += (pull.x - this.biasX) * Math.min(1, step * 3.2);
-      this.biasY += (pull.y - this.biasY) * Math.min(1, step * 3.2);
-    }
 
     if (this.warnTime > 0) {
       this.warnTime = Math.max(0, this.warnTime - step);
@@ -274,32 +268,15 @@ export class Minigame extends Container {
 
   private resolveAngle(move: Move): number {
     const here = this.fishAngle();
-    const bias = Math.hypot(this.biasX, this.biasY);
-    const feint =
-      bias > 0.3 && chance(0.4 + Math.min(0.35, bias * 0.3))
-        ? Math.atan2(-this.biasY, -this.biasX)
-        : null;
+    const jitter = (spread: number) => (Math.random() - 0.5) * spread;
     const dir = move.dir ?? "flip";
 
-    // Without a green zone the pull direction replaces it: "away" means
-    // fighting the rod, "toward" means giving in for a beat.
-    if (dir === "away") {
-      if (bias > 0.15) {
-        return (
-          Math.atan2(-this.biasY, -this.biasX) + (Math.random() - 0.5) * 0.7
-        );
-      }
-      return here + (Math.random() - 0.5) * 0.7;
-    }
-    if (dir === "toward") {
-      if (bias > 0.15) {
-        return Math.atan2(this.biasY, this.biasX) + (Math.random() - 0.5) * 0.6;
-      }
-      return here + Math.PI + (Math.random() - 0.5) * 0.6;
-    }
-    if (dir === "same") return this.lastAngle + (Math.random() - 0.5) * 0.4;
-    if (feint !== null) return feint + (Math.random() - 0.5) * 0.5;
-    return this.lastAngle + Math.PI + (Math.random() - 0.5) * 0.9;
+    // Escape directions are relative to the ring, never to the cursor: the
+    // player's pull stays a counter-force instead of choosing the escape side.
+    if (dir === "away") return here + jitter(0.55);
+    if (dir === "toward") return here + Math.PI + jitter(0.5);
+    if (dir === "same") return this.lastAngle + jitter(0.35);
+    return this.lastAngle + Math.PI + jitter(0.75);
   }
 
   /** A sudden burst, used by dash moves and after a telegraph ends. */
@@ -317,8 +294,9 @@ export class Minigame extends Container {
     const kind = move.kind;
 
     if (kind === "dash") {
-      this.targetX = Math.cos(this.escapeAngle) * RADIUS * 1.28;
-      this.targetY = Math.sin(this.escapeAngle) * RADIUS * 1.28;
+      const radius = move.dir === "toward" ? 0.3 : move.strong ? 1.2 : 1.12;
+      this.targetX = Math.cos(this.escapeAngle) * RADIUS * radius;
+      this.targetY = Math.sin(this.escapeAngle) * RADIUS * radius;
       return;
     }
 
@@ -327,7 +305,7 @@ export class Minigame extends Container {
       const angle =
         this.moveStartAngle +
         angleDelta(this.moveStartAngle, this.escapeAngle) * eased;
-      const radius = lerp(this.moveStartRadius, 0.95, eased) * RADIUS;
+      const radius = lerp(this.moveStartRadius, 0.9, eased) * RADIUS;
       this.targetX = Math.cos(angle) * radius;
       this.targetY = Math.sin(angle) * radius;
       return;
@@ -337,7 +315,7 @@ export class Minigame extends Container {
       const cycles = move.cycles ?? 1;
       const amp = (move.amplitude ?? 0.3) * 2.2;
       const angle = this.moveStartAngle + Math.sin(t * TAU * cycles) * amp;
-      const radius = lerp(this.moveStartRadius, 1.03, t) * RADIUS;
+      const radius = lerp(this.moveStartRadius, 0.94, t) * RADIUS;
       this.targetX = Math.cos(angle) * radius;
       this.targetY = Math.sin(angle) * radius;
       return;
@@ -348,7 +326,7 @@ export class Minigame extends Container {
       const amp = (move.amplitude ?? 0.28) * 3;
       const slot = Math.min(count - 1, Math.floor(t * count));
       const angle = this.moveStartAngle + (slot % 2 === 0 ? amp : -amp);
-      const radius = RADIUS * 1.06;
+      const radius = RADIUS * 0.97;
       this.targetX = Math.cos(angle) * radius;
       this.targetY = Math.sin(angle) * radius;
       return;
@@ -365,17 +343,17 @@ export class Minigame extends Container {
     let speed = 40;
     let steer = 4;
     if (kind === "dash") {
-      speed = 105 + this.fish.speed * 65;
-      steer = 11;
+      speed = 100 + this.fish.speed * 60;
+      steer = 6.5;
     } else if (kind === "arc") {
-      speed = 44 + this.fish.speed * 34;
-      steer = 3.4;
+      speed = 42 + this.fish.speed * 30;
+      steer = 3.6;
     } else if (kind === "wave") {
-      speed = 40 + this.fish.speed * 30;
+      speed = 38 + this.fish.speed * 28;
       steer = 4;
     } else if (kind === "zigzag") {
-      speed = 66 + this.fish.speed * 42;
-      steer = 8;
+      speed = 64 + this.fish.speed * 40;
+      steer = 6.5;
     } else if (kind === "pause") {
       speed = 12;
       steer = 2;
@@ -419,7 +397,7 @@ export class Minigame extends Container {
 
   private updateZone(dt: number): void {
     const distance = Math.hypot(this.fishX, this.fishY);
-    const outside = distance > RADIUS - 2;
+    const outside = distance > RADIUS;
 
     if (outside && !this.outside && this.slipCooldown <= 0) {
       // Two slips are still a perfect catch; the third breaks it.
@@ -431,7 +409,7 @@ export class Minigame extends Container {
     this.outside = outside;
     this.slipCooldown = Math.max(0, this.slipCooldown - dt);
 
-    if (distance > RADIUS + 3) {
+    if (distance > RADIUS + 4) {
       this.outsideTimer += dt;
       if (this.outsideTimer >= ESCAPE_HOLD) {
         this.finish(false);
@@ -441,9 +419,12 @@ export class Minigame extends Container {
       this.outsideTimer = Math.max(0, this.outsideTimer - dt * 2);
     }
 
-    const fill = 0.24 - this.fish.speed * 0.08;
-    const drain = this.fish.drain + 0.06;
-    this.progress += (outside ? -drain : fill) * dt;
+    const drain = this.fish.drain;
+    const fill = 0.2 - this.fish.speed * 0.05;
+
+    // Only reeling builds progress; keeping the fish inside is not enough.
+    if (outside) this.progress -= drain * dt;
+    else if (this.hold) this.progress += fill * dt;
     this.progress = clamp(this.progress);
   }
 
