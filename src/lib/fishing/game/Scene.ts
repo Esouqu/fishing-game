@@ -98,6 +98,13 @@ export class LakeScene extends Container {
 
   private nibbleTime = 0;
 
+  private fightBobberX: number = SCENE.anglerX;
+  private fightBobberY: number = SCENE.bobberMinY;
+  private fightTargetX: number = SCENE.anglerX;
+  private fightTargetY: number = SCENE.bobberMinY;
+  private fightDirX = 1;
+  private fightDirY = 0;
+
   /** Called when a cast bobber hits the water. */
   onCastLanded?: () => void;
 
@@ -399,8 +406,27 @@ export class LakeScene extends Container {
   setFight(): void {
     this.phase = "fight";
     this.biteMark.visible = false;
+    this.fightBobberX = this.bobberBaseX;
+    this.fightBobberY = this.bobberBaseY;
+    this.fightTargetX = this.bobberBaseX;
+    this.fightTargetY = this.bobberBaseY;
+    this.fightDirX = 0;
+    this.fightDirY = 1;
     this.setAngler([11], 8);
     this.spawnSplash(this.bobberBaseX, this.bobberBaseY, 14, 1);
+  }
+
+  /** During the fight the float trails the fish under the surface. */
+  setFightFish(x: number, y: number, vx: number, vy: number): void {
+    if (this.phase !== "fight") return;
+    const speed = Math.hypot(vx, vy);
+    if (speed > 6) {
+      this.fightDirX = vx / speed;
+      this.fightDirY = vy / speed;
+    }
+    const trail = 8;
+    this.fightTargetX = x - this.fightDirX * trail;
+    this.fightTargetY = y - this.fightDirY * trail;
   }
 
   catchFish(texture: Texture): void {
@@ -635,13 +661,16 @@ export class LakeScene extends Container {
       this.bobberBody.rotation =
         this.phase === "bite" ? Math.sin(this.time * 30) * 0.2 : 0;
     } else if (this.phase === "fight") {
+      const follow = Math.min(1, dt * 14);
+      this.fightBobberX = lerp(this.fightBobberX, this.fightTargetX, follow);
+      this.fightBobberY = lerp(this.fightBobberY, this.fightTargetY, follow);
       this.bobber.position.set(
-        this.bobberBaseX + randRange(-3, 3),
-        this.bobberBaseY + randRange(-2, 4),
+        this.fightBobberX,
+        this.fightBobberY + Math.sin(this.time * 8) * 1.2,
       );
-      this.bobberBody.rotation = randRange(-0.3, 0.3);
-      if (Math.random() < dt * 3) {
-        this.spawnSplash(this.bobberBaseX, this.bobberBaseY, 2, 0.5);
+      this.bobberBody.rotation = Math.sin(this.time * 6) * 0.16;
+      if (Math.random() < dt * 2) {
+        this.spawnSplash(this.fightBobberX, this.fightBobberY, 1, 0.35);
       }
     }
 

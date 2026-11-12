@@ -233,6 +233,16 @@ export class Minigame extends Container {
     return this.steeringNow;
   }
 
+  /** Screen position of the fish silhouette, used by the trailing float. */
+  get fishPoint(): { x: number; y: number } {
+    return { x: this.centerX + this.fishX, y: this.centerY + this.fishY };
+  }
+
+  /** Current fish velocity, used to trail the float behind the fish. */
+  get fishVelocity(): { x: number; y: number } {
+    return { x: this.vx, y: this.vy };
+  }
+
   /** Anchor of the dashed ring, mostly for debugging and screenshots. */
   get ringCenter(): { x: number; y: number } {
     return { x: this.centerX, y: this.centerY };

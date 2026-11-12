@@ -675,6 +675,12 @@ export class GameScreen extends Screen {
     this.minigame = minigame;
     minigame.setHold(this.pressed);
     minigame.setPointer(this.pointerX, this.pointerY);
+    this.scene.setFightFish(
+      minigame.fishPoint.x,
+      minigame.fishPoint.y,
+      minigame.fishVelocity.x,
+      minigame.fishVelocity.y,
+    );
     this.updatePerfectPips();
 
     // The first fight pauses for a short illustrated tutorial.
@@ -1119,6 +1125,11 @@ export class GameScreen extends Screen {
       this.minigame?.setDirection(direction.x, direction.y);
       this.minigame?.setHold(this.pressed);
       this.minigame?.update(dt);
+      if (this.minigame) {
+        const point = this.minigame.fishPoint;
+        const velocity = this.minigame.fishVelocity;
+        this.scene.setFightFish(point.x, point.y, velocity.x, velocity.y);
+      }
       if (this.minigame?.isSteering) {
         this.reelTimer -= dt;
         if (this.reelTimer <= 0) {
