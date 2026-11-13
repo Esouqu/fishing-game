@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "assets": "node scripts/sync-assets.mjs"
+    "check:assets": "node scripts/check-pages-assets.mjs",
+    "assets": "node scripts/sync-assets.mjs",
+    "sim": "node scripts/run-fight-sim.mjs"
   },
   "dependencies": {
     "@fontsource-variable/handjet": "^5.3.1",

@@ -1,4 +1,3 @@
-import { C } from "./config";
 import type { WorldStore } from "./storage";
 import type { TimePhase, WeatherId } from "./types";
 import { randRange } from "./utils";
@@ -134,14 +133,48 @@ export interface WorldPalette {
   deep: number;
 }
 
+/**
+ * Winter dressing shared by the lake scene and the atmosphere. The time of day
+ * still works through the palette tint/overlay; these are the base cold colours
+ * of the snow, ice and water.
+ */
+export const WINTER = {
+  snow: 0xe8f2f8,
+  snowLight: 0xf7fbfd,
+  snowShade: 0xc4d9e6,
+  snowBlue: 0x9fbed3,
+  ice: 0xbfe8f2,
+  iceDeep: 0x86c8d8,
+  waterNear: 0x3d9aa6,
+  waterMid: 0x267d99,
+  waterDeep: 0x18587e,
+  waterFar: 0x0a3152,
+  farShore: 0x213a40,
+  farShoreSnow: 0xdcecf4,
+  treeDark: 0x173138,
+  frost: 0xd9eaf3,
+  star: 0xd9e7ff,
+  moon: 0xf3f8ff,
+  lantern: 0xffc46b,
+} as const;
+
+/** Depth stops from the near shore (0) to the far bank (1). */
+export const WINTER_WATER_STOPS: ReadonlyArray<{ at: number; color: number }> =
+  [
+    { at: 0, color: WINTER.waterNear },
+    { at: 0.3, color: WINTER.waterMid },
+    { at: 0.58, color: WINTER.waterDeep },
+    { at: 1, color: WINTER.waterFar },
+  ];
+
 const DAY: WorldPalette = {
-  tint: 0xffffff,
+  tint: 0xf3f9ff,
   overlay: 0xffffff,
   overlayAlpha: 0,
   stars: 0,
   lantern: 0,
-  water: C.ocean,
-  deep: C.deep,
+  water: WINTER.waterDeep,
+  deep: WINTER.waterFar,
 };
 
 const NIGHT: WorldPalette = {
@@ -150,28 +183,28 @@ const NIGHT: WorldPalette = {
   overlayAlpha: 0.34,
   stars: 1,
   lantern: 0.9,
-  water: 0x1a3f70,
-  deep: 0x102a55,
+  water: 0x143a5c,
+  deep: 0x0c2745,
 };
 
 const DAWN: WorldPalette = {
-  tint: 0xf0d2c4,
+  tint: 0xe6e6ea,
   overlay: 0xff8a4a,
-  overlayAlpha: 0.14,
+  overlayAlpha: 0.12,
   stars: 0.14,
   lantern: 0.34,
-  water: 0x2a6494,
-  deep: 0x1d4a7c,
+  water: 0x21567a,
+  deep: 0x174363,
 };
 
 const DUSK: WorldPalette = {
-  tint: 0xf0c2ad,
+  tint: 0xe0d6da,
   overlay: 0xff5f3a,
-  overlayAlpha: 0.17,
+  overlayAlpha: 0.14,
   stars: 0.36,
   lantern: 0.5,
-  water: 0x2c5d8c,
-  deep: 0x1d4370,
+  water: 0x1d4a6c,
+  deep: 0x153a58,
 };
 
 const KEYFRAMES: Array<{ hour: number; palette: WorldPalette }> = [
@@ -185,7 +218,7 @@ const KEYFRAMES: Array<{ hour: number; palette: WorldPalette }> = [
   { hour: 24, palette: NIGHT },
 ];
 
-function lerpColor(a: number, b: number, t: number): number {
+export function mixColor(a: number, b: number, t: number): number {
   const ar = (a >> 16) & 0xff;
   const ag = (a >> 8) & 0xff;
   const ab = a & 0xff;
@@ -198,19 +231,34 @@ function lerpColor(a: number, b: number, t: number): number {
   return (r << 16) | (g << 8) | bl;
 }
 
+/** Smooth cold gradient colour at depth `t` (0 shore .. 1 far bank). */
+export function winterWaterAt(t: number): number {
+  const value = t < 0 ? 0 : t > 1 ? 1 : t;
+  for (let i = 0; i < WINTER_WATER_STOPS.length - 1; i += 1) {
+    const from = WINTER_WATER_STOPS[i];
+    const to = WINTER_WATER_STOPS[i + 1];
+    if (value >= from.at && value <= to.at) {
+      const span = to.at - from.at;
+      const local = span <= 0 ? 0 : (value - from.at) / span;
+      return mixColor(from.color, to.color, local);
+    }
+  }
+  return WINTER_WATER_STOPS[WINTER_WATER_STOPS.length - 1].color;
+}
+
 function lerpPalette(
   a: WorldPalette,
   b: WorldPalette,
   t: number,
 ): WorldPalette {
   return {
-    tint: lerpColor(a.tint, b.tint, t),
-    overlay: lerpColor(a.overlay, b.overlay, t),
+    tint: mixColor(a.tint, b.tint, t),
+    overlay: mixColor(a.overlay, b.overlay, t),
     overlayAlpha: a.overlayAlpha + (b.overlayAlpha - a.overlayAlpha) * t,
     stars: a.stars + (b.stars - a.stars) * t,
     lantern: a.lantern + (b.lantern - a.lantern) * t,
-    water: lerpColor(a.water, b.water, t),
-    deep: lerpColor(a.deep, b.deep, t),
+    water: mixColor(a.water, b.water, t),
+    deep: mixColor(a.deep, b.deep, t),
   };
 }
 

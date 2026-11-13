@@ -1,10 +1,19 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
-import { FISH, FONT_FAMILY } from "./config";
+import { FISH } from "./config";
+import { FONT_OPTIONS, currentFont } from "./fonts";
+import { TEXT } from "./texts";
+import type { HelpPageId } from "./texts";
+import { loadCursorTextures, type CursorTextures } from "./cursors";
 import treeAUrl from "../../assets/fishing/tree-a.png";
 import treeBUrl from "../../assets/fishing/tree-b.png";
 import bushAUrl from "../../assets/fishing/bush-a.png";
 import rockAUrl from "../../assets/fishing/rock-a.png";
 import rockBUrl from "../../assets/fishing/rock-b.png";
+import bucketUrl from "../../assets/fishing/bucket.png";
+import helpCastUrl from "../../assets/help/cast.png";
+import helpFightUrl from "../../assets/help/fight.png";
+import helpCounterUrl from "../../assets/help/counter.png";
+import helpLandUrl from "../../assets/help/land.png";
 
 export interface AssetBag {
   base: string;
@@ -14,54 +23,33 @@ export interface AssetBag {
   trees: Texture[];
   bushes: Texture[];
   rocks: Texture[];
+  bucket: Texture;
   fish: Record<string, Texture>;
+  help: Record<HelpPageId, Texture>;
+  cursors: CursorTextures;
 }
 
-const FONT_FILES: Array<{ file: string; range: string }> = [
-  {
-    file: "latin",
-    range:
-      "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
-  },
-  {
-    file: "latin-ext",
-    range:
-      "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF",
-  },
-  {
-    file: "cyrillic",
-    range: "U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116",
-  },
-  {
-    file: "cyrillic-ext",
-    range: "U+0460-052F,U+1C80-1C8A,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F",
-  },
-];
-
-async function loadFont(base: string): Promise<boolean> {
-  try {
-    await Promise.all(
-      FONT_FILES.map(async ({ file, range }) => {
-        const face = new FontFace(
-          FONT_FAMILY,
-          `url("${base}/fonts/handjet-${file}.woff2") format("woff2")`,
+async function loadFonts(base: string): Promise<boolean> {
+  await Promise.allSettled(
+    FONT_OPTIONS.flatMap((option) =>
+      option.faces.map(async (face) => {
+        const font = new FontFace(
+          option.family,
+          `url("${base}/fonts/${face.file}") format("${face.format}")`,
           {
-            weight: "100 900",
+            weight: face.weight ?? "400",
             style: "normal",
             display: "block",
-            unicodeRange: range,
+            unicodeRange: face.unicodeRange,
           },
         );
-        await face.load();
-        document.fonts.add(face);
+        await font.load();
+        document.fonts.add(font);
       }),
-    );
-    await document.fonts.ready;
-    return document.fonts.check(`16px "${FONT_FAMILY}"`);
-  } catch (error) {
-    console.warn("[fishing] font failed to load, using fallback", error);
-    return false;
-  }
+    ),
+  );
+  await document.fonts.ready;
+  return document.fonts.check(`16px "${currentFont().family}"`);
 }
 
 function frame(
@@ -131,8 +119,8 @@ export async function loadGameAssets(
   base: string,
   onProgress: (progress: number, label: string) => void,
 ): Promise<AssetBag> {
-  onProgress(0.02, "ШРИФТ");
-  const fontLoaded = await loadFont(base);
+  onProgress(0.02, TEXT.boot.font);
+  const fontLoaded = await loadFonts(base);
 
   const fishList = FISH.map((fish) => ({
     id: fish.id,
@@ -175,6 +163,15 @@ export async function loadGameAssets(
       url: rockBUrl,
       fallback: () => fallbackTexture(0x686f99, 16, "rock"),
     },
+    {
+      key: "bucket",
+      url: bucketUrl,
+      fallback: () => fallbackTexture(0x4c6885, 16, "rock"),
+    },
+    { key: "help:cast", url: helpCastUrl, fallback: () => Texture.WHITE },
+    { key: "help:fight", url: helpFightUrl, fallback: () => Texture.WHITE },
+    { key: "help:counter", url: helpCounterUrl, fallback: () => Texture.WHITE },
+    { key: "help:land", url: helpLandUrl, fallback: () => Texture.WHITE },
     ...fishList.map((fish) => ({
       key: `fish:${fish.id}`,
       url: fish.url,
@@ -193,7 +190,7 @@ export async function loadGameAssets(
       loaded.set(entry.key, entry.fallback());
     }
     done += 1;
-    onProgress(0.05 + (done / textureEntries.length) * 0.95, "ЗАГРУЗКА");
+    onProgress(0.05 + (done / textureEntries.length) * 0.95, TEXT.boot.loading);
   }
 
   const anglerSheet = loaded.get("angler") ?? Texture.WHITE;
@@ -213,6 +210,9 @@ export async function loadGameAssets(
     fish[fishItem.id] = loaded.get(`fish:${fishItem.id}`) ?? Texture.WHITE;
   }
 
+  const cursors = await loadCursorTextures();
+  onProgress(1, TEXT.boot.loading);
+
   return {
     base,
     fontLoaded,
@@ -226,6 +226,14 @@ export async function loadGameAssets(
       loaded.get("rock-a") ?? Texture.WHITE,
       loaded.get("rock-b") ?? Texture.WHITE,
     ],
+    bucket: loaded.get("bucket") ?? Texture.WHITE,
     fish,
+    help: {
+      cast: loaded.get("help:cast") ?? Texture.WHITE,
+      fight: loaded.get("help:fight") ?? Texture.WHITE,
+      counter: loaded.get("help:counter") ?? Texture.WHITE,
+      land: loaded.get("help:land") ?? Texture.WHITE,
+    },
+    cursors,
   };
 }

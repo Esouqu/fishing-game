@@ -1,877 +1,375 @@
-import { Container, Graphics, Sprite, type Texture } from "pixi.js";
-import {
-  C,
-  FIGHT,
-  RARE_SCORE,
-  SCENE,
-  TEMPERAMENTS,
-  TIMING,
-  VIEW,
-  pickTemperament,
-  type Temperament,
-} from "../config";
+import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
+import { C, FIGHT } from "../config";
+import { WINTER } from "../world";
 import type { FishSpecies } from "../config";
-import { clamp, easeInOutQuad, lerp } from "../utils";
-import { buildScript, type Move } from "./behaviors";
+import { clamp, easeOutCubic } from "../utils";
+import { makeText } from "../ui/theme";
+import { TEXT } from "../texts";
+import {
+  FIGHT_RADIUS,
+  FightModel,
+  type MinigameOptions,
+  type MinigameResult,
+} from "./fightModel";
 
-export interface MinigameResult {
-  won: boolean;
-  perfect: boolean;
-}
+export type { MinigameOptions, MinigameResult } from "./fightModel";
 
-export interface MinigameOptions {
-  /** Where the bobber landed; the circle is built around this point. */
-  anchor: { x: number; y: number };
-  /** Water roughness from the cast distance: 0.88 calm .. 1.05 rough. */
-  wildness?: number;
-  /** Called when a strong dash is telegraphed. */
-  onWarn?: () => void;
-  /** Called when the player lands a counter-pull. */
-  onCounter?: () => void;
-  /** Called when the fish becomes landable. */
-  onReady?: () => void;
-  /** Called when an early final pull makes the fish resist. */
-  onResist?: () => void;
-  /** Called when the grip runs out. */
-  onGripOut?: () => void;
-}
-
-interface Bubble {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  size: number;
-}
-
-const RADIUS = 34;
 const FISH_SCALE = 1;
-const SILHOUETTE = 0x0b2233;
-const SILHOUETTE_WARN = 0x2a5a78;
+const SILHOUETTE = 0x123e55;
+const SILHOUETTE_WARN = 0x2a6480;
 const TAU = Math.PI * 2;
-const MAX_SLIPS = 2;
-const ESCAPE_HOLD = 1.35;
-const PULL_ACCEL = 430;
-const MAX_SPEED = 235;
-
-function angleDelta(from: number, to: number): number {
-  let delta = (to - from + Math.PI) % TAU;
-  if (delta < 0) delta += TAU;
-  return delta - Math.PI;
-}
+const WAVE_SEGMENTS = 72;
+const INTRO_DURATION = 0.42;
 
 /**
- * Ring fight at the bobber.
- *
- * Holding the pull button tires the fish and spends grip; releasing the button
- * rests the fish and restores grip. Aim with the cursor or a direction key.
- * Bubbles warn about a burst; resting first and then pulling against it lands a
- * counter-pull. When the fish is tired and inside the circle, a separate final
- * pull lands it.
+ * Ring fight at the bobber: a thin view over {@link FightModel}. The model
+ * owns every rule; this class only turns its state into water, foam and bars.
  */
 export class Minigame extends Container {
-  private readonly fish: FishSpecies;
-  private readonly wildness: number;
+  private readonly model: FightModel;
   private readonly fishSprite: Sprite;
   private readonly ringG = new Graphics();
-  private readonly wakeG = new Graphics();
-  private readonly bubbleG = new Graphics();
+  private readonly counterG = new Graphics();
+  private readonly directionG = new Graphics();
+  private readonly cueG = new Graphics();
   private readonly barG = new Graphics();
   private readonly gripG = new Graphics();
-
-  private readonly centerX: number;
-  private readonly centerY: number;
-
-  private fishX = 0;
-  private fishY = 0;
-  private vx = 0;
-  private vy = 0;
-  private targetX = 0;
-  private targetY = 0;
-
-  private script: Move[] = [];
-  private moveIndex = 0;
-  private current: Move | null = null;
-  private moveTime = 0;
-  private moveStartAngle = 0;
-  private moveStartRadius = 0;
-  private escapeAngle = 0;
-  private lastAngle = 0;
-  private warnTime = 0;
-  private warnAngle = 0;
-  private warnRest = 0;
-  private flash = 0;
-
-  private endurance = 1;
-  private grip = 1;
-  private gripLock = 0;
-  private advantage = 0;
-  private counterWindow = 0;
-  private counterAngle = 0;
-  private counterArmed = false;
-  private counterUsed = false;
-  private counterFlash = 0;
-  private preBurstAngle: number | null = null;
-  private lastSteerAngle: number | null = null;
-  private ready = false;
-  private lastReadyChime = -Infinity;
-
-  private readonly temperament: Temperament;
-  private readonly tempo: number;
-  private readonly runPower: number;
-  private readonly tirePower: number;
-  private readonly recoveryPower: number;
-  private readonly feintChance: number;
-  private readonly escapeHold: number;
-  private readonly recoveryRate: number;
-
-  private sameAimTime = 0;
-  private lastAimAngle: number | null = null;
-  private feintPending = false;
-  private lastRunPending = false;
-  private lastRunUsed = false;
-  private lastRunRolled = false;
-
-  private hold = false;
-  private finalCooldown = 0;
-
-  private pointerX: number | null = null;
-  private pointerY: number | null = null;
-  private directionX = 0;
-  private directionY = 0;
-  private steeringNow = false;
-
-  private readonly bubbles: Bubble[] = [];
-  private bubbleTimer = 0;
-
-  private running = true;
-  private perfect = true;
-  private slips = 0;
-  private outside = false;
-  private outsideTimer = 0;
-  private slipCooldown = 0;
-  private time = 0;
-  private finishResult: MinigameResult | null = null;
+  private readonly warnG = new Graphics();
+  private readonly counterLabel: Text;
+  private intro = 0;
+  private introScale = 0;
 
   onFinish?: (result: MinigameResult) => void;
-  /** Fired once per telegraphed strong dash. */
-  onWarn?: () => void;
-  onCounter?: () => void;
-  onReady?: () => void;
-  onResist?: () => void;
-  onGripOut?: () => void;
 
   constructor(fish: FishSpecies, icon: Texture, options: MinigameOptions) {
     super();
-    this.fish = fish;
-    this.wildness = options.wildness ?? 1;
-    this.onWarn = options.onWarn;
-    this.onCounter = options.onCounter;
-    this.onReady = options.onReady;
-    this.onResist = options.onResist;
-    this.onGripOut = options.onGripOut;
+    this.model = new FightModel(fish, options);
     this.eventMode = "none";
 
-    this.temperament = pickTemperament();
-    const mood = TEMPERAMENTS[this.temperament];
-    this.tempo = mood.tempo;
-    this.runPower = mood.run;
-    this.tirePower = mood.tire;
-    this.recoveryPower = mood.recovery;
-    this.feintChance = mood.feint;
-    this.escapeHold = ESCAPE_HOLD * mood.escape;
-    this.recoveryRate = Math.max(
-      0.012,
-      FIGHT.recoveryBase - fish.resistance * FIGHT.recoveryScale,
-    );
-
-    this.centerX = clamp(options.anchor.x, RADIUS + 8, VIEW.width - RADIUS - 8);
-    this.centerY = clamp(
-      options.anchor.y + 24,
-      RADIUS + 28,
-      VIEW.height - RADIUS - 8,
-    );
-
     this.addChild(this.ringG);
-    this.addChild(this.wakeG);
 
     this.fishSprite = new Sprite(icon);
     this.fishSprite.anchor.set(0.5);
     this.fishSprite.scale.set(FISH_SCALE);
-    this.fishSprite.alpha = 0.92;
+    this.fishSprite.alpha = 0;
     this.fishSprite.tint = SILHOUETTE;
     this.addChild(this.fishSprite);
-    this.addChild(this.bubbleG);
+    this.addChild(this.counterG);
+
+    this.counterLabel = makeText(TEXT.fight.counter, {
+      size: 8,
+      color: C.cyan,
+      weight: 800,
+      align: "center",
+    });
+    this.counterLabel.anchor.set(0.5, 1);
+    this.counterLabel.style.stroke = { color: C.ink, width: 2 };
+    this.counterLabel.visible = false;
+    this.addChild(this.counterLabel);
 
     this.addChild(this.barG);
     this.addChild(this.gripG);
-
-    this.lastAngle = Math.random() * TAU;
-    this.escapeAngle = this.lastAngle;
-    this.script = buildScript(fish);
-    this.nextMove();
+    this.addChild(this.directionG);
+    this.addChild(this.cueG);
+    this.addChild(this.warnG);
+    this.model.onFinish = (result) => this.onFinish?.(result);
     this.update(0);
   }
 
   get result(): MinigameResult | null {
-    return this.finishResult;
+    return this.model.result;
   }
 
   get fishSpecies(): FishSpecies {
-    return this.fish;
+    return this.model.fish;
   }
 
   /** Perfect slips still available, shown by the HUD pips. */
   get slipsLeft(): number {
-    return Math.max(0, MAX_SLIPS - this.slips);
+    return this.model.slipsLeft;
   }
 
   /** True while the player is actively steering; drives the reel sound. */
   get isSteering(): boolean {
-    return this.steeringNow;
+    return this.model.isSteering;
   }
 
   /** Screen position of the fish silhouette, used by the trailing float. */
   get fishPoint(): { x: number; y: number } {
-    return { x: this.centerX + this.fishX, y: this.centerY + this.fishY };
+    return this.model.fishPoint;
   }
 
   /** Current fish velocity, used to trail the float behind the fish. */
   get fishVelocity(): { x: number; y: number } {
-    return { x: this.vx, y: this.vy };
+    return this.model.fishVelocity;
   }
 
-  /** Anchor of the dashed ring, mostly for debugging and screenshots. */
+  /** Anchor of the wavy ring, mostly for debugging and screenshots. */
   get ringCenter(): { x: number; y: number } {
-    return { x: this.centerX, y: this.centerY };
+    return { x: this.model.centerX, y: this.model.centerY };
   }
 
   /** True when the fish is tired and inside the circle. */
   get canLand(): boolean {
-    return this.running && this.ready;
+    return this.model.canLand;
   }
 
-  /** Screen position of the landing hook, used for the touch hit area. */
-  get landingIcon(): { x: number; y: number } | null {
+  /** 0..1 escape pressure; shown by the sinking float and taut line. */
+  get escapeMeter(): number {
+    return this.model.escapeMeter;
+  }
+
+  /** Top of the two-row stamina stack, just above the ring. */
+  private get staminaY(): number {
+    return this.model.centerY - FIGHT_RADIUS - 26;
+  }
+
+  /** Screen position of the tired fish, used as the touch landing target. */
+  get landingTarget(): { x: number; y: number } | null {
     if (!this.canLand) return null;
-    const barY = clamp(
-      this.centerY - RADIUS - 8,
-      28,
-      this.centerY - RADIUS + 2,
-    );
-    return { x: this.centerX + 38, y: barY + 2 };
+    const point = this.model.fishPoint;
+    return { x: point.x, y: point.y };
   }
 
   /** Hold to pull; release to rest. */
   setHold(held: boolean): void {
-    this.hold = held;
+    this.model.setHold(held);
   }
 
-  /** Separate final pull: RMB/F, or a tap on the landing hook. */
+  /** Separate final pull: RMB/F, or a tap on the fish. */
   finalPull(): void {
-    if (!this.running || this.finalCooldown > 0) return;
-    this.finalCooldown = FIGHT.resistCooldown;
-
-    const inside = Math.hypot(this.fishX, this.fishY) <= RADIUS;
-    if (this.endurance <= FIGHT.landThreshold && inside) {
-      this.finish(true);
-      return;
-    }
-
-    // Too early: the fish tears away and costs grip.
-    this.endurance = clamp(this.endurance + FIGHT.resistEndurance);
-    this.grip = clamp(this.grip - FIGHT.resistGrip);
-    this.escapeAngle = this.fishAngle() + (Math.random() - 0.5) * 0.6;
-    this.bolt(0.45);
-    this.flash = 0.24;
-    this.onResist?.();
+    this.model.finalPull();
   }
 
   /** Cursor position in screen space; while held it sets the pull direction. */
   setPointer(x: number | null, y: number | null): void {
-    this.pointerX = x;
-    this.pointerY = y;
+    this.model.setPointer(x, y);
   }
 
   /** Optional keyboard steering direction (normalized by the caller). */
   setDirection(x: number, y: number): void {
-    this.directionX = x;
-    this.directionY = y;
+    this.model.setDirection(x, y);
   }
 
   update(dt: number): void {
-    if (!this.running) return;
-    this.time += dt;
-    const step = Math.min(dt, 0.05);
+    if (!this.model.isRunning) return;
 
-    this.finalCooldown = Math.max(0, this.finalCooldown - step);
-
-    const canPull = this.gripLock <= 0;
-    const pull = this.hold && canPull ? this.pullVector() : null;
-    this.steeringNow = pull !== null;
-    if (pull) {
-      const angle = Math.atan2(pull.y, pull.x);
-      this.lastSteerAngle = angle;
-      if (
-        this.lastAimAngle !== null &&
-        Math.abs(angleDelta(this.lastAimAngle, angle)) < 0.2
-      ) {
-        this.sameAimTime += step;
-        if (this.sameAimTime >= FIGHT.sameAimTime) {
-          this.feintPending = true;
-          this.sameAimTime = 0;
-        }
-      } else {
-        this.sameAimTime = 0;
-      }
-      this.lastAimAngle = angle;
-    } else {
-      this.sameAimTime = 0;
-      this.lastAimAngle = null;
+    // The entrance is visual only: the fight is fully interactive from the
+    // first frame, so a stuck/lagging intro can never freeze the catch.
+    if (this.intro < INTRO_DURATION) {
+      this.intro = Math.min(INTRO_DURATION, this.intro + dt);
     }
+    const introT = easeOutCubic(this.intro / INTRO_DURATION);
+    this.introScale = 0.65 + 0.35 * introT;
 
-    this.updateGrip(step, pull !== null);
-    this.updateEndurance(step, pull !== null);
-    this.maybeDesperate();
-    this.advantage = Math.max(0, this.advantage - step);
-    this.counterFlash = Math.max(0, this.counterFlash - step);
+    this.fishSprite.alpha = 0.82;
+    this.barG.alpha = 1;
+    this.gripG.alpha = 1;
+    this.counterG.alpha = 1;
+    this.ringG.alpha = 1;
+    this.barG.y = 0;
+    this.gripG.y = 0;
 
-    if (this.warnTime > 0) {
-      this.warnTime = Math.max(0, this.warnTime - step);
-      // Rest means releasing the pull button, as in the mod.
-      this.warnRest = this.hold ? 0 : this.warnRest + step;
-      this.flash = Math.max(0, this.flash - step);
-      // The fish holds still and shivers while the warning is shown.
-      this.vx *= Math.max(0, 1 - 7 * step);
-      this.vy *= Math.max(0, 1 - 7 * step);
-      this.bubbleTimer -= step;
-      if (this.bubbleTimer <= 0) {
-        this.bubbleTimer = 0.04;
-        this.spawnBubble(false);
-      }
-      if (this.warnTime === 0) {
-        this.bolt();
-        this.spawnBubbleBurst();
-        this.openCounterWindow();
-      }
-    } else {
-      if (step > 0) this.advanceScript(step);
-      this.updateTarget();
-      this.steer(step);
-    }
+    this.model.update(dt);
+    if (!this.model.isRunning) return;
 
-    this.updateCounter(step, pull);
+    this.draw();
+    this.syncFishVisual();
+  }
 
-    if (pull) {
-      this.vx += pull.x * PULL_ACCEL * step;
-      this.vy += pull.y * PULL_ACCEL * step;
-    }
-
-    // Water drag plus a hard speed cap keeps the pull responsive but fair.
-    this.vx *= Math.max(0, 1 - 0.9 * step);
-    this.vy *= Math.max(0, 1 - 0.9 * step);
-    const speed = Math.hypot(this.vx, this.vy);
-    if (speed > MAX_SPEED) {
-      const k = MAX_SPEED / speed;
-      this.vx *= k;
-      this.vy *= k;
-    }
-
-    this.fishX += this.vx * step;
-    this.fishY += this.vy * step;
-
-    this.updateBubbles(step);
-    this.updateZone(step);
-    if (!this.running) return;
-
-    this.updateReady();
-    this.draw(pull !== null);
-
-    this.fishSprite.position.set(
-      this.centerX + this.fishX,
-      this.centerY + this.fishY,
-    );
-    this.fishSprite.rotation = clamp(this.vx / 420, -0.45, 0.45);
+  private syncFishVisual(): void {
+    const point = this.model.fishPoint;
+    const velocity = this.model.fishVelocity;
+    this.fishSprite.position.set(point.x, point.y);
+    this.fishSprite.rotation = clamp(velocity.x / 420, -0.45, 0.45);
     const face =
-      this.vx < -6
+      velocity.x < -6
         ? -1
-        : this.vx > 6
+        : velocity.x > 6
           ? 1
           : this.fishSprite.scale.x < 0
             ? -1
             : 1;
-    this.fishSprite.scale.set(face * FISH_SCALE, FISH_SCALE);
-    this.fishSprite.tint = this.warnTime > 0 ? SILHOUETTE_WARN : SILHOUETTE;
-
-    if (Math.hypot(this.fishX, this.fishY) > RADIUS * 1.65) {
-      this.finish(false);
-    }
-  }
-
-  // --------------------------------------------------------------- input
-
-  private pullVector(): { x: number; y: number } | null {
-    if (!this.hold) return null;
-    const dirLength = Math.hypot(this.directionX, this.directionY);
-    if (dirLength > 0.1) {
-      return {
-        x: this.directionX / dirLength,
-        y: this.directionY / dirLength,
-      };
-    }
-
-    if (this.pointerX !== null && this.pointerY !== null) {
-      const dx = this.pointerX - (this.centerX + this.fishX);
-      const dy = this.pointerY - (this.centerY + this.fishY);
-      const length = Math.hypot(dx, dy);
-      if (length > 10) return { x: dx / length, y: dy / length };
-    }
-
-    return null;
-  }
-
-  private updateGrip(step: number, steering: boolean): void {
-    if (this.gripLock > 0) {
-      this.gripLock = Math.max(0, this.gripLock - step);
-      this.grip = clamp(this.grip + FIGHT.gripRegen * 1.2 * step);
-      if (this.gripLock === 0) {
-        this.grip = Math.max(this.grip, FIGHT.gripRestore);
-      }
-      return;
-    }
-
-    if (steering) {
-      this.grip -=
-        FIGHT.gripDrain * (this.advantage > 0 ? FIGHT.advantageGrip : 1) * step;
-      if (this.grip <= 0) {
-        this.grip = 0;
-        this.gripLock = FIGHT.gripLock;
-        this.onGripOut?.();
-      }
-    } else {
-      this.grip = clamp(this.grip + FIGHT.gripRegen * step);
-    }
-  }
-
-  private updateEndurance(step: number, steering: boolean): void {
-    const inside = Math.hypot(this.fishX, this.fishY) <= RADIUS;
-    if (steering) {
-      const rate = FIGHT.tireBase - this.fish.resistance * FIGHT.tireScale;
-      const tire = rate * (inside ? 1 : 0.3) * this.tirePower;
-      const bonus = this.advantage > 0 ? FIGHT.advantageTire : 1;
-      this.endurance = clamp(this.endurance - tire * bonus * step);
-      return;
-    }
-
-    // The fish catches its breath while the player rests inside the circle.
-    if (inside) {
-      this.endurance = clamp(
-        this.endurance + this.recoveryRate * this.recoveryPower * step,
-      );
-    }
-  }
-
-  private maybeDesperate(): void {
-    if (this.lastRunRolled) return;
-    if (this.endurance > FIGHT.lastRunThreshold) return;
-    this.lastRunRolled = true;
-    const chance =
-      FIGHT.lastRunChance +
-      (this.temperament === "aggressive"
-        ? 0.2
-        : this.temperament === "stubborn"
-          ? 0.15
-          : 0) +
-      (this.fish.points >= RARE_SCORE ? 0.15 : 0);
-    if (Math.random() < chance) this.lastRunPending = true;
-  }
-
-  private openCounterWindow(): void {
-    this.counterWindow = FIGHT.counterWindow;
-    this.counterAngle = this.warnAngle;
-    this.counterArmed = this.warnRest >= FIGHT.counterRest;
-    this.preBurstAngle = this.lastSteerAngle;
-    this.counterUsed = false;
-  }
-
-  private updateCounter(
-    step: number,
-    pull: { x: number; y: number } | null,
-  ): void {
-    if (this.counterWindow <= 0) return;
-    this.counterWindow = Math.max(0, this.counterWindow - step);
-    if (this.counterUsed || !pull) return;
-
-    const angle = Math.atan2(pull.y, pull.x);
-    const opposed =
-      Math.abs(angleDelta(angle, this.counterAngle + Math.PI)) <=
-      FIGHT.counterAngle;
-    const reversed =
-      this.preBurstAngle !== null &&
-      Math.abs(angleDelta(this.preBurstAngle, angle)) > Math.PI / 2;
-
-    if (!opposed || (!this.counterArmed && !reversed)) return;
-
-    this.counterUsed = true;
-    this.counterWindow = 0;
-    this.advantage = FIGHT.advantage;
-    this.counterFlash = 0.6;
-    this.flash = 0.18;
-    this.onCounter?.();
-  }
-
-  private updateReady(): void {
-    const inside = Math.hypot(this.fishX, this.fishY) <= RADIUS;
-    const readyNow = this.endurance <= FIGHT.landThreshold && inside;
-    if (
-      readyNow &&
-      !this.ready &&
-      this.time - this.lastReadyChime >= FIGHT.readyChime
-    ) {
-      this.lastReadyChime = this.time;
-      this.onReady?.();
-    }
-    this.ready = readyNow;
-  }
-
-  // ---------------------------------------------------------------- movement
-
-  private advanceScript(dt: number): void {
-    if (this.current === null) return;
-    this.moveTime += dt * this.tempo;
-    if (this.moveTime >= this.current.dur) this.nextMove();
-  }
-
-  private nextMove(): void {
-    let move = this.script[this.moveIndex % this.script.length];
-    if (this.lastRunPending && !this.lastRunUsed) {
-      this.lastRunUsed = true;
-      this.lastRunPending = false;
-      move = { kind: "dash", dir: "away", dur: 0.55, strong: true };
-    }
-    this.moveIndex += 1;
-    this.current = move;
-    this.moveTime = 0;
-    this.flash = 0;
-    this.warnRest = 0;
-    this.counterWindow = 0;
-    this.moveStartAngle = this.fishAngle();
-    this.moveStartRadius = this.fishRadius();
-    this.escapeAngle = this.resolveAngle(move);
-    if (move.kind === "dash" || move.kind === "arc") {
-      this.lastAngle = this.escapeAngle;
-    }
-    if (move.strong) {
-      // A fish that senses an empty grip warns a little later.
-      const pressure = this.grip < FIGHT.lowGrip ? 0.88 : 1;
-      this.warnTime = TIMING.telegraph * pressure;
-      this.warnAngle = this.escapeAngle;
-      this.bubbleTimer = 0;
-      this.onWarn?.();
-      return;
-    }
-    this.warnTime = 0;
-    if (move.kind === "dash") this.bolt(0.7);
-  }
-
-  private resolveAngle(move: Move): number {
-    const here = this.fishAngle();
-    const jitter = (spread: number) => (Math.random() - 0.5) * spread;
-    const dir = move.dir ?? "flip";
-    let base: number;
-
-    // Escape directions are relative to the ring, never to the cursor: the
-    // player's pull stays a counter-force instead of choosing the escape side.
-    if (dir === "away") base = here + jitter(0.55);
-    else if (dir === "toward") base = here + Math.PI + jitter(0.5);
-    else if (dir === "same") base = this.lastAngle + jitter(0.35);
-    else base = this.lastAngle + Math.PI + jitter(0.75);
-
-    const feint = this.feintPending || Math.random() < this.feintChance;
-    this.feintPending = false;
-    if (feint && dir !== "toward") {
-      base += (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.5);
-    }
-    return base;
-  }
-
-  /** A sudden burst, used by dash moves and after a telegraph ends. */
-  private bolt(scale = 1): void {
-    const power =
-      (110 + this.fish.speed * 70) * scale * this.wildness * this.runPower;
-    this.vx += Math.cos(this.escapeAngle) * power;
-    this.vy += Math.sin(this.escapeAngle) * power;
-    this.flash = 0.16;
-  }
-
-  private updateTarget(): void {
-    const move = this.current;
-    if (!move) return;
-    const t = move.dur <= 0 ? 1 : clamp(this.moveTime / move.dur);
-    const kind = move.kind;
-
-    if (kind === "dash") {
-      const radius = move.dir === "toward" ? 0.3 : move.strong ? 1.2 : 1.12;
-      this.targetX = Math.cos(this.escapeAngle) * RADIUS * radius;
-      this.targetY = Math.sin(this.escapeAngle) * RADIUS * radius;
-      return;
-    }
-
-    if (kind === "arc") {
-      const eased = easeInOutQuad(t);
-      const angle =
-        this.moveStartAngle +
-        angleDelta(this.moveStartAngle, this.escapeAngle) * eased;
-      const radius = lerp(this.moveStartRadius, 0.9, eased) * RADIUS;
-      this.targetX = Math.cos(angle) * radius;
-      this.targetY = Math.sin(angle) * radius;
-      return;
-    }
-
-    if (kind === "wave") {
-      const cycles = move.cycles ?? 1;
-      const amp = (move.amplitude ?? 0.3) * 2.2;
-      const angle = this.moveStartAngle + Math.sin(t * TAU * cycles) * amp;
-      const radius = lerp(this.moveStartRadius, 0.94, t) * RADIUS;
-      this.targetX = Math.cos(angle) * radius;
-      this.targetY = Math.sin(angle) * radius;
-      return;
-    }
-
-    if (kind === "zigzag") {
-      const count = Math.max(1, move.count ?? 3);
-      const amp = (move.amplitude ?? 0.28) * 3;
-      const slot = Math.min(count - 1, Math.floor(t * count));
-      const angle = this.moveStartAngle + (slot % 2 === 0 ? amp : -amp);
-      const radius = RADIUS * 0.97;
-      this.targetX = Math.cos(angle) * radius;
-      this.targetY = Math.sin(angle) * radius;
-      return;
-    }
-
-    // Pause: drift back toward the middle and catch a breath.
-    const angle = this.moveStartAngle;
-    this.targetX = Math.cos(angle) * RADIUS * 0.3;
-    this.targetY = Math.sin(angle) * RADIUS * 0.3;
-  }
-
-  private steer(dt: number): void {
-    const kind = this.current?.kind ?? "pause";
-    let speed = 40;
-    let steer = 4;
-    if (kind === "dash") {
-      speed = 100 + this.fish.speed * 60;
-      steer = 6.5;
-    } else if (kind === "arc") {
-      speed = 42 + this.fish.speed * 30;
-      steer = 3.6;
-    } else if (kind === "wave") {
-      speed = 38 + this.fish.speed * 28;
-      steer = 4;
-    } else if (kind === "zigzag") {
-      speed = 64 + this.fish.speed * 40;
-      steer = 6.5;
-    } else if (kind === "pause") {
-      speed = 12;
-      steer = 2;
-    }
-
-    speed *= this.wildness;
-    const dx = this.targetX - this.fishX;
-    const dy = this.targetY - this.fishY;
-    const distance = Math.hypot(dx, dy);
-    const desiredX = distance > 1 ? (dx / distance) * speed : 0;
-    const desiredY = distance > 1 ? (dy / distance) * speed : 0;
-    const blend = Math.min(1, steer * dt);
-    this.vx += (desiredX - this.vx) * blend;
-    this.vy += (desiredY - this.vy) * blend;
-  }
-
-  private updateZone(dt: number): void {
-    const distance = Math.hypot(this.fishX, this.fishY);
-    const outside = distance > RADIUS;
-
-    if (outside && !this.outside && this.slipCooldown <= 0) {
-      // Two slips are still a perfect catch; the third breaks it.
-      this.slips += 1;
-      this.perfect = this.slips <= MAX_SLIPS;
-      this.slipCooldown = 0.5;
-      this.flash = 0.2;
-    }
-    this.outside = outside;
-    this.slipCooldown = Math.max(0, this.slipCooldown - dt);
-
-    if (distance > RADIUS + 4) {
-      this.outsideTimer += dt;
-      if (this.outsideTimer >= this.escapeHold) {
-        this.finish(false);
-        return;
-      }
-    } else {
-      this.outsideTimer = Math.max(0, this.outsideTimer - dt * 2);
-    }
-  }
-
-  private fishAngle(): number {
-    if (Math.hypot(this.fishX, this.fishY) < 0.5) return this.lastAngle;
-    return Math.atan2(this.fishY, this.fishX);
-  }
-
-  private fishRadius(): number {
-    return clamp(Math.hypot(this.fishX, this.fishY) / RADIUS, 0, 1.4);
-  }
-
-  // ------------------------------------------------------------------ bubbles
-
-  private spawnBubble(burst: boolean): void {
-    const baseX = this.centerX + this.fishX;
-    const baseY = this.centerY + this.fishY;
-    const angle = this.warnAngle + (Math.random() - 0.5) * 0.55;
-    const speed = burst ? 50 + Math.random() * 50 : 20 + Math.random() * 30;
-    const life = burst
-      ? 0.3 + Math.random() * 0.24
-      : 0.4 + Math.random() * 0.32;
-    this.bubbles.push({
-      x: baseX + (Math.random() - 0.5) * 8,
-      y: baseY + (Math.random() - 0.5) * 8,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life,
-      maxLife: life,
-      size: 1.2 + Math.random() * 1.6,
-    });
-  }
-
-  private spawnBubbleBurst(): void {
-    for (let i = 0; i < 8; i += 1) this.spawnBubble(true);
-  }
-
-  private updateBubbles(step: number): void {
-    for (const bubble of this.bubbles) {
-      bubble.life -= step;
-      bubble.x += bubble.vx * step;
-      bubble.y += bubble.vy * step;
-      bubble.vx *= Math.max(0, 1 - 1.8 * step);
-      bubble.vy *= Math.max(0, 1 - 1.8 * step);
-    }
-    for (let i = this.bubbles.length - 1; i >= 0; i -= 1) {
-      if (this.bubbles[i].life <= 0) this.bubbles.splice(i, 1);
-    }
+    const grow = 0.82 + 0.18 * this.introScale;
+    this.fishSprite.scale.set(face * FISH_SCALE * grow, FISH_SCALE * grow);
+    this.fishSprite.tint = this.model.warn > 0 ? SILHOUETTE_WARN : SILHOUETTE;
   }
 
   // -------------------------------------------------------------------- draw
 
-  private draw(pulling: boolean): void {
-    this.drawRing(pulling);
-    this.drawWake();
-    this.drawBubbles();
-    this.drawBar();
-    this.drawGrip();
+  private draw(): void {
+    this.drawRing();
+    this.drawCounterFlash();
+    this.drawStamina();
+    this.drawDirection();
+    this.drawCue();
+    this.drawWarning();
+    this.updateCounterLabel();
   }
 
-  private drawRing(pulling: boolean): void {
+  private waveRadius(
+    angle: number,
+    radius: number,
+    line: number,
+    time: number,
+  ): number {
+    const primary = Math.sin(angle * (5 + line) + time * (0.8 + line * 0.17));
+    const ripple = Math.sin(
+      angle * (11 + line * 2) - time * (1.35 + line * 0.2),
+    );
+    return radius + primary * (1.6 + line * 0.35) + ripple * 0.7;
+  }
+
+  private wavePoints(
+    radius: number,
+    line: number,
+    from = 0,
+    to = TAU,
+  ): number[] {
+    const points: number[] = [];
+    const steps = Math.max(8, Math.round((WAVE_SEGMENTS * (to - from)) / TAU));
+    for (let i = 0; i <= steps; i += 1) {
+      const angle = from + ((to - from) * i) / steps;
+      const r = this.waveRadius(
+        angle,
+        radius * this.introScale,
+        line,
+        this.model.time,
+      );
+      points.push(
+        this.model.centerX + Math.cos(angle) * r,
+        this.model.centerY + Math.sin(angle) * r,
+      );
+    }
+    return points;
+  }
+
+  private drawRing(): void {
     const g = this.ringG;
-    const cx = this.centerX;
-    const cy = this.centerY;
-    const pulse = (Math.sin(this.time * 3.2) + 1) / 2;
-    const danger = this.outside;
-    const warn = this.warnTime > 0;
+    const time = this.model.time;
+    const pulse = (Math.sin(time * 3.2) + 1) / 2;
+    const radius =
+      Math.hypot(this.model.fishOffset.x, this.model.fishOffset.y) /
+      FIGHT_RADIUS;
+    const proximity = clamp((radius - 0.55) / 0.45, 0, 1);
+    const introBoost = 1 - this.introScale;
 
     g.clear();
-    g.circle(cx, cy, RADIUS).fill({ color: C.cyan, alpha: 0.035 });
-    g.circle(cx, cy, RADIUS + 4).stroke({
+
+    // The ordinary boundary is barely there: it emerges only as the fish
+    // approaches the rim, and never changes colour as a whole.
+    const alpha = 0.06 + proximity * 0.16 + pulse * 0.03 + introBoost * 0.45;
+    g.poly(this.wavePoints(FIGHT_RADIUS, 1)).stroke({
+      width: 1.2,
+      color: WINTER.snow,
+      alpha,
+    });
+    g.poly(this.wavePoints(FIGHT_RADIUS - 3, 0)).stroke({
       width: 1,
-      color: C.cream,
-      alpha: 0.08 + pulse * 0.04,
+      color: WINTER.snow,
+      alpha: alpha * 0.35,
     });
 
-    const color = danger ? C.red : C.cream;
-    const alpha = danger
-      ? 0.75 + pulse * 0.25
-      : (pulling ? 0.82 : 0.62) + pulse * 0.16;
-    const segments = 24;
-    for (let i = 0; i < segments; i += 1) {
-      const start = (i / segments) * TAU + this.time * 0.06;
-      this.arc(g, cx, cy, RADIUS, start, start + (TAU / segments) * 0.56);
-      g.stroke({ width: 1.4, color, alpha });
-    }
-
-    if (this.flash > 0) {
-      g.circle(cx, cy, RADIUS + 2).stroke({
-        width: 2,
-        color: C.cream,
-        alpha: this.flash * 2.2,
+    if (this.model.impactFlash > 0) {
+      g.poly(this.wavePoints(FIGHT_RADIUS + 2, 1)).stroke({
+        width: 1.5,
+        color: WINTER.snow,
+        alpha: this.model.impactFlash * 1.6,
       });
     }
 
-    if (danger) {
-      const angle = this.fishAngle();
-      const arc = Math.min(
-        1.1,
-        0.35 + (this.outsideTimer / this.escapeHold) * 0.8,
-      );
-      this.arc(g, cx, cy, RADIUS + 1, angle - arc, angle + arc);
-      g.stroke({ width: 2.5, color: C.red, alpha: 0.55 + pulse * 0.4 });
-    }
-
-    if (warn) {
-      const flash = 0.45 + pulse * 0.35;
-      this.arc(
-        g,
-        cx,
-        cy,
-        RADIUS + 1,
-        this.warnAngle - 0.55,
-        this.warnAngle + 0.55,
-      );
-      g.stroke({ width: 2, color: C.gold, alpha: flash });
+    // Danger is local: a red arc only where the fish has broken the line,
+    // plus a slim rim around the fish itself.
+    if (this.model.isOutside) {
+      const angle = this.model.fishAngle();
+      g.poly(
+        this.wavePoints(FIGHT_RADIUS, 1, angle - 0.55, angle + 0.55),
+      ).stroke({
+        width: 2,
+        color: C.red,
+        alpha: 0.5 + pulse * 0.3,
+      });
+      const point = this.model.fishPoint;
+      g.circle(point.x, point.y, 9).stroke({
+        width: 1.2,
+        color: C.red,
+        alpha: 0.3 + pulse * 0.2,
+      });
     }
   }
 
-  /** Arc without the stray line Pixi draws from the previous path point. */
-  private arc(
-    g: Graphics,
-    cx: number,
-    cy: number,
-    radius: number,
-    start: number,
-    end: number,
-  ): void {
-    g.moveTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius);
-    g.arc(cx, cy, radius, start, end);
-  }
-
-  private drawWake(): void {
-    const g = this.wakeG;
+  /** Drawn above the stamina stack so the pointer is never hidden by it. */
+  private drawWarning(): void {
+    const g = this.warnG;
     g.clear();
-    const speed = Math.hypot(this.vx, this.vy);
-    const x = this.centerX + this.fishX;
-    const y = this.centerY + this.fishY;
-    const angle = Math.atan2(this.vy, this.vx);
+    if (this.model.warn <= 0 || this.intro < INTRO_DURATION) return;
+    const pulse = (Math.sin(this.model.time * 3.2) + 1) / 2;
+    this.drawWarningArrow(g, this.model.warnHeading, pulse);
+  }
 
-    g.ellipse(x, y + 5, 8 + Math.min(8, speed * 0.035), 2.4).fill({
-      color: C.ink,
-      alpha: 0.16,
+  /** A clear orange pointer: the fish is about to burst in this direction. */
+  private drawWarningArrow(g: Graphics, angle: number, pulse: number): void {
+    const cx = this.model.centerX;
+    const cy = this.model.centerY;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const perpX = -sin;
+    const perpY = cos;
+    const flash = 0.6 + pulse * 0.4;
+
+    // Short arc right at the rim, where the pointer meets the water.
+    g.poly(
+      this.wavePoints(FIGHT_RADIUS + 1, 1, angle - 0.45, angle + 0.45),
+    ).stroke({
+      width: 2,
+      color: C.orange,
+      alpha: 0.55 + pulse * 0.3,
     });
-    if (speed > 45) {
-      for (let i = 1; i <= 3; i += 1) {
-        const back = i * 7;
-        g.circle(
-          x - Math.cos(angle) * back + Math.sin(this.time * 9 + i) * 1.5,
-          y - Math.sin(angle) * back + Math.cos(this.time * 8 + i) * 1.2,
-          0.8 + i * 0.25,
-        ).fill({ color: C.cream, alpha: 0.18 - i * 0.03 });
-      }
+
+    for (let i = 0; i < 2; i += 1) {
+      const tip = FIGHT_RADIUS + 6 + i * 6;
+      const base = tip - 6;
+      const half = 4.5 - i * 0.7;
+      const tipX = cx + cos * tip;
+      const tipY = cy + sin * tip;
+      const baseAX = cx + cos * base + perpX * half;
+      const baseAY = cy + sin * base + perpY * half;
+      const baseBX = cx + cos * base - perpX * half;
+      const baseBY = cy + sin * base - perpY * half;
+
+      // Dark backing keeps the orange readable against the water.
+      g.poly([
+        tipX + cos * 1.5,
+        tipY + sin * 1.5,
+        baseAX + cos * 1,
+        baseAY + sin * 1,
+        baseBX + cos * 1,
+        baseBY + sin * 1,
+      ]).fill({ color: C.ink, alpha: 0.45 });
+      g.poly([tipX, tipY, baseAX, baseAY, baseBX, baseBY]).fill({
+        color: C.orange,
+        alpha: flash,
+      });
+      const core = 0.3;
+      g.poly([
+        tipX - cos * 1.5,
+        tipY - sin * 1.5,
+        baseAX + (tipX - baseAX) * core,
+        baseAY + (tipY - baseAY) * core,
+        baseBX + (tipX - baseBX) * core,
+        baseBY + (tipY - baseBY) * core,
+      ]).fill({
+        color: C.yellow,
+        alpha: flash * 0.85,
+      });
     }
   }
 
-  private drawBubbles(): void {
-    const g = this.bubbleG;
+  private drawCounterFlash(): void {
+    const g = this.counterG;
     g.clear();
 
-    for (const bubble of this.bubbles) {
+    for (const bubble of this.model.bubbles) {
       const alpha = clamp(bubble.life / bubble.maxLife);
       g.circle(bubble.x, bubble.y, bubble.size).stroke({
         width: 1,
@@ -885,38 +383,117 @@ export class Minigame extends Container {
       ).fill({ color: C.cyan, alpha: 0.7 * alpha });
     }
 
-    if (this.counterFlash > 0) {
-      const x = this.centerX + this.fishX;
-      const y = this.centerY + this.fishY;
-      const progress = 1 - this.counterFlash / 0.6;
-      g.circle(x, y, 10 + progress * 26).stroke({
-        width: 2,
+    if (this.model.counterFlashValue > 0) {
+      const point = this.model.fishPoint;
+      const progress = 1 - this.model.counterFlashValue / 0.6;
+      g.circle(point.x, point.y, 5 + progress * 7).stroke({
+        width: 1.5,
         color: C.cyan,
-        alpha: this.counterFlash,
+        alpha: this.model.counterFlashValue,
+      });
+      for (const [sx, sy] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
+      ]) {
+        g.moveTo(point.x + sx * 4, point.y + sy * 4)
+          .lineTo(point.x + sx * 7, point.y + sy * 7)
+          .stroke({
+            width: 1,
+            color: C.cyan,
+            alpha: this.model.counterFlashValue * 0.9,
+          });
+      }
+    }
+  }
+
+  private updateCounterLabel(): void {
+    const flash = this.model.counterFlashValue;
+    this.counterLabel.visible = flash > 0;
+    if (flash <= 0) return;
+    const point = this.model.fishPoint;
+    this.counterLabel.position.set(point.x, point.y - 12);
+    this.counterLabel.alpha = Math.min(1, flash * 2);
+  }
+
+  /** Small arrow orbiting the fish and pointing along its velocity. */
+  private drawDirection(): void {
+    const g = this.directionG;
+    g.clear();
+    const velocity = this.model.fishVelocity;
+    const speed = Math.hypot(velocity.x, velocity.y);
+    if (speed < 8) return;
+
+    const angle = Math.atan2(velocity.y, velocity.x);
+    const point = this.model.fishPoint;
+    const x = point.x + Math.cos(angle) * 12;
+    const y = point.y + Math.sin(angle) * 12;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const at = (lx: number, ly: number): [number, number] => [
+      x + lx * cos - ly * sin,
+      y + lx * sin + ly * cos,
+    ];
+    const triangle = [...at(3, 0), ...at(-2, -3), ...at(-2, 3)];
+
+    g.poly(triangle).fill({ color: C.cream, alpha: 0.9 });
+    g.poly(triangle).stroke({ width: 1, color: C.ink, alpha: 0.9 });
+  }
+
+  /** High-attention cue for the landing strike and the counter window. */
+  private drawCue(): void {
+    const g = this.cueG;
+    g.clear();
+    const pulse = (Math.sin(this.model.time * 6) + 1) / 2;
+
+    if (this.model.canLand) {
+      const point = this.model.fishPoint;
+      g.circle(point.x, point.y, 17 + pulse * 2).stroke({
+        width: 1.5,
+        color: C.gold,
+        alpha: 0.55 + pulse * 0.2,
+      });
+      return;
+    }
+
+    if (this.model.stunValue > 0) {
+      const point = this.model.fishPoint;
+      g.circle(point.x, point.y, 13 + pulse * 2).stroke({
+        width: 1.5,
+        color: C.cyan,
+        alpha: 0.7,
+      });
+      g.circle(point.x, point.y, 19 + pulse * 3).stroke({
+        width: 1,
+        color: C.cyan,
+        alpha: 0.3,
       });
     }
   }
 
-  private drawBar(): void {
+  /** Fish endurance on top, the thinner angler grip directly below it. */
+  private drawStamina(): void {
     const g = this.barG;
+    const gg = this.gripG;
     const width = 62;
     const height = 6;
-    const x = this.centerX - width / 2;
-    const y = clamp(this.centerY - RADIUS - 8, 28, this.centerY - RADIUS + 2);
-    const pulse = (Math.sin(this.time * 8) + 1) / 2;
-    const value = clamp(this.endurance);
+    const x = this.model.centerX - width / 2;
+    const y = this.staminaY;
+    const pulse = (Math.sin(this.model.time * 8) + 1) / 2;
+    const value = clamp(this.model.enduranceValue);
     const low = value <= FIGHT.landThreshold;
-    const color = low ? C.red : value <= 0.5 ? C.orange : C.green;
-    const border = this.ready
+    const color = low ? C.red : value <= 0.5 ? C.yellow : C.green;
+    const border = this.model.isReady
       ? C.gold
-      : this.outside
+      : this.model.isOutside
         ? C.red
-        : this.warnTime > 0
+        : this.model.warn > 0
           ? C.gold
-          : C.steel;
+          : C.brownDark;
 
     g.clear();
-    g.roundRect(x - 1, y - 1, width + 2, height + 2, 2).fill(C.ink);
+    g.rect(x - 1, y - 1, width + 2, height + 2).fill(C.ink);
     g.rect(x, y, width, height).fill({ color: C.ink, alpha: 0.55 });
 
     const fill = Math.max(0, Math.round(width * value));
@@ -925,89 +502,37 @@ export class Minigame extends Container {
       g.rect(x, y, fill, 1).fill({ color: C.cream, alpha: 0.55 });
     }
 
-    // The land threshold is the target, so keep it visible on the bar.
+    // Landing threshold marker for the manual final pull.
     g.rect(x + width * FIGHT.landThreshold, y - 1, 1, height + 2).fill({
       color: C.cream,
       alpha: 0.55,
     });
 
-    g.roundRect(x - 1, y - 1, width + 2, height + 2, 2).stroke({
+    g.rect(x - 1, y - 1, width + 2, height + 2).stroke({
       width: 1,
       color: border,
-      alpha: this.ready ? 0.65 + pulse * 0.35 : 0.6,
+      alpha: this.model.isReady ? 0.65 + pulse * 0.35 : 0.6,
     });
 
-    if (this.ready) {
-      const hx = x + width + 7;
-      const hy = y + 2;
-      const hookAlpha = 0.7 + pulse * 0.3;
-      g.moveTo(hx, hy - 6);
-      g.lineTo(hx, hy + 3);
-      g.quadraticCurveTo(hx, hy + 8, hx - 5, hy + 6);
-      g.stroke({ width: 1.8, color: C.gold, alpha: hookAlpha });
-      g.moveTo(hx - 3, hy - 6);
-      g.lineTo(hx + 1, hy - 6);
-      g.stroke({ width: 1.4, color: C.gold, alpha: hookAlpha });
+    // Grip: a thinner strip, deliberately under the endurance bar.
+    const gy = y + 9;
+    const gh = 3;
+    const locked = this.model.isGripLocked;
+    const advantage = this.model.hasAdvantage;
+    const gripColor = locked ? C.red : advantage ? C.gold : C.cyan;
+
+    gg.clear();
+    gg.rect(x - 1, gy - 1, width + 2, gh + 2).fill(C.ink);
+    gg.rect(x, gy, width, gh).fill({ color: C.ink, alpha: 0.6 });
+    const gripFill = Math.round(width * clamp(this.model.gripValue));
+    if (gripFill > 0) {
+      gg.rect(x, gy, gripFill, gh).fill(gripColor);
+      gg.rect(x, gy, gripFill, 1).fill({ color: C.cream, alpha: 0.5 });
     }
-  }
-
-  private drawGrip(): void {
-    const g = this.gripG;
-    const gx = SCENE.anglerX - 24;
-    const gy = SCENE.anglerY - 48;
-    const locked = this.gripLock > 0;
-    const advantage = this.advantage > 0;
-    const pulse = (Math.sin(this.time * 10) + 1) / 2;
-    const fillColor = locked ? C.red : advantage ? C.gold : C.cyan;
-    const boltAlpha = locked ? 0.55 + pulse * 0.4 : advantage ? 1 : 0.9;
-
-    g.clear();
-    g.roundRect(gx - 5, gy - 9, 44, 22, 3).fill({
-      color: C.ink,
-      alpha: 0.55,
-    });
-    g.roundRect(gx - 5, gy - 9, 44, 22, 3).stroke({
+    gg.rect(x, gy, width, gh).stroke({
       width: 1,
-      color: C.steel,
-      alpha: 0.3,
-    });
-
-    g.poly([
-      gx + 2,
-      gy - 7,
-      gx - 1,
-      gy + 1,
-      gx + 1,
-      gy + 1,
-      gx - 1,
-      gy + 7,
-      gx + 4,
-      gy - 1,
-      gx + 2,
-      gy - 1,
-    ]).fill({ color: fillColor, alpha: boltAlpha });
-
-    const bx = gx + 7;
-    const by = gy - 2;
-    const bw = 26;
-    const bh = 5;
-    g.rect(bx, by, bw, bh).fill({ color: C.ink, alpha: 0.8 });
-    g.rect(bx, by, Math.round(bw * clamp(this.grip)), bh).fill(fillColor);
-    g.rect(bx, by, Math.round(bw * clamp(this.grip)), 1).fill({
-      color: C.cream,
-      alpha: 0.55,
-    });
-    g.rect(bx, by, bw, bh).stroke({
-      width: 1,
-      color: locked ? C.red : C.steel,
+      color: locked ? C.red : C.brownDark,
       alpha: locked ? 0.9 : 0.5,
     });
-  }
-
-  private finish(won: boolean): void {
-    if (!this.running) return;
-    this.running = false;
-    this.finishResult = { won, perfect: won && this.perfect };
-    this.onFinish?.(this.finishResult);
   }
 }

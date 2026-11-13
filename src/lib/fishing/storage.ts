@@ -3,144 +3,7 @@ import type {
   LeaderboardStanding,
   SessionResult,
 } from "./types";
-
-const BOTS: readonly LeaderboardEntry[] = [
-  {
-    id: "bot-marina",
-    name: "Марина",
-    score: 3180,
-    caught: 10,
-    best: "Осётр",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-cat",
-    name: "Кот-Рыбак",
-    score: 2760,
-    caught: 10,
-    best: "Тунец",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-cove",
-    name: "Тихий Плёс",
-    score: 2430,
-    caught: 10,
-    best: "Берикс",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-fedor",
-    name: "Дядя Фёдор",
-    score: 2110,
-    caught: 9,
-    best: "Сом",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-sonya",
-    name: "Соня",
-    score: 1840,
-    caught: 9,
-    best: "Угорь",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-bream",
-    name: "Лещ-Мастер",
-    score: 1600,
-    caught: 8,
-    best: "Голавль",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-pixel",
-    name: "Пиксель",
-    score: 1390,
-    caught: 8,
-    best: "Лещ",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-nastya",
-    name: "Настя",
-    score: 1190,
-    caught: 7,
-    best: "Карп",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-nil",
-    name: "Старый Нил",
-    score: 1010,
-    caught: 7,
-    best: "Тиляпия",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-pike",
-    name: "Щучка",
-    score: 870,
-    caught: 6,
-    best: "Сомик",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-bal",
-    name: "Баллада",
-    score: 990,
-    caught: 9,
-    best: "Голавль",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-groz",
-    name: "Гроза",
-    score: 1080,
-    caught: 9,
-    best: "Карп",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-fred",
-    name: "Фрёд",
-    score: 1220,
-    caught: 8,
-    best: "Лещ",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-kalin",
-    name: "Калин",
-    score: 1450,
-    caught: 8,
-    best: "Сом",
-    date: 0,
-    bot: true,
-  },
-  {
-    id: "bot-olga",
-    name: "Ольга",
-    score: 1680,
-    caught: 7,
-    best: "Сомик",
-    date: 0,
-    bot: true,
-  },
-] as const;
+import { SEED_LEADERBOARD, TEXT } from "./texts";
 
 const BOARD_SIZE = 14;
 const STORE_LIMIT = 20;
@@ -193,7 +56,7 @@ export class Leaderboard {
   }
 
   private merged(): LeaderboardEntry[] {
-    return [...this.entries, ...BOTS].sort(compareEntries);
+    return [...this.entries, ...SEED_LEADERBOARD].sort(compareEntries);
   }
 
   /** Top entries including the seeded rivals. */
@@ -225,10 +88,10 @@ export class Leaderboard {
   submit(name: string, result: SessionResult): LeaderboardStanding {
     const entry: LeaderboardEntry = {
       id: `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      name: (name.trim() || "Рыбак").slice(0, 12),
+      name: (name.trim() || TEXT.common.playerFallback).slice(0, 12),
       score: Math.round(result.score),
       caught: result.caught,
-      best: result.bestFish?.name ?? "—",
+      best: result.bestFish?.name ?? TEXT.common.dash,
       date: Date.now(),
     };
     this.entries.push(entry);

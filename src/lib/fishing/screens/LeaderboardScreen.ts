@@ -15,6 +15,8 @@ import {
   drawLeaderboardTable,
 } from "../ui/LeaderboardTable";
 import { drawPanel, makeText } from "../ui/theme";
+import { TEXT } from "../texts";
+import { CURSORS } from "../cursors";
 import { clamp } from "../utils";
 import type { LeaderboardEntry } from "../types";
 
@@ -23,7 +25,7 @@ const PANEL_Y = 12;
 const PANEL_W = 280;
 const PANEL_H = 216;
 const TABLE_X = PANEL_X + 12;
-const TABLE_Y = 56;
+const TABLE_Y = 54;
 const TABLE_W = PANEL_W - 24;
 const TABLE_ROW_H = 13;
 const TABLE_FONT = 10;
@@ -68,7 +70,7 @@ export class LeaderboardScreen extends Screen {
     this.addChild(panel);
 
     const centerX = PANEL_X + PANEL_W / 2;
-    const title = makeText("ТАБЛИЦА ЛИДЕРОВ", {
+    const title = makeText(TEXT.leaderboard.title, {
       size: 16,
       weight: 800,
       color: C.gold,
@@ -84,7 +86,7 @@ export class LeaderboardScreen extends Screen {
       ? entries.findIndex((entry) => entry.id === personal.id)
       : -1;
     const hasPersonal = personal !== null && personalIndex >= 0;
-    const subtitle = makeText(`ТОП-${entries.length} · ЛОКАЛЬНЫЙ РЕЙТИНГ`, {
+    const subtitle = makeText(TEXT.leaderboard.subtitle(entries.length), {
       size: 8,
       color: C.steelPale,
       align: "center",
@@ -104,7 +106,7 @@ export class LeaderboardScreen extends Screen {
 
     // One row is reserved for the pinned player row, so the scroll area can
     // reach every place without the pin covering the last one.
-    const available = PANEL_Y + PANEL_H - 8 - TABLE_Y;
+    const available = PANEL_Y + PANEL_H - 2 - TABLE_Y;
     const baseVisibleH =
       Math.floor((available - headerH) / TABLE_ROW_H) * TABLE_ROW_H;
     const visibleH = hasPersonal ? baseVisibleH - TABLE_ROW_H : baseVisibleH;
@@ -155,7 +157,7 @@ export class LeaderboardScreen extends Screen {
     this.applyLeaderboardScroll();
 
     this.resetButton = new Button({
-      label: "СБРОС",
+      label: TEXT.common.reset,
       width: 46,
       height: 15,
       size: 8,
@@ -166,7 +168,7 @@ export class LeaderboardScreen extends Screen {
 
     if (view.from === "result") {
       const again = new Button({
-        label: "ЕЩЁ РАЗ",
+        label: TEXT.common.again,
         width: 112,
         height: 22,
         variant: "primary",
@@ -178,7 +180,7 @@ export class LeaderboardScreen extends Screen {
       this.bottomButtons.push(again);
 
       const menu = new Button({
-        label: "В МЕНЮ",
+        label: TEXT.common.menu,
         width: 112,
         height: 22,
         size: 11,
@@ -189,7 +191,7 @@ export class LeaderboardScreen extends Screen {
       this.bottomButtons.push(menu);
     } else {
       const back = new Button({
-        label: "НАЗАД",
+        label: TEXT.common.back,
         width: 128,
         height: 22,
         variant: "primary",
@@ -254,7 +256,7 @@ export class LeaderboardScreen extends Screen {
   private buildScrollbar(visibleH: number): void {
     const hit = new Graphics();
     hit.eventMode = "static";
-    hit.cursor = "pointer";
+    hit.cursor = CURSORS.default;
     hit.hitArea = new Rectangle(
       PANEL_X + PANEL_W - 13,
       this.thumbTrackY,
@@ -330,7 +332,7 @@ export class LeaderboardScreen extends Screen {
     if (!this.resetArmed) {
       this.resetArmed = true;
       this.resetTimer = 2.2;
-      this.resetButton.setLabel("ТОЧНО?");
+      this.resetButton.setLabel(TEXT.common.resetConfirm);
       return;
     }
     this.resetArmed = false;
@@ -356,7 +358,7 @@ export class LeaderboardScreen extends Screen {
       this.resetTimer -= dt;
       if (this.resetTimer <= 0) {
         this.resetArmed = false;
-        this.resetButton.setLabel("СБРОС");
+        this.resetButton.setLabel(TEXT.common.reset);
       }
     }
   }

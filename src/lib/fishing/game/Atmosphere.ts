@@ -1,14 +1,16 @@
 import { Container, Graphics } from "pixi.js";
-import { C, VIEW } from "../config";
+import { SCENE, VIEW } from "../config";
 import type { WeatherDef, WorldPalette } from "../world";
-import { WEATHER } from "../world";
+import { WEATHER, WINTER } from "../world";
 import { randRange } from "../utils";
 
-interface Drop {
+interface Flake {
   x: number;
   y: number;
-  length: number;
+  size: number;
   speed: number;
+  drift: number;
+  phase: number;
 }
 
 interface Star {
@@ -19,14 +21,6 @@ interface Star {
   size: number;
 }
 
-interface Firefly {
-  x: number;
-  y: number;
-  phase: number;
-  speed: number;
-  radius: number;
-}
-
 interface Splash {
   x: number;
   y: number;
@@ -35,40 +29,56 @@ interface Splash {
 }
 
 const DAY: WorldPalette = {
-  tint: 0xffffff,
+  tint: 0xf3f9ff,
   overlay: 0xffffff,
   overlayAlpha: 0,
   stars: 0,
   lantern: 0,
-  water: C.ocean,
-  deep: C.deep,
+  water: WINTER.waterDeep,
+  deep: WINTER.waterFar,
 };
 
 const STAR_COUNT = 44;
-const DROP_COUNT = 150;
-const FIREFLY_COUNT = 14;
+const FLAKE_COUNT = 190;
+/** Even a clear winter sky keeps a light snowfall going. */
+const BASE_SNOW = 0.34;
+/** Time constant for a weather front easing into the scene. */
+const WEATHER_BLEND_SECONDS = 8;
+
+interface WeatherVisual {
+  rain: number;
+  fog: number;
+  dark: number;
+  flash: number;
+}
 
 /**
- * Weather and time-of-day dressing for the lake. It never adds HUD text:
- * light, rain, fog, fireflies and lightning tell the player what the world is
- * doing. Intended to sit directly above the scene and below the HUD.
+ * Weather and time-of-day dressing for the winter lake. It never adds HUD
+ * text: snow, frost, cold moonlight and lightning tell the player what the
+ * world is doing. Intended to sit directly above the scene and below the HUD.
  */
 export class Atmosphere extends Container {
   private readonly wash = new Graphics();
   private readonly sky = new Graphics();
   private readonly glow = new Graphics();
   private readonly fogG = new Graphics();
-  private readonly rainG = new Graphics();
+  private readonly snowG = new Graphics();
   private readonly boltG = new Graphics();
   private readonly flashG = new Graphics();
 
-  private readonly drops: Drop[] = [];
+  private readonly flakes: Flake[] = [];
   private readonly stars: Star[] = [];
-  private readonly fireflies: Firefly[] = [];
   private splashes: Splash[] = [];
 
   private world: WorldPalette = DAY;
   private weather: WeatherDef = WEATHER.clear;
+  private weatherReady = false;
+  private readonly visual: WeatherVisual = {
+    rain: WEATHER.clear.rain,
+    fog: WEATHER.clear.fog,
+    dark: WEATHER.clear.dark,
+    flash: 0,
+  };
   private time = 0;
 
   private boltTimer = randRange(4, 9);
@@ -94,22 +104,14 @@ export class Atmosphere extends Container {
       });
     }
 
-    for (let i = 0; i < DROP_COUNT; i += 1) {
-      this.drops.push({
-        x: randRange(-30, VIEW.width + 30),
+    for (let i = 0; i < FLAKE_COUNT; i += 1) {
+      this.flakes.push({
+        x: randRange(-20, VIEW.width + 20),
         y: randRange(-VIEW.height, VIEW.height),
-        length: randRange(4, 9),
-        speed: randRange(210, 360),
-      });
-    }
-
-    for (let i = 0; i < FIREFLY_COUNT; i += 1) {
-      this.fireflies.push({
-        x: randRange(18, VIEW.width - 18),
-        y: randRange(204, 258),
+        size: Math.random() > 0.78 ? 2 : 1,
+        speed: randRange(12, 34),
+        drift: randRange(3, 13),
         phase: randRange(0, Math.PI * 2),
-        speed: randRange(0.5, 1.5),
-        radius: randRange(1.4, 2.6),
       });
     }
 
@@ -118,7 +120,7 @@ export class Atmosphere extends Container {
       this.sky,
       this.glow,
       this.fogG,
-      this.rainG,
+      this.snowG,
       this.boltG,
       this.flashG,
     );
@@ -126,17 +128,38 @@ export class Atmosphere extends Container {
 
   setWorld(palette: WorldPalette, weather: WeatherDef): void {
     this.world = palette;
+    if (weather.id === this.weather.id && this.weatherReady) return;
     this.weather = weather;
+    if (!this.weatherReady) {
+      // The first frame of a session shows the current front immediately;
+      // transitions only matter when the clock rolls into a new one.
+      this.visual.rain = weather.rain;
+      this.visual.fog = weather.fog;
+      this.visual.dark = weather.dark;
+      this.visual.flash = weather.flash ? 1 : 0;
+      this.weatherReady = true;
+    }
   }
 
   update(dt: number): void {
     this.time += dt;
+    this.smoothWeather(dt);
     this.drawWash();
     this.drawSky();
     this.drawGlow();
     this.drawFog();
-    this.drawRain(dt);
+    this.drawSnow(dt);
     this.drawLightning(dt);
+  }
+
+  private smoothWeather(dt: number): void {
+    if (!this.weatherReady) return;
+    const k = 1 - Math.exp(-dt / WEATHER_BLEND_SECONDS);
+    const target = this.weather;
+    this.visual.rain += (target.rain - this.visual.rain) * k;
+    this.visual.fog += (target.fog - this.visual.fog) * k;
+    this.visual.dark += (target.dark - this.visual.dark) * k;
+    this.visual.flash += ((target.flash ? 1 : 0) - this.visual.flash) * k;
   }
 
   // ------------------------------------------------------------------ layers
@@ -150,10 +173,10 @@ export class Atmosphere extends Container {
         alpha: this.world.overlayAlpha,
       });
     }
-    if (this.weather.dark > 0.002) {
+    if (this.visual.dark > 0.002) {
       g.rect(0, 0, VIEW.width, VIEW.height).fill({
         color: 0x050b1c,
-        alpha: this.weather.dark * 0.5,
+        alpha: this.visual.dark * 0.5,
       });
     }
   }
@@ -168,23 +191,32 @@ export class Atmosphere extends Container {
       const twinkle =
         0.55 + Math.sin(this.time * star.speed + star.phase) * 0.45;
       g.rect(star.x, star.y, star.size, star.size).fill({
-        color: star.size > 1 ? C.cream : C.steelPale,
-        alpha: stars * twinkle * 0.9,
+        color: star.size > 1 ? WINTER.moon : WINTER.star,
+        alpha: stars * twinkle * 0.85,
       });
     }
 
-    // Moon and its broken reflection on the water.
+    // Cold moon and its broken reflection on the water.
     const moonX = 398;
-    g.circle(moonX, 5, 10).fill({ color: 0xdfe8ff, alpha: 0.05 * stars });
-    g.circle(moonX, 5, 7).fill({ color: 0xe8efff, alpha: 0.1 * stars });
-    g.circle(moonX, 5, 4).fill({ color: 0xf6f8ff, alpha: 0.9 * stars });
-    g.circle(moonX - 1, 4, 2).fill({ color: 0xdfe8ff, alpha: 0.55 * stars });
+    g.circle(moonX, 5, 10).fill({
+      color: 0xcfe2ff,
+      alpha: 0.05 * stars,
+    });
+    g.circle(moonX, 5, 7).fill({
+      color: 0xe4efff,
+      alpha: 0.1 * stars,
+    });
+    g.circle(moonX, 5, 4).fill({ color: WINTER.moon, alpha: 0.9 * stars });
+    g.circle(moonX - 1, 4, 2).fill({
+      color: 0xd6e6ff,
+      alpha: 0.6 * stars,
+    });
 
     for (let i = 0; i < 9; i += 1) {
       const drift = Math.sin(this.time * 0.9 + i * 1.7) * (2 + i * 0.6);
       const width = Math.max(1, 8 - i * 0.7);
       g.rect(moonX - width / 2 + drift, 16 + i * 6, width, 1).fill({
-        color: 0xdce6ff,
+        color: 0xdbe8ff,
         alpha: stars * (0.16 - i * 0.012),
       });
     }
@@ -196,22 +228,17 @@ export class Atmosphere extends Container {
     const lantern = this.world.lantern;
     if (lantern <= 0.02) return;
 
-    // Warm pool of light around the angler's lantern, then fireflies.
-    g.circle(240, 196, 44).fill({ color: 0xffb347, alpha: 0.035 * lantern });
-    g.circle(240, 196, 27).fill({ color: 0xffc76b, alpha: 0.05 * lantern });
-    g.circle(240, 196, 13).fill({ color: 0xffe3a8, alpha: 0.07 * lantern });
-
-    for (const fly of this.fireflies) {
-      const pulse = (Math.sin(this.time * fly.speed * 2.2 + fly.phase) + 1) / 2;
-      const x = fly.x + Math.sin(this.time * fly.speed + fly.phase) * 9;
-      const y = fly.y + Math.cos(this.time * fly.speed * 0.7 + fly.phase) * 4;
-      g.circle(x, y, fly.radius * 3.4).fill({
-        color: 0xffd166,
-        alpha: lantern * pulse * 0.12,
-      });
-      g.circle(x, y, fly.radius).fill({
-        color: 0xffef9a,
-        alpha: lantern * (0.25 + pulse * 0.55),
+    // Warm pool of light around the pier lantern at the top-right corner.
+    // Several low-alpha rings read as a soft wash instead of hard circles.
+    const x = SCENE.lanternX;
+    const y = SCENE.lanternY - 7;
+    for (let i = 0; i < 8; i += 1) {
+      const t = i / 7;
+      const radius = 44 * (1 - t * 0.82);
+      const alpha = (0.008 + t * 0.03) * lantern;
+      g.circle(x, y, radius).fill({
+        color: t < 0.35 ? 0xffb347 : t < 0.7 ? 0xffc76b : 0xffe3a8,
+        alpha,
       });
     }
   }
@@ -219,12 +246,13 @@ export class Atmosphere extends Container {
   private drawFog(): void {
     const g = this.fogG;
     g.clear();
-    const fog = this.weather.fog;
+    const fog = this.visual.fog;
     if (fog <= 0.02) return;
 
+    // Frost haze rather than a warm summer fog.
     g.rect(0, 0, VIEW.width, VIEW.height).fill({
-      color: 0xdbe6ea,
-      alpha: fog * 0.07,
+      color: WINTER.frost,
+      alpha: fog * 0.09,
     });
 
     for (let i = 0; i < 9; i += 1) {
@@ -234,47 +262,57 @@ export class Atmosphere extends Container {
       const y = 24 + i * 26 + Math.sin(this.time * 0.6 + i) * 4;
       const rx = 150 + (i % 3) * 34;
       g.ellipse(x, y, rx, 13).fill({
-        color: 0xe6eef1,
-        alpha: fog * (0.045 + (i % 3) * 0.012),
+        color: WINTER.frost,
+        alpha: fog * (0.05 + (i % 3) * 0.012),
+      });
+    }
+
+    // A few ice crystals clinging to the frame in heavy fog.
+    for (let i = 0; i < 18; i += 1) {
+      const x =
+        i % 2 === 0 ? 2 + ((i * 7) % 16) : VIEW.width - 4 - ((i * 11) % 18);
+      const y = 26 + ((i * 31) % (VIEW.height - 40));
+      g.rect(x, y, 1, 3).fill({
+        color: WINTER.snowLight,
+        alpha: fog * 0.35,
       });
     }
   }
 
-  private drawRain(dt: number): void {
-    const g = this.rainG;
+  private drawSnow(dt: number): void {
+    const g = this.snowG;
     g.clear();
-    const rain = this.weather.rain;
-    if (rain <= 0.02) {
-      this.splashes = [];
-      return;
-    }
 
-    const count = Math.floor(this.drops.length * rain);
-    const wind = 34 + rain * 26;
+    const intensity = BASE_SNOW + this.visual.rain * 0.66;
+    const count = Math.min(
+      this.flakes.length,
+      Math.floor(this.flakes.length * intensity),
+    );
+    const fallScale = 1 + this.visual.rain * 0.8;
+
     for (let i = 0; i < count; i += 1) {
-      const drop = this.drops[i];
-      const speed = drop.speed * (0.7 + rain * 0.6);
-      drop.y += speed * dt;
-      drop.x += wind * dt;
-      if (drop.y > VIEW.height + 10) {
-        drop.y = randRange(-40, -8);
-        drop.x = randRange(-30, VIEW.width + 30);
+      const flake = this.flakes[i];
+      flake.y += flake.speed * fallScale * dt;
+      flake.x +=
+        (flake.drift + Math.sin(this.time * 0.9 + flake.phase) * 5) * dt;
+      if (flake.y > VIEW.height + 4) {
+        flake.y = -4;
+        flake.x = randRange(-20, VIEW.width + 20);
       }
-      if (drop.x > VIEW.width + 30) drop.x = -30;
-      const length = drop.length * (0.7 + rain * 0.6);
-      g.moveTo(drop.x, drop.y)
-        .lineTo(drop.x - length * 0.28, drop.y + length)
-        .stroke({
-          width: 1,
-          color: rain > 0.9 ? 0xcfe6ff : 0xa8d4ee,
-          alpha: 0.18 + rain * 0.2,
-        });
+      if (flake.x > VIEW.width + 20) flake.x = -20;
+      if (flake.x < -20) flake.x = VIEW.width + 20;
+
+      g.rect(flake.x, flake.y, flake.size, flake.size).fill({
+        color: WINTER.snow,
+        alpha: flake.size > 1 ? 0.82 : 0.5,
+      });
     }
 
-    if (Math.random() < dt * 34 * rain) {
+    // Snow landing on the water leaves tiny, short-lived rings.
+    if (Math.random() < dt * 14 * intensity) {
       this.splashes.push({
         x: randRange(10, VIEW.width - 10),
-        y: randRange(22, 228),
+        y: randRange(26, 228),
         life: 0.34,
         maxLife: 0.34,
       });
@@ -284,17 +322,17 @@ export class Atmosphere extends Container {
       splash.life -= dt;
       if (splash.life <= 0) return false;
       const t = 1 - splash.life / splash.maxLife;
-      g.ellipse(splash.x, splash.y, 1 + t * 3.4, 0.6 + t * 1.3).stroke({
+      g.ellipse(splash.x, splash.y, 1 + t * 3.2, 0.6 + t * 1.2).stroke({
         width: 1,
-        color: 0xcfe6ff,
-        alpha: (1 - t) * 0.32,
+        color: WINTER.snow,
+        alpha: (1 - t) * 0.3,
       });
       return true;
     });
   }
 
   private drawLightning(dt: number): void {
-    if (this.weather.flash) {
+    if (this.visual.flash > 0.5) {
       this.boltTimer -= dt;
       if (this.boltTimer <= 0) {
         this.boltTimer = randRange(4.5, 11);

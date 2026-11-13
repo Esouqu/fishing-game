@@ -9,6 +9,8 @@ export interface CatchRecord {
   latin: string;
   points: number;
   perfect: boolean;
+  /** Rolled catch weight in kilograms. */
+  weightKg: number;
   /** Combo multiplier applied to this catch. */
   multiplier: number;
 }
@@ -93,7 +95,7 @@ export interface NormalizedOptions {
 export function normalizeOptions(
   options: FishingGameOptions,
 ): NormalizedOptions {
-  const base = options.assetBase ?? "/assets/fishing";
+  const base = options.assetBase ?? `${import.meta.env.BASE_URL}assets/fishing`;
   return {
     container: options.container,
     assetBase: base.replace(/\/+$/, ""),

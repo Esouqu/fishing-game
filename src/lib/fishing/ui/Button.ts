@@ -1,5 +1,6 @@
 import { Container, Graphics, Rectangle, Text } from "pixi.js";
 import { C } from "../config";
+import { CURSORS } from "../cursors";
 import type { Focusable } from "./FocusGroup";
 import { makeText } from "./theme";
 
@@ -71,7 +72,7 @@ export class Button extends Container implements Focusable {
     if (this.labelText) this.addChild(this.labelText);
 
     this.eventMode = "static";
-    this.cursor = "pointer";
+    this.cursor = CURSORS.pointer;
     this.hitArea = new Rectangle(0, 0, this.widthValue, this.heightValue);
 
     this.on("pointerover", () => {
@@ -128,7 +129,7 @@ export class Button extends Container implements Focusable {
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     this.eventMode = enabled ? "static" : "none";
-    this.cursor = enabled ? "pointer" : "default";
+    this.cursor = enabled ? CURSORS.pointer : CURSORS.default;
     this.alpha = enabled ? 1 : 0.5;
     this.redraw();
   }
@@ -185,13 +186,13 @@ export class Button extends Container implements Focusable {
         fill = C.panelAlt;
         fillActive = C.steel;
         fillPressed = C.steelLight;
-        topLine = C.steelLight;
+        topLine = C.brownLight;
         break;
       default:
         fill = C.panelAlt;
         fillActive = C.steel;
         fillPressed = C.steelLight;
-        topLine = C.steelLight;
+        topLine = C.brownLight;
         break;
     }
 

@@ -1,5 +1,6 @@
 import { createFishingGame } from "./lib/fishing";
 import type { FishingGameInstance } from "./lib/fishing";
+import { TEXT } from "./lib/fishing/texts";
 
 declare global {
   interface Window {
@@ -12,7 +13,12 @@ const host = document.getElementById("game");
 
 // Stand-in for the host application's player store. In a real embed, pass the
 // signed-in nickname here and it will be saved with every session result.
-const playerName = "Рыбак";
+const playerName = TEXT.common.playerFallback;
+
+document.title = TEXT.page.title;
+document
+  .querySelector('meta[name="description"]')
+  ?.setAttribute("content", TEXT.page.description);
 
 if (host) {
   void createFishingGame({

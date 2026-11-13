@@ -24,4 +24,5 @@
 ## Other
 
 - All game code, UI layout, procedural Web Audio effects and Russian copy were written for this project.
+- The winter trees, bush and rocks in `src/assets/fishing/` are procedurally generated pixel art. `scripts/make-nature-assets.py` rebuilds them from the project's earlier procedural sprites (kept in `scripts/nature-originals/`) with restored crowns and snow caps.
 - The DTF article “13 базовых принципов геймдизайна” was used as a design reference; no text from the article is reproduced.

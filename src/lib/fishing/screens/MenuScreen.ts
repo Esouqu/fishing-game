@@ -15,6 +15,8 @@ import {
   drawLeaderboardRow,
 } from "../ui/LeaderboardTable";
 import { makeText } from "../ui/theme";
+import { TEXT } from "../texts";
+import { CURSORS } from "../cursors";
 import { clamp } from "../utils";
 import type { LeaderboardEntry } from "../types";
 
@@ -30,7 +32,7 @@ const BOARD_H = PANEL_H;
 const BOARD_X = VIEW.width - MARGIN - BOARD_W;
 const BOARD_Y = MARGIN;
 const BOARD_TABLE_X = BOARD_X + 12;
-const BOARD_TABLE_Y = BOARD_Y + 48;
+const BOARD_TABLE_Y = BOARD_Y + 30;
 const BOARD_TABLE_W = BOARD_W - 24;
 const TABLE_ROW_H = 13;
 const TABLE_FONT = 9;
@@ -44,23 +46,23 @@ function drawMenuPanel(
   height: number,
   alpha: number,
 ): void {
-  g.roundRect(x + 3, y + 4, width, height, 8).fill({
+  g.rect(x + 3, y + 4, width, height).fill({
     color: C.ink,
     alpha: 0.32,
   });
-  g.roundRect(x, y, width, height, 8).fill({ color: C.panel, alpha });
-  g.roundRect(x + 0.5, y + 0.5, width - 1, height - 1, 8).stroke({
+  g.rect(x, y, width, height).fill({ color: C.panel, alpha });
+  g.rect(x, y, width, height).stroke({
     width: 1,
     color: C.ink,
     alignment: 0,
   });
-  g.roundRect(x + 1.5, y + 1.5, width - 3, height - 3, 7).stroke({
+  g.rect(x + 1, y + 1, width - 2, height - 2).stroke({
     width: 1,
-    color: C.steel,
-    alpha: 0.22,
+    color: C.brownDark,
+    alpha: 0.5,
     alignment: 0,
   });
-  g.roundRect(x + 10, y + 1.5, width - 20, 1, 0.5).fill({
+  g.rect(x + 10, y + 1, width - 20, 1).fill({
     color: C.cream,
     alpha: 0.14,
   });
@@ -105,8 +107,8 @@ export class MenuScreen extends Screen {
     const left = PANEL_X + PAD;
     const width = PANEL_W - PAD * 2;
 
-    const title = makeText("ТИХАЯ ЗАВОДЬ", {
-      size: 36,
+    const title = makeText(TEXT.menu.title, {
+      size: 26,
       weight: 800,
       color: C.cream,
       letterSpacing: 0.5,
@@ -134,7 +136,7 @@ export class MenuScreen extends Screen {
     let y = PANEL_Y + PANEL_H - PAD - stackH;
 
     const play = new Button({
-      label: "ИГРАТЬ",
+      label: TEXT.common.play,
       width,
       height: primaryH,
       variant: "primary",
@@ -147,7 +149,7 @@ export class MenuScreen extends Screen {
     y += primaryH + gap;
 
     const help = new Button({
-      label: "КАК ИГРАТЬ",
+      label: TEXT.common.howToPlay,
       width,
       height: secondaryH,
       variant: "secondary",
@@ -178,7 +180,7 @@ export class MenuScreen extends Screen {
 
     if (hasExit) {
       const exit = new Button({
-        label: "ВЫХОД",
+        label: TEXT.common.exit,
         width: smallW,
         height: secondaryH,
         size: 10,
@@ -205,7 +207,7 @@ export class MenuScreen extends Screen {
     drawMenuPanel(panel, BOARD_X, BOARD_Y, BOARD_W, BOARD_H, 0.9);
     this.addChild(panel);
 
-    const title = makeText("ЛИДЕРБОРД", {
+    const title = makeText(TEXT.menu.leaderboardTitle, {
       size: 12,
       weight: 800,
       color: C.gold,
@@ -227,7 +229,7 @@ export class MenuScreen extends Screen {
 
     // The pinned player row owns the last row of the panel, so the scroll
     // area is one row shorter and never hides data behind the pin.
-    const available = BOARD_H - (BOARD_TABLE_Y - BOARD_Y) - 8;
+    const available = BOARD_H - (BOARD_TABLE_Y - BOARD_Y) - 2;
     const baseVisibleH =
       Math.floor((available - headerH) / TABLE_ROW_H) * TABLE_ROW_H;
     const visibleH = hasPersonal ? baseVisibleH - TABLE_ROW_H : baseVisibleH;
@@ -327,7 +329,7 @@ export class MenuScreen extends Screen {
   private buildScrollbar(visibleH: number): void {
     const hit = new Graphics();
     hit.eventMode = "static";
-    hit.cursor = "pointer";
+    hit.cursor = CURSORS.default;
     hit.hitArea = new Rectangle(
       BOARD_X + BOARD_W - 12,
       this.thumbTrackY,
@@ -400,7 +402,7 @@ export class MenuScreen extends Screen {
   }
 
   private muteLabel(): string {
-    return this.game.muted ? "ЗВУК: ВЫКЛ" : "ЗВУК: ВКЛ";
+    return this.game.muted ? TEXT.common.soundOff : TEXT.common.soundOn;
   }
 
   override onEnter(): void {

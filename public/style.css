@@ -37,3 +37,12 @@ canvas {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
+
+canvas,
+canvas.cursor-hidden {
+  cursor: none !important;
+}
+
+#game {
+  cursor: none !important;
+}

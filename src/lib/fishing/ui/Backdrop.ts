@@ -1,9 +1,11 @@
-import { Container, Graphics, Sprite } from "pixi.js";
+import { Container, Graphics, Rectangle, Sprite } from "pixi.js";
 import { C, VIEW } from "../config";
 import type { AssetBag } from "../assets";
 import type { WorldClock } from "../world";
+import { WINTER, winterWaterAt } from "../world";
 import { randRange } from "../utils";
 import { Atmosphere } from "../game/Atmosphere";
+import { CURSORS } from "../cursors";
 
 interface Swimmer {
   sprite: Sprite;
@@ -35,40 +37,73 @@ export class Backdrop extends Container {
   constructor(assets: AssetBag, clock?: WorldClock) {
     super();
 
-    const g = new Graphics();
-    g.rect(0, 0, VIEW.width, VIEW.height).fill(C.deep);
-    g.rect(0, 18, VIEW.width, 46).fill({ color: 0x0d5d99 });
-    g.rect(0, 64, VIEW.width, 72).fill({ color: C.ocean });
-    g.rect(0, 136, VIEW.width, 100).fill({ color: 0x0b78bd });
-    g.rect(0, 236, VIEW.width, 34).fill({ color: 0x095b91 });
+    // Menus have no full-screen input catcher of their own, so the backdrop
+    // becomes the hover target that carries the custom default cursor.
+    this.eventMode = "static";
+    this.hitArea = new Rectangle(0, 0, VIEW.width, VIEW.height);
+    this.cursor = CURSORS.default;
 
-    for (let y = 30; y < 236; y += 18) {
+    const g = new Graphics();
+
+    // Cold depth gradient: darker water in the foreground, turquoise near the
+    // far bank, matching the playable lake.
+    for (let y = 0; y < VIEW.height; y += 1) {
+      const t = 1 - y / VIEW.height;
+      g.rect(0, y, VIEW.width, 1).fill(winterWaterAt(t));
+    }
+
+    for (let y = 30; y < 250; y += 18) {
       const inset = ((y / 18) % 3) * 12;
       g.rect(inset, y, VIEW.width - inset * 2, 1).fill({
-        color: C.cyan,
-        alpha: 0.06,
+        color: WINTER.ice,
+        alpha: 0.07,
       });
     }
 
-    // Far shore.
-    g.rect(0, 0, VIEW.width, 16).fill(0x1f4038);
-    g.rect(0, 15, VIEW.width, 3).fill(0x2f5753);
-    g.rect(0, 18, VIEW.width, 1).fill({ color: C.cream, alpha: 0.12 });
-    this.addChild(g);
-
-    // Silhouetted treeline sitting on the far shore. Drawn instead of using the
-    // tree sprite so the crowns are not clipped by the top of the world.
-    const treeline = new Graphics();
+    // Snowy far shore with a clipped pine treeline.
+    g.rect(0, 0, VIEW.width, 13).fill(WINTER.farShoreSnow);
+    g.rect(0, 11, VIEW.width, 3).fill(WINTER.snowShade);
     for (let x = -10; x < VIEW.width + 18; x += 13) {
       const height = 5 + ((x * 17) % 7);
       const width = 11 + ((x * 11) % 4);
-      treeline.rect(x, 15 - height, width, height).fill(0x1a3730);
-      treeline.rect(x + 2, 15 - height - 2, width - 4, 2).fill(0x1a3730);
-      treeline
-        .rect(x + 4, 15 - height - 4, Math.max(2, width - 8), 2)
-        .fill(0x1a3730);
+      g.rect(x, 12 - height, width, height).fill(WINTER.treeDark);
+      g.rect(x + 2, 12 - height - 3, width - 4, 3).fill(WINTER.treeDark);
+      g.rect(x + 4, 12 - height - 5, Math.max(2, width - 8), 2).fill(
+        WINTER.treeDark,
+      );
+      g.rect(x + 3, 12 - height - 5, Math.max(2, width - 6), 1).fill({
+        color: WINTER.farShoreSnow,
+        alpha: 0.85,
+      });
     }
-    this.addChild(treeline);
+    g.rect(0, 16, VIEW.width, 1).fill({ color: WINTER.ice, alpha: 0.7 });
+    this.addChild(g);
+
+    // Drift ice near the far and near edges.
+    const ice = new Graphics();
+    for (const spot of [
+      { x: 34, y: 25, w: 16, h: 3 },
+      { x: 132, y: 21, w: 11, h: 2 },
+      { x: 308, y: 23, w: 14, h: 2.5 },
+      { x: 424, y: 27, w: 9, h: 2 },
+      { x: 60, y: 256, w: 18, h: 3 },
+      { x: 210, y: 262, w: 12, h: 2 },
+      { x: 390, y: 258, w: 15, h: 2.5 },
+    ]) {
+      ice.ellipse(spot.x, spot.y, spot.w, spot.h).fill({
+        color: WINTER.ice,
+        alpha: 0.55,
+      });
+      ice
+        .ellipse(
+          spot.x - spot.w * 0.15,
+          spot.y - 0.8,
+          spot.w * 0.5,
+          spot.h * 0.5,
+        )
+        .fill({ color: WINTER.snowLight, alpha: 0.7 });
+    }
+    this.addChild(ice);
 
     for (let i = 0; i < 12; i += 1) {
       this.marks.push({
@@ -91,6 +126,7 @@ export class Backdrop extends Container {
       sprite.anchor.set(0.5);
       sprite.scale.set(randRange(0.6, 0.95));
       sprite.alpha = randRange(0.1, 0.18);
+      sprite.tint = 0x0d4a66;
       const direction = Math.random() > 0.5 ? 1 : -1;
       sprite.scale.x = Math.abs(sprite.scale.x) * direction;
       sprite.position.set(randRange(0, VIEW.width), randRange(50, 222));
@@ -149,7 +185,7 @@ export class Backdrop extends Container {
       const radius = mark.radius * (0.65 + pulse * 0.45);
       g.ellipse(mark.x, mark.y, radius, radius * 0.38).stroke({
         width: 1,
-        color: C.cyan,
+        color: WINTER.ice,
         alpha: mark.alpha * (0.4 + pulse * 0.6),
       });
     }

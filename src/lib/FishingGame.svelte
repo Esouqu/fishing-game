@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { TEXT } from "./fishing/texts";
   import type {
     FishingGameInstance,
     SessionResult,
@@ -21,7 +22,7 @@
   }
 
   let {
-    assetBase = "/assets/fishing",
+    assetBase = `${import.meta.env.BASE_URL}assets/fishing`,
     storagePrefix = "quiet-cove",
     muted = false,
     startScreen = "menu",
@@ -100,7 +101,7 @@
   bind:this={host}
   class="fishing-game {className}"
   role="application"
-  aria-label="Рыбалка «Тихая заводь»"
+  aria-label={TEXT.common.ariaLabel}
 ></div>
 
 <style>

@@ -1,4 +1,4 @@
-import { Container, Graphics, Rectangle, Text } from "pixi.js";
+import { Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
 import type { FederatedPointerEvent } from "pixi.js";
 import type { Game } from "../Game";
 import {
@@ -40,14 +40,23 @@ import {
   makeText,
   setText,
 } from "../ui/theme";
+import { TEXT } from "../texts";
+import {
+  formatWeight,
+  rollFishWeight,
+  weightFactor,
+  weightScale,
+} from "../fishWeight";
 import { LakeScene } from "../game/Scene";
 import { Atmosphere } from "../game/Atmosphere";
+import { JuiceFx } from "../game/JuiceFx";
 import { Minigame, type MinigameResult } from "../game/Minigame";
-import { FightHint } from "./FightHint";
+import { FIGHT_RADIUS } from "../game/fightModel";
+import { CastHint, CAST_HINT_BOUNDS } from "../ui/CastHint";
+import { CURSORS } from "../cursors";
 
 type Phase =
   "idle" | "charging" | "waiting" | "bite" | "fighting" | "resolve" | "done";
-type Outcome = "caught" | "lost";
 
 interface Floater {
   text: Text;
@@ -56,15 +65,9 @@ interface Floater {
   vy: number;
 }
 
-const CAST_LABEL = "УДЕРЖИВАЙ — СИЛА ЗАБРОСА";
-
-/** Shared cast/streak block, centred in the top HUD. */
-const HUD_INFO_WIDTH = 188;
-const HUD_INFO_LEFT = VIEW.width / 2 - HUD_INFO_WIDTH / 2;
-const HUD_INFO_RIGHT = VIEW.width / 2 + HUD_INFO_WIDTH / 2;
-const HUD_ATTEMPT_SPAN = (CASTS_PER_SESSION - 1) * 10 + 6;
-const HUD_ATTEMPT_START = Math.round((HUD_INFO_WIDTH - HUD_ATTEMPT_SPAN) / 2);
-const WAIT_LABEL = "ЖДЁМ ПОКЛЁВКИ";
+/** Feedback floaters live beside the angler, never in the middle of the water. */
+const FLOATER_X = SCENE.anglerX + 12;
+const FLOATER_Y = SCENE.anglerY - 58;
 
 const PULL_KEYS = {
   ArrowLeft: [-1, 0],
@@ -79,18 +82,60 @@ const PULL_KEYS = {
 
 type PullKey = keyof typeof PULL_KEYS;
 
+const FIGHT_VIGNETTE_RADIUS = 560;
+
+/** One radial texture: clear in the fight zone, progressively darker outside. */
+function createFightVignette(): Sprite {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("[fishing] 2D canvas is unavailable");
+
+  const center = size / 2;
+  const inner = (center * (FIGHT_RADIUS + 14)) / FIGHT_VIGNETTE_RADIUS;
+  const gradient = ctx.createRadialGradient(
+    center,
+    center,
+    inner,
+    center,
+    center,
+    center,
+  );
+  gradient.addColorStop(0, "rgba(5, 11, 28, 0)");
+  gradient.addColorStop(0.3, "rgba(5, 11, 28, 0.12)");
+  gradient.addColorStop(1, "rgba(5, 11, 28, 0.52)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+
+  const texture = Texture.from(canvas);
+  texture.source.scaleMode = "linear";
+  const sprite = new Sprite(texture);
+  sprite.anchor.set(0.5);
+  sprite.width = FIGHT_VIGNETTE_RADIUS * 2;
+  sprite.height = FIGHT_VIGNETTE_RADIUS * 2;
+  sprite.eventMode = "none";
+  sprite.visible = false;
+  return sprite;
+}
+
 export class GameScreen extends Screen {
   private readonly game: Game;
   private readonly scene: LakeScene;
   private readonly atmosphere = new Atmosphere();
+  private readonly playfield = new Container();
   private readonly hud = new Container();
-  private readonly castInfo = new Container();
+  private readonly castHint = new CastHint();
   private readonly fx = new Container();
+  private readonly floatersLayer = new Container();
+  private readonly bobberLayer = new Container();
+  private readonly juice = new JuiceFx();
+  private readonly fightVignette = createFightVignette();
+  private fightVignetteAlpha = 0;
   private readonly inputCatcher: Graphics;
-  private readonly dots = new Graphics();
-  private readonly perfectPips = new Graphics();
+  private readonly powerPlate = new Graphics();
   private readonly powerBar = new Graphics();
-  private readonly reactionBar = new Graphics();
   private readonly pullKeys = new Set<PullKey>();
   private readonly handleContextMenu = (event: MouseEvent): void => {
     event.preventDefault();
@@ -98,9 +143,7 @@ export class GameScreen extends Screen {
   };
 
   private scoreValue!: Text;
-  private castLabel!: Text;
-  private comboText!: Text;
-  private statusText!: Text;
+  private attemptsText!: Text;
   private powerLabel!: Text;
   private tapLanding = false;
   private tapIconX = 0;
@@ -117,6 +160,7 @@ export class GameScreen extends Screen {
   private biteTimer = 0;
   private biteWindow = 1;
   private resolveTimer = 0;
+  private catchShown = false;
   private pressed = false;
   private paused = false;
   private finished = false;
@@ -127,9 +171,9 @@ export class GameScreen extends Screen {
   private nibbleLead: number = TIMING.nibbleLeadMax;
 
   private fish: FishSpecies | null = null;
+  private fishWeightKg = 0;
   private water: WaterProfile = waterProfile(0);
   private minigame: Minigame | null = null;
-  private hint: FightHint | null = null;
   private readonly floaters: Floater[] = [];
   private pointerX = VIEW.width / 2;
   private pointerY = VIEW.height / 2;
@@ -147,9 +191,6 @@ export class GameScreen extends Screen {
   private bestMultiplier = 1;
   private castsUsed = 0;
   private castsLeft = CASTS_PER_SESSION;
-  private readonly outcomes: Array<Outcome | null> = new Array(
-    CASTS_PER_SESSION,
-  ).fill(null);
   private readonly catches: CatchRecord[] = [];
   private perfectCount = 0;
 
@@ -161,14 +202,18 @@ export class GameScreen extends Screen {
     this.scene.onCastLanded = () => {
       this.game.audio.plop();
       if (this.luckZoneHit) this.scene.celebrateLuck();
+      const point = this.scene.castPoint;
+      this.juice.trigger("cast", point.x, point.y);
     };
-    this.addChild(this.scene);
+    this.addChild(this.playfield);
+    this.playfield.addChild(this.scene);
 
     this.atmosphere.onThunder = () => this.game.audio.thunder();
     const palette = game.clock.palette;
     this.scene.tint = palette.tint;
+    this.scene.setLantern(palette.lantern);
     this.atmosphere.setWorld(palette, game.clock.weatherDef);
-    this.addChild(this.atmosphere);
+    this.playfield.addChild(this.atmosphere);
 
     this.inputCatcher = new Graphics();
     this.inputCatcher.eventMode = "static";
@@ -177,17 +222,17 @@ export class GameScreen extends Screen {
       this.trackPointer(event);
       // Right click is the final pull; the browser menu is suppressed.
       if (event.button === 2) return;
-      const icon =
+      const target =
         this.phase === "fighting" && !this.paused
-          ? this.minigame?.landingIcon
+          ? this.minigame?.landingTarget
           : null;
-      if (icon) {
-        const dx = this.pointerX - icon.x;
-        const dy = this.pointerY - icon.y;
+      if (target) {
+        const dx = this.pointerX - target.x;
+        const dy = this.pointerY - target.y;
         if (Math.hypot(dx, dy) <= 20) {
           this.tapLanding = true;
-          this.tapIconX = icon.x;
-          this.tapIconY = icon.y;
+          this.tapIconX = target.x;
+          this.tapIconY = target.y;
           return;
         }
       }
@@ -221,13 +266,26 @@ export class GameScreen extends Screen {
       this.pressEnd();
     });
     this.addChild(this.inputCatcher);
+    this.inputCatcher.cursor = CURSORS.default;
 
     this.buildHud();
     this.addChild(this.hud);
-    this.addChild(this.fx);
-    // Purely visual layers (minigame frame, floaters) must never intercept
-    // pointer events meant for the input catcher.
+    this.hud.addChild(this.castHint);
+    this.addChild(this.floatersLayer);
+    this.floatersLayer.eventMode = "none";
+    // Purely visual layers (minigame frame) must never intercept pointer events
+    // meant for the input catcher. The playfield is the only filtered layer;
+    // HUD and floaters stay crisp above it.
+    this.playfield.addChild(this.fightVignette);
+    this.fightVignette.eventMode = "none";
+    this.fightVignette.visible = false;
+    this.playfield.addChild(this.fx);
     this.fx.eventMode = "none";
+    // The float is lifted above the minigame while the fight is active, so it
+    // stays on top of the fish that carries it.
+    this.playfield.addChild(this.bobberLayer);
+    this.bobberLayer.eventMode = "none";
+    this.juice.attachTo(this.playfield);
     this.buildPause();
     this.addChild(this.pauseOverlay);
     this.game.app.canvas.addEventListener(
@@ -235,7 +293,6 @@ export class GameScreen extends Screen {
       this.handleContextMenu,
     );
 
-    this.setStatus(CAST_LABEL);
     this.updateHud();
   }
 
@@ -244,49 +301,41 @@ export class GameScreen extends Screen {
   private buildHud(): void {
     const bar = new Graphics();
     bar.rect(0, 0, VIEW.width, 24).fill({ color: C.ink, alpha: 0.82 });
-    bar.rect(0, 23, VIEW.width, 1).fill({ color: C.steel, alpha: 0.45 });
+    bar.rect(0, 23, VIEW.width, 1).fill({ color: C.brownDark, alpha: 0.65 });
+    bar.rect(3, 4, 2, 16).fill({ color: C.brownLight, alpha: 0.85 });
     bar.eventMode = "none";
     this.hud.addChild(bar);
 
-    const scoreLabel = makeText("ОЧКИ", { size: 7, color: C.steelPale });
-    scoreLabel.position.set(8, 8);
+    const scoreLabel = makeText(TEXT.common.score, {
+      size: 7,
+      color: C.steelPale,
+    });
+    scoreLabel.anchor.set(0, 0.5);
+    scoreLabel.position.set(8, 12);
     scoreLabel.eventMode = "none";
     this.hud.addChild(scoreLabel);
 
-    this.scoreValue = makeText("0", {
+    this.scoreValue = makeText(TEXT.hud.scoreZero, {
       size: 16,
       weight: 800,
       color: C.cream,
     });
-    this.scoreValue.position.set(36, 3);
+    this.scoreValue.anchor.set(0, 0.5);
+    this.scoreValue.position.set(36, 12);
     this.scoreValue.eventMode = "none";
     this.hud.addChild(this.scoreValue);
 
-    this.castInfo.position.set(HUD_INFO_LEFT, 0);
-    this.castInfo.eventMode = "none";
-    this.hud.addChild(this.castInfo);
-
-    this.castLabel = makeText("ЗАБРОС 0/10", {
-      size: 7,
-      color: C.steelPale,
-      letterSpacing: 0.5,
-    });
-    this.castLabel.position.set(HUD_ATTEMPT_START, 2);
-    this.castInfo.addChild(this.castLabel);
-
-    this.castInfo.addChild(this.dots);
-
-    this.comboText = makeText("СЕРИЯ 0", {
-      size: 7,
+    this.attemptsText = makeText(TEXT.hud.remaining(CASTS_PER_SESSION), {
+      size: 8,
       weight: 700,
       color: C.steelPale,
-      align: "right",
+      align: "center",
       letterSpacing: 0.5,
     });
-    this.comboText.position.set(HUD_ATTEMPT_START + HUD_ATTEMPT_SPAN, 2);
-    this.castInfo.addChild(this.comboText);
-    this.hud.addChild(this.perfectPips);
-    this.perfectPips.eventMode = "none";
+    this.attemptsText.anchor.set(0.5, 0.5);
+    this.attemptsText.position.set(VIEW.width / 2, 12);
+    this.attemptsText.eventMode = "none";
+    this.hud.addChild(this.attemptsText);
 
     this.soundButton = new Button({
       width: 18,
@@ -308,104 +357,41 @@ export class GameScreen extends Screen {
     pauseButton.position.set(452, 3);
     this.hud.addChild(pauseButton);
 
-    this.statusText = makeText(CAST_LABEL, {
-      size: 10,
-      weight: 700,
-      color: C.cream,
-      align: "center",
-    });
-    this.statusText.anchor.set(0.5, 0);
-    this.statusText.position.set(VIEW.width / 2, 126);
-    this.statusText.style.stroke = { color: C.ink, width: 2.5 };
-    this.statusText.eventMode = "none";
-    this.hud.addChild(this.statusText);
-
-    this.powerLabel = makeText("СИЛА", {
+    this.powerLabel = makeText(TEXT.hud.power, {
       size: 8,
       color: C.steelPale,
-      align: "right",
+      align: "left",
       letterSpacing: 0.5,
     });
     this.powerLabel.style.stroke = { color: C.ink, width: 2.5 };
-    this.powerLabel.position.set(166, 165);
+    this.powerLabel.position.set(172, 154);
     this.powerLabel.visible = false;
     this.powerLabel.eventMode = "none";
+
+    drawPanel(this.powerPlate, 166, 151, 148, 26, {
+      fill: C.ink,
+      alpha: 0.84,
+      shadow: false,
+    });
+    this.powerPlate.visible = false;
+    this.powerPlate.eventMode = "none";
+
+    this.hud.addChild(this.powerPlate);
     this.hud.addChild(this.powerLabel);
     this.powerBar.eventMode = "none";
     this.hud.addChild(this.powerBar);
-
-    this.reactionBar.eventMode = "none";
-    this.hud.addChild(this.reactionBar);
   }
 
   private updateHud(): void {
     if (this.displayScore === this.score) {
       setText(this.scoreValue, formatScore(this.displayScore));
     }
-    if (this.combo > 0) {
-      const next = comboMultiplier(this.combo);
-      setText(this.comboText, `Серия ${this.combo} (x${next})`);
-      this.comboText.style.fill = C.gold;
-    } else {
-      setText(this.comboText, "Серия 0");
-      this.comboText.style.fill = C.steelPale;
-    }
-    setText(this.castLabel, `ЗАБРОС ${this.castsUsed}/${CASTS_PER_SESSION}`);
-    this.drawDots();
-  }
-
-  private drawDots(): void {
-    const g = this.dots;
-    g.clear();
-    // Centre the attempt dots inside the cast/combo block so the two-row
-    // header group reads as one centred unit.
-    const startX = HUD_ATTEMPT_START;
-    for (let i = 0; i < CASTS_PER_SESSION; i += 1) {
-      const x = startX + i * 10;
-      const y = 12;
-      const outcome = this.outcomes[i];
-      g.rect(x, y, 6, 6).fill({ color: 0x232a44 });
-      if (outcome === "caught") g.rect(x + 1, y + 1, 4, 4).fill(C.gold);
-      else if (outcome === "lost") g.rect(x + 1, y + 1, 4, 4).fill(C.red);
-      const current = i === this.castsUsed - 1 && outcome === null;
-      g.rect(x, y, 6, 6).stroke({
-        width: 1,
-        color: current ? C.cream : C.steel,
-        alpha: current ? 0.9 : 0.35,
-        alignment: 0,
-      });
-    }
+    setText(this.attemptsText, TEXT.hud.remaining(this.castsLeft));
+    this.attemptsText.style.fill = this.castsLeft <= 2 ? C.gold : C.steelPale;
   }
 
   private updatePerfectPips(): void {
-    const g = this.perfectPips;
-    const active = this.phase === "fighting" && this.minigame !== null;
-    g.visible = active;
-    if (!active) {
-      g.clear();
-      return;
-    }
-
-    const left = this.minigame!.slipsLeft;
-    const x = HUD_INFO_RIGHT + 8;
-    const y = 8;
-    g.clear();
-    for (let i = 0; i < 2; i += 1) {
-      const px = x + i * 9;
-      g.rect(px, y, 7, 7).fill({ color: C.ink, alpha: 0.8 });
-      if (i < left) {
-        g.rect(px + 1, y + 1, 5, 5).fill(C.cyan);
-        g.rect(px + 1, y + 1, 5, 1).fill({ color: C.cream, alpha: 0.8 });
-      } else {
-        g.rect(px + 1, y + 1, 5, 5).fill({ color: C.steel, alpha: 0.35 });
-      }
-    }
-  }
-
-  private setStatus(text: string, color: number = C.cream): void {
-    setText(this.statusText, text);
-    this.statusText.style.fill = color;
-    this.statusText.visible = true;
+    // Kept as the single hook for result-only perfect tracking.
   }
 
   // ------------------------------------------------------------------ pause
@@ -419,6 +405,7 @@ export class GameScreen extends Screen {
       .rect(0, 0, VIEW.width, VIEW.height)
       .fill({ color: C.ink, alpha: 0.74 });
     blocker.eventMode = "static";
+    blocker.cursor = CURSORS.default;
     blocker.hitArea = new Rectangle(0, 0, VIEW.width, VIEW.height);
     this.pauseOverlay.addChild(blocker);
 
@@ -430,7 +417,7 @@ export class GameScreen extends Screen {
     });
     this.pauseOverlay.addChild(panel);
 
-    const title = makeText("ПАУЗА", {
+    const title = makeText(TEXT.common.pause, {
       size: 18,
       weight: 800,
       color: C.gold,
@@ -441,7 +428,7 @@ export class GameScreen extends Screen {
     this.pauseOverlay.addChild(title);
 
     const resume = new Button({
-      label: "ПРОДОЛЖИТЬ",
+      label: TEXT.common.resume,
       width: 170,
       height: 24,
       variant: "primary",
@@ -452,7 +439,7 @@ export class GameScreen extends Screen {
     this.pauseOverlay.addChild(resume);
 
     const restart = new Button({
-      label: "ЗАНОВО",
+      label: TEXT.common.restart,
       width: 170,
       height: 24,
       size: 11,
@@ -472,7 +459,7 @@ export class GameScreen extends Screen {
     this.pauseOverlay.addChild(this.pauseSoundButton);
 
     const menu = new Button({
-      label: "В МЕНЮ",
+      label: TEXT.common.menu,
       width: 170,
       height: 24,
       size: 11,
@@ -486,13 +473,16 @@ export class GameScreen extends Screen {
   }
 
   private muteLabel(): string {
-    return this.game.muted ? "ЗВУК: ВЫКЛ" : "ЗВУК: ВКЛ";
+    return this.game.muted ? TEXT.common.soundOff : TEXT.common.soundOn;
   }
 
   private openPause(): void {
     if (this.paused || this.finished) return;
     this.paused = true;
     this.pressed = false;
+    this.scene.setPulling(false);
+    this.castHint.visible = false;
+    this.inputCatcher.cursor = CURSORS.default;
     this.pullKeys.clear();
     this.minigame?.setHold(false);
     this.pauseOverlay.visible = true;
@@ -514,12 +504,12 @@ export class GameScreen extends Screen {
     if (this.paused || this.finished) return;
     if (this.phase === "idle") {
       this.phase = "charging";
+      this.scene.setPulling(true);
       this.charge = 0;
       this.chargeDir = 1;
       this.chargeSoundTimer = 0;
       this.luckZoneHit = false;
       this.luckBandCenter = randRange(LUCK_BAND.min, LUCK_BAND.max);
-      this.setStatus("ОТПУСТИ — ЗАБРОС");
     } else if (this.phase === "waiting") {
       this.earlyHook();
     } else if (this.phase === "bite") {
@@ -529,6 +519,7 @@ export class GameScreen extends Screen {
       this.hookFish();
     } else if (this.phase === "fighting") {
       this.pressed = true;
+      this.scene.setPulling(true);
       this.minigame?.setHold(true);
     }
     // No skip during the resolve phase: the player must watch the caught
@@ -537,11 +528,12 @@ export class GameScreen extends Screen {
 
   private pressEnd(): void {
     this.pressed = false;
+    this.scene.setPulling(false);
     if (this.phase === "charging") this.doCast();
     this.minigame?.setHold(false);
   }
 
-  /** Final pull: RMB/F on desktop, the hook hit area on touch. */
+  /** Final pull: RMB/F on desktop, a tap on the tired fish on touch. */
   private finalPull(): void {
     if (this.phase !== "fighting" || this.paused || this.finished) {
       return;
@@ -569,8 +561,24 @@ export class GameScreen extends Screen {
     this.nibblePlayed = false;
     this.powerBar.clear();
     this.powerLabel.visible = false;
-    this.setStatus(WAIT_LABEL);
+    this.powerPlate.visible = false;
     this.updateHud();
+  }
+
+  private updateFightVignette(dt: number): void {
+    const target =
+      this.phase === "fighting" && !this.paused && !this.finished ? 1 : 0;
+    const timeConstant = target > this.fightVignetteAlpha ? 0.2 : 0.4;
+    this.fightVignetteAlpha +=
+      (target - this.fightVignetteAlpha) * (1 - Math.exp(-dt / timeConstant));
+
+    const sprite = this.fightVignette;
+    if (this.fightVignetteAlpha < 0.005) {
+      sprite.visible = false;
+      return;
+    }
+    sprite.visible = true;
+    sprite.alpha = this.fightVignetteAlpha;
   }
 
   private pickFish(): FishSpecies {
@@ -614,22 +622,21 @@ export class GameScreen extends Screen {
     }
     const fish = this.pickFish();
     this.fish = fish;
+    this.fishWeightKg = rollFishWeight(fish);
     this.phase = "bite";
     this.biteWindow = Math.max(0.62, 0.95 - fish.speed * 0.25);
     this.biteTimer = this.biteWindow;
     this.scene.showBite();
     this.game.audio.bite();
-    this.statusText.visible = false;
   }
 
   private hookFish(): void {
     if (!this.fish || this.phase !== "bite") return;
     this.phase = "fighting";
-    this.reactionBar.clear();
     this.scene.setFight();
+    this.juice.trigger("hook", this.scene.castPoint.x, this.scene.castPoint.y);
     this.game.audio.hook();
     this.reelTimer = 0;
-    this.statusText.visible = false;
     this.pullKeys.clear();
 
     const minigame = new Minigame(
@@ -639,13 +646,24 @@ export class GameScreen extends Screen {
         anchor: this.scene.castPoint,
         wildness: this.water.wildness,
         onWarn: () => this.game.audio.warn(),
-        onCounter: () => this.game.audio.counter(),
-        onReady: () => this.game.audio.ready(),
+        onCounter: () => {
+          this.game.audio.counter();
+          const point = this.scene.bobberPosition;
+          this.juice.trigger("counter", point.x, point.y);
+        },
+        onReady: () => {
+          this.game.audio.ready();
+          const point = this.scene.bobberPosition;
+          this.juice.trigger("ready", point.x, point.y);
+        },
         onResist: () => this.game.audio.resist(),
         onGripOut: () => this.game.audio.gripOut(),
       },
     );
     this.fx.addChild(minigame);
+    this.bobberLayer.addChild(this.scene.bobberView);
+    const focus = minigame.ringCenter;
+    this.fightVignette.position.set(focus.x, focus.y);
     minigame.onFinish = (result) => this.resolveFight(result);
     this.minigame = minigame;
     minigame.setHold(this.pressed);
@@ -656,19 +674,8 @@ export class GameScreen extends Screen {
       minigame.fishVelocity.x,
       minigame.fishVelocity.y,
     );
+    this.scene.setEscapeMeter(0);
     this.updatePerfectPips();
-    this.showHint();
-  }
-
-  private showHint(): void {
-    if (this.hint || this.game.settings.tutorialSeen) return;
-    const hint = new FightHint();
-    hint.onClose = () => {
-      this.game.settings.tutorialSeen = true;
-      this.hint = null;
-    };
-    this.hint = hint;
-    this.hud.addChild(hint);
   }
 
   /** A too-early hook: the fish bolts and the cast is returned. */
@@ -681,51 +688,50 @@ export class GameScreen extends Screen {
     this.scene.escapeFish();
     this.game.audio.escape();
     this.addFloater(
-      "РАНО!",
-      VIEW.width / 2,
-      SCENE.anglerY - 94,
+      TEXT.game.earlyHook,
+      FLOATER_X,
+      FLOATER_Y,
       C.red,
       12,
       1.2,
       -24,
     );
-    this.setStatus("РАНО! РЫБА УШЛА", C.red);
     this.updateHud();
   }
 
   /** The fish inspected the bait and moved on; keep the bobber and wait. */
   private passBy(): void {
+    this.fishWeightKg = 0;
     this.phase = "waiting";
     this.pressed = false;
-    this.reactionBar.clear();
     this.waitTimer = randRange(TIMING.waitMin * 0.65, TIMING.waitMax * 0.85);
     this.nibbleLead = randRange(TIMING.nibbleLeadMin, TIMING.nibbleLeadMax);
     this.nibblePlayed = false;
     this.game.audio.nibble();
-    this.setStatus(WAIT_LABEL);
     this.updateHud();
   }
 
   private refundCast(): void {
     if (this.castsUsed <= 0) return;
-    this.outcomes[this.castsUsed - 1] = null;
     this.castsUsed -= 1;
     this.castsLeft = CASTS_PER_SESSION - this.castsUsed;
   }
 
   private resolveFight(result: MinigameResult): void {
     if (this.phase !== "fighting" || !this.fish) return;
+    this.scene.restoreBobber();
     const fish = this.fish;
 
     if (!result.won) {
-      this.failCast("СОРВАЛАСЬ…");
+      this.failCast(TEXT.game.lostFish);
       return;
     }
 
     const multiplier = comboMultiplier(this.combo);
     const perfect = result.perfect;
+    const factor = weightFactor(fish, this.fishWeightKg);
     const points = Math.round(
-      fish.points * multiplier * (perfect ? PERFECT_MULTIPLIER : 1),
+      fish.points * factor * multiplier * (perfect ? PERFECT_MULTIPLIER : 1),
     );
 
     this.combo += 1;
@@ -744,71 +750,76 @@ export class GameScreen extends Screen {
       latin: fish.latin,
       points,
       perfect,
+      weightKg: this.fishWeightKg,
       multiplier,
     };
     this.catches.push(record);
-    this.outcomes[this.castsUsed - 1] = "caught";
 
     this.phase = "resolve";
     this.resolveTimer = TIMING.resultHold;
+    this.catchShown = true;
     this.pressed = false;
     this.pullKeys.clear();
-    this.reactionBar.clear();
     this.powerBar.clear();
     this.powerLabel.visible = false;
+    this.powerPlate.visible = false;
 
     if (this.minigame) {
       this.minigame.visible = false;
       this.minigame.setHold(false);
     }
     this.updatePerfectPips();
-    this.scene.catchFish(this.game.assets.fish[fish.id]);
+    this.scene.catchFish(
+      this.game.assets.fish[fish.id],
+      1.15 * weightScale(fish, this.fishWeightKg),
+    );
+    const splash = this.scene.bobberPosition;
+    this.juice.trigger("catch", splash.x, splash.y);
     this.game.audio.catchFish(perfect);
     this.showCatchFeedback(record);
-    this.setStatus(
-      perfect ? "ИДЕАЛЬНЫЙ УЛОВ!" : "ХОРОШИЙ УЛОВ!",
-      perfect ? C.yellow : C.green,
-    );
     this.updateHud();
   }
 
   private failCast(reason: string): void {
     if (this.finished) return;
+    this.catchShown = false;
+    this.scene.restoreBobber();
     const brokenStreak = this.combo;
     this.phase = "resolve";
     this.resolveTimer = TIMING.escapedHold;
     this.combo = 0;
     this.luck = 0;
-    if (this.castsUsed > 0) this.outcomes[this.castsUsed - 1] = "lost";
     this.pressed = false;
     this.pullKeys.clear();
     this.reelTimer = 0;
     this.scene.escapeFish();
+    const splash = this.scene.bobberPosition;
+    this.juice.trigger("escape", splash.x, splash.y);
     this.game.audio.escape();
     if (brokenStreak >= 2) this.game.audio.comboBreak();
     if (this.minigame) this.minigame.visible = false;
     this.updatePerfectPips();
-    this.reactionBar.clear();
     this.powerBar.clear();
     this.powerLabel.visible = false;
+    this.powerPlate.visible = false;
     this.addFloater(
-      reason.replace("…", ""),
-      VIEW.width / 2,
-      SCENE.anglerY - 94,
+      brokenStreak >= 2
+        ? TEXT.game.streakBroken(brokenStreak)
+        : reason.replace(TEXT.common.ellipsis, ""),
+      FLOATER_X,
+      FLOATER_Y,
       C.red,
       12,
       1.3,
       -24,
-    );
-    this.setStatus(
-      brokenStreak >= 2 ? `СЕРИЯ ${brokenStreak} ПРЕРВАНА` : reason,
-      C.red,
     );
     this.updateHud();
   }
 
   private advanceCast(): void {
     if (this.finished) return;
+    this.catchShown = false;
+    this.scene.restoreBobber();
     if (this.minigame) {
       this.fx.removeChild(this.minigame);
       this.minigame.destroy({ children: true });
@@ -816,7 +827,7 @@ export class GameScreen extends Screen {
     }
     this.updatePerfectPips();
     this.fish = null;
-    this.reactionBar.clear();
+    this.fishWeightKg = 0;
     this.scene.resetCast();
     this.pullKeys.clear();
     this.charge = 0;
@@ -829,10 +840,6 @@ export class GameScreen extends Screen {
       return;
     }
     this.phase = "idle";
-    this.setStatus(
-      this.castsLeft === 1 ? "ПОСЛЕДНИЙ ЗАБРОС" : CAST_LABEL,
-      this.castsLeft === 1 ? C.gold : C.cream,
-    );
   }
 
   private finishSession(): void {
@@ -856,7 +863,7 @@ export class GameScreen extends Screen {
       bestMultiplier: this.bestMultiplier,
       date: Date.now(),
     };
-    const name = this.game.options.playerName || "Рыбак";
+    const name = this.game.options.playerName || TEXT.common.playerFallback;
     this.game.clock.persist();
     const standing = this.game.submitScore(name, result);
     this.game.showResults(result, true, standing);
@@ -865,19 +872,20 @@ export class GameScreen extends Screen {
   // ------------------------------------------------------------------- FX
 
   private showCatchFeedback(record: CatchRecord): void {
-    const ax = VIEW.width / 2;
-    const ay = SCENE.anglerY;
-    const multiplier = record.multiplier > 1 ? ` ×${record.multiplier}` : "";
-    const perfect = record.perfect ? " · ИДЕАЛЬНО" : "";
-
     this.addFloater(
-      `${record.name.toUpperCase()}  +${record.points}${multiplier}${perfect}`,
-      ax,
-      ay - 94,
+      TEXT.game.catchFeedback(
+        record.name,
+        record.points,
+        record.multiplier,
+        formatWeight(record.weightKg),
+        record.perfect,
+      ),
+      SCENE.anglerX,
+      SCENE.anglerY + 24,
       record.perfect ? C.yellow : C.gold,
       13,
-      1.6,
-      -14,
+      TIMING.resultHold,
+      0,
     );
   }
 
@@ -889,17 +897,19 @@ export class GameScreen extends Screen {
     size = 14,
     life = 1.1,
     vy = -28,
+    anchorX = 0.5,
   ): void {
     const text = makeText(value, {
       size,
       weight: 800,
       color,
-      align: "center",
+      align: anchorX === 0 ? "left" : "center",
+      lineHeight: size + 1,
     });
-    text.anchor.set(0.5, 1);
+    text.anchor.set(anchorX, 1);
     text.position.set(x, y);
     text.style.stroke = { color: C.ink, width: 2 };
-    this.fx.addChild(text);
+    this.floatersLayer.addChild(text);
     this.floaters.push({ text, life, maxLife: life, vy });
   }
 
@@ -912,7 +922,7 @@ export class GameScreen extends Screen {
       floater.text.alpha =
         floater.life < fadeTime ? Math.max(0, floater.life / fadeTime) : 1;
       if (floater.life <= 0) {
-        this.fx.removeChild(floater.text);
+        this.floatersLayer.removeChild(floater.text);
         floater.text.destroy();
         this.floaters.splice(i, 1);
       }
@@ -944,12 +954,14 @@ export class GameScreen extends Screen {
     g.clear();
     if (this.phase !== "charging") {
       this.powerLabel.visible = false;
+      this.powerPlate.visible = false;
       return;
     }
     this.powerLabel.visible = true;
+    this.powerPlate.visible = true;
 
     const x = 172;
-    const y = 164;
+    const y = 166;
     const width = 136;
     const height = 8;
     g.rect(x - 1, y - 1, width + 2, height + 2).fill(C.ink);
@@ -980,32 +992,51 @@ export class GameScreen extends Screen {
     });
   }
 
-  private drawBiteBar(): void {
-    const g = this.reactionBar;
-    g.clear();
-    if (this.phase !== "bite") return;
-    const x = 196;
-    const y = 148;
-    const width = 88;
-    const height = 4;
-    const fraction = clamp(this.biteTimer / this.biteWindow);
-    g.rect(x - 1, y - 1, width + 2, height + 2).fill(C.ink);
-    g.rect(x, y, width, height).fill(0x232a44);
-    g.rect(x, y, Math.round(width * fraction), height).fill(
-      fraction > 0.4 ? C.gold : C.red,
-    );
-  }
-
-  private updateWaitingStatus(): void {
-    const dots = Math.floor(this.time * 2) % 4;
-    setText(this.statusText, `${WAIT_LABEL}${".".repeat(dots)}`);
-  }
-
   /** Cursor position in virtual screen units, not canvas pixels. */
   private trackPointer(event: FederatedPointerEvent): void {
     const point = event.getLocalPosition(this);
     this.pointerX = point.x;
     this.pointerY = point.y;
+
+    const overWater =
+      !this.paused &&
+      !this.finished &&
+      !this.isOverHud(point.x, point.y) &&
+      this.scene.isWaterAt(point.x, point.y);
+
+    // Button/scrollbar targets own their own cursor. Only repaint the cursor
+    // while the catcher itself is hovered, otherwise globalpointermove would
+    // overwrite the custom pointer over UI controls.
+    if (event.target !== this.inputCatcher) return;
+
+    if (this.paused || this.finished) {
+      this.inputCatcher.cursor = CURSORS.default;
+      return;
+    }
+
+    this.inputCatcher.cursor = overWater ? CURSORS.crosshair : CURSORS.default;
+  }
+
+  private isOverHud(x: number, y: number): boolean {
+    if (y < 24) return true;
+    if (
+      this.phase === "charging" &&
+      x >= 166 &&
+      x <= 314 &&
+      y >= 151 &&
+      y <= 177
+    ) {
+      return true;
+    }
+    if (
+      x >= CAST_HINT_BOUNDS.x &&
+      x <= CAST_HINT_BOUNDS.x + CAST_HINT_BOUNDS.width &&
+      y >= CAST_HINT_BOUNDS.y &&
+      y <= CAST_HINT_BOUNDS.y + CAST_HINT_BOUNDS.height
+    ) {
+      return true;
+    }
+    return false;
   }
 
   private readPullDirection(): { x: number; y: number } {
@@ -1033,10 +1064,36 @@ export class GameScreen extends Screen {
     }
     const palette = clock.palette;
     this.scene.tint = palette.tint;
+    this.scene.setLantern(palette.lantern);
     this.atmosphere.setWorld(palette, clock.weatherDef);
     this.atmosphere.update(dt);
 
     this.scene.update(dt);
+    this.juice.update(dt);
+    this.updateFightVignette(dt);
+
+    let hintVisible = this.phase === "idle" && !this.paused && !this.finished;
+    let hintAlpha = 1;
+
+    // At the tail of a successful catch, the fish dissolves while the next
+    // "ЗАБРОС" prompt fades in at the same spot.
+    if (
+      this.phase === "resolve" &&
+      this.catchShown &&
+      !this.finished &&
+      this.castsLeft > 0
+    ) {
+      const fade = clamp(1 - this.resolveTimer / TIMING.catchCrossfade, 0, 1);
+      if (fade > 0) {
+        hintVisible = true;
+        hintAlpha = fade;
+        this.scene.setHeldFishAlpha(1 - fade);
+      }
+    }
+
+    this.castHint.visible = hintVisible;
+    this.castHint.alpha = hintVisible ? hintAlpha : 0;
+    if (hintVisible) this.castHint.tick(dt);
     this.updateFloaters(dt);
     this.updateScore(dt);
     this.updatePerfectPips();
@@ -1060,7 +1117,6 @@ export class GameScreen extends Screen {
       this.drawPowerBar();
     } else if (this.phase === "waiting") {
       this.waitTimer -= dt;
-      this.updateWaitingStatus();
       if (this.waitTimer <= this.nibbleLead && !this.nibblePlayed) {
         this.nibblePlayed = true;
         this.scene.showNibble();
@@ -1069,12 +1125,12 @@ export class GameScreen extends Screen {
       if (this.waitTimer <= 0) this.beginBite();
     } else if (this.phase === "bite") {
       this.biteTimer -= dt;
-      this.drawBiteBar();
       if (this.biteTimer <= 0) {
-        this.failCast("НЕ УСПЕЛ ПОДСЕЧЬ");
+        this.failCast(TEXT.game.missedHook);
       }
     } else if (this.phase === "fighting") {
       const direction = this.readPullDirection();
+      this.scene.setPulling(this.pressed);
       this.minigame?.setPointer(this.pointerX, this.pointerY);
       this.minigame?.setDirection(direction.x, direction.y);
       this.minigame?.setHold(this.pressed);
@@ -1082,7 +1138,14 @@ export class GameScreen extends Screen {
       if (this.minigame) {
         const point = this.minigame.fishPoint;
         const velocity = this.minigame.fishVelocity;
-        this.scene.setFightFish(point.x, point.y, velocity.x, velocity.y);
+        this.scene.setFightFish(
+          point.x,
+          point.y,
+          velocity.x,
+          velocity.y,
+          this.minigame.isSteering,
+        );
+        this.scene.setEscapeMeter(this.minigame.escapeMeter);
       }
       if (this.minigame?.isSteering) {
         this.reelTimer -= dt;
@@ -1097,8 +1160,6 @@ export class GameScreen extends Screen {
       this.resolveTimer -= dt;
       if (this.resolveTimer <= 0) this.advanceCast();
     }
-
-    this.drawDots();
   }
 
   // ------------------------------------------------------------------ input
@@ -1155,6 +1216,7 @@ export class GameScreen extends Screen {
 
   override onExit(): void {
     this.game.clock.persist();
+    this.inputCatcher.cursor = CURSORS.default;
     this.game.app.canvas.removeEventListener(
       "contextmenu",
       this.handleContextMenu,

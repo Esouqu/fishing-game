@@ -1,4 +1,5 @@
 import type { TimePhase, WeatherId } from "./types";
+import { FISH_TEXT } from "./texts";
 
 /** Virtual resolution — every screen is laid out in these units. */
 export const VIEW = { width: 480, height: 270 } as const;
@@ -21,24 +22,35 @@ export const FIGHT = {
   /** Endurance is 0..1; at or below this the fish can be landed. */
   landThreshold: 0.2,
   /** Grip is 0..1: holding a pull drains it, releasing restores it. */
-  gripDrain: 0.34,
+  gripDrain: 0.31,
   gripRegen: 0.46,
   /** Lockout after burning the whole grip, then a small reserve. */
-  gripLock: 1.2,
+  gripLock: 1.8,
   gripRestore: 0.3,
+  /** The fish catches its breath while the angler is out of grip. */
+  lockRecovery: 0.18,
   /** Endurance the fish regains while it is not being pulled. */
   recoveryBase: 0.04,
   recoveryScale: 0.04,
   /** Hardcore counter window after a burst. */
   counterWindow: 0.2,
   counterRest: 0.15,
+  /** A successful counter cancels the burst and leaves the fish briefly stunned. */
+  counterStun: 0.35,
   counterAngle: Math.PI / 4,
   advantage: 1,
   advantageTire: 1.5,
   advantageGrip: 0.75,
   /** Endurance loss per second while pulling. */
-  tireBase: 0.3,
-  tireScale: 0.35,
+  tireBase: 0.33,
+  tireScale: 0.3,
+  /** Tiring is stronger when the pull opposes the fish's movement. */
+  tireAimBase: 0.45,
+  tireAimGain: 0.55,
+  /** Escape meter: how much a pull slows it, and counterplay swings. */
+  escapePullFactor: 0.55,
+  counterRelief: 0.25,
+  uncounteredBurst: 0.15,
   /** A final pull attempted too early. */
   resistEndurance: 0.05,
   resistGrip: 0.08,
@@ -163,6 +175,8 @@ export interface FishSpecies {
   name: string;
   /** Latin / English name for flavour. */
   latin: string;
+  /** Physical weight range in kg; rolled per catch. */
+  weightKg: readonly [number, number];
   points: number;
   /** Relative spawn weight. */
   weight: number;
@@ -189,8 +203,9 @@ export function isRareFish(fish: FishSpecies): boolean {
 export const FISH: readonly FishSpecies[] = [
   {
     id: "bluegill",
-    name: "Солнечник",
-    latin: "Bluegill",
+    name: FISH_TEXT.bluegill.name,
+    latin: FISH_TEXT.bluegill.latin,
+    weightKg: [0.1, 0.4],
     points: 35,
     weight: 22,
     speed: 0.3,
@@ -203,8 +218,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "capelin",
-    name: "Шэд",
-    latin: "Capelin",
+    name: FISH_TEXT.capelin.name,
+    latin: FISH_TEXT.capelin.latin,
+    weightKg: [0.05, 0.2],
     points: 45,
     weight: 20,
     speed: 0.34,
@@ -216,8 +232,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "sardine",
-    name: "Сардина",
-    latin: "Sardine",
+    name: FISH_TEXT.sardine.name,
+    latin: FISH_TEXT.sardine.latin,
+    weightKg: [0.1, 0.3],
     points: 55,
     weight: 18,
     speed: 0.38,
@@ -230,8 +247,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "flounder",
-    name: "Песковник",
-    latin: "Flounder",
+    name: FISH_TEXT.flounder.name,
+    latin: FISH_TEXT.flounder.latin,
+    weightKg: [0.4, 1.8],
     points: 60,
     weight: 16,
     speed: 0.4,
@@ -244,8 +262,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "tilapia",
-    name: "Тиляпия",
-    latin: "Tilapia",
+    name: FISH_TEXT.tilapia.name,
+    latin: FISH_TEXT.tilapia.latin,
+    weightKg: [0.4, 1.6],
     points: 65,
     weight: 15,
     speed: 0.42,
@@ -257,8 +276,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "carp",
-    name: "Карп",
-    latin: "Carp",
+    name: FISH_TEXT.carp.name,
+    latin: FISH_TEXT.carp.latin,
+    weightKg: [1.5, 6.0],
     points: 80,
     weight: 13,
     speed: 0.46,
@@ -269,8 +289,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "angelfish",
-    name: "Лещ",
-    latin: "Angelfish",
+    name: FISH_TEXT.angelfish.name,
+    latin: FISH_TEXT.angelfish.latin,
+    weightKg: [0.3, 1.2],
     points: 95,
     weight: 11,
     speed: 0.5,
@@ -282,8 +303,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "largemouthbass",
-    name: "Большеротый окунь",
-    latin: "Largemouth Bass",
+    name: FISH_TEXT.largemouthbass.name,
+    latin: FISH_TEXT.largemouthbass.latin,
+    weightKg: [0.8, 3.5],
     points: 110,
     weight: 9,
     speed: 0.54,
@@ -295,8 +317,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "chub",
-    name: "Голавль",
-    latin: "Chub",
+    name: FISH_TEXT.chub.name,
+    latin: FISH_TEXT.chub.latin,
+    weightKg: [0.5, 2.2],
     points: 120,
     weight: 8,
     speed: 0.57,
@@ -308,8 +331,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "smallmouthbass",
-    name: "Лесоплюх",
-    latin: "Smallmouth Bass",
+    name: FISH_TEXT.smallmouthbass.name,
+    latin: FISH_TEXT.smallmouthbass.latin,
+    weightKg: [0.6, 2.8],
     points: 130,
     weight: 7,
     speed: 0.6,
@@ -322,8 +346,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "rainbowtrout",
-    name: "Тигровая форель",
-    latin: "Rainbow Trout",
+    name: FISH_TEXT.rainbowtrout.name,
+    latin: FISH_TEXT.rainbowtrout.latin,
+    weightKg: [0.8, 3.5],
     points: 140,
     weight: 6,
     speed: 0.62,
@@ -336,8 +361,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "cod",
-    name: "Сомик",
-    latin: "Cod",
+    name: FISH_TEXT.cod.name,
+    latin: FISH_TEXT.cod.latin,
+    weightKg: [2.0, 9.0],
     points: 150,
     weight: 5,
     speed: 0.65,
@@ -350,8 +376,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "walleye",
-    name: "Жёлтый судак",
-    latin: "Walleye",
+    name: FISH_TEXT.walleye.name,
+    latin: FISH_TEXT.walleye.latin,
+    weightKg: [1.5, 6.0],
     points: 160,
     weight: 4.5,
     speed: 0.68,
@@ -363,8 +390,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "catfish",
-    name: "Сом",
-    latin: "Catfish",
+    name: FISH_TEXT.catfish.name,
+    latin: FISH_TEXT.catfish.latin,
+    weightKg: [4.0, 18.0],
     points: 200,
     weight: 3.5,
     speed: 0.74,
@@ -377,8 +405,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "eel",
-    name: "Угорь",
-    latin: "Eel",
+    name: FISH_TEXT.eel.name,
+    latin: FISH_TEXT.eel.latin,
+    weightKg: [1.0, 5.0],
     points: 210,
     weight: 3,
     speed: 0.78,
@@ -391,8 +420,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "grouper",
-    name: "Пятнистый криворот",
-    latin: "Grouper",
+    name: FISH_TEXT.grouper.name,
+    latin: FISH_TEXT.grouper.latin,
+    weightKg: [3.0, 14.0],
     points: 220,
     weight: 2.6,
     speed: 0.8,
@@ -404,8 +434,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "redsnapper",
-    name: "Берикс",
-    latin: "Red Snapper",
+    name: FISH_TEXT.redsnapper.name,
+    latin: FISH_TEXT.redsnapper.latin,
+    weightKg: [2.0, 10.0],
     points: 240,
     weight: 2.2,
     speed: 0.84,
@@ -418,8 +449,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "lionfish",
-    name: "Иглобрюх",
-    latin: "Lionfish",
+    name: FISH_TEXT.lionfish.name,
+    latin: FISH_TEXT.lionfish.latin,
+    weightKg: [0.8, 3.0],
     points: 250,
     weight: 1.9,
     speed: 0.86,
@@ -432,8 +464,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "tuna",
-    name: "Тунец",
-    latin: "Tuna",
+    name: FISH_TEXT.tuna.name,
+    latin: FISH_TEXT.tuna.latin,
+    weightKg: [20.0, 70.0],
     points: 320,
     weight: 1.2,
     speed: 0.92,
@@ -446,8 +479,9 @@ export const FISH: readonly FishSpecies[] = [
   },
   {
     id: "sturgeon",
-    name: "Осётр",
-    latin: "Sturgeon",
+    name: FISH_TEXT.sturgeon.name,
+    latin: FISH_TEXT.sturgeon.latin,
+    weightKg: [10.0, 45.0],
     points: 400,
     weight: 0.6,
     speed: 1,
@@ -497,6 +531,8 @@ export const SCENE = {
   farShoreX: 462,
   bobberMinX: 210,
   bobberMaxX: 300,
+  lanternX: 168,
+  lanternY: 124,
 } as const;
 
 export interface WaterProfile {
@@ -525,7 +561,8 @@ export function waterProfile(power: number): WaterProfile {
 export const TIMING = {
   chargeCycle: 0.85,
   castFlight: 0.5,
-  resultHold: 1.7,
+  resultHold: 3,
+  catchCrossfade: 0.35,
   escapedHold: 1.35,
   /** Random pause between the cast landing and the bite. */
   waitMin: 2.4,

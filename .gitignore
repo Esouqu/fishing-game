@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.sim/
+.pnpm-store/
+.tmp-assets/
+.tmp-originals/
+.tmp-esbuild/
 
 # Editor directories and files
 .vscode/*
@@ -23,7 +28,5 @@ dist-ssr
 *.sln
 *.sw?
 
-# Third-party art packs (see CREDITS.md) and the files generated from them
+# Third-party art packs (see CREDITS.md); generated deploy assets are tracked.
 assetspacks/
-public/assets/fishing/
-public/favicon.png

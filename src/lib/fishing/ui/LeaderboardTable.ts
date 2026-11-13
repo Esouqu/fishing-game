@@ -1,8 +1,9 @@
 import { Graphics, type Container } from "pixi.js";
-import { C } from "../config";
+import { C, CASTS_PER_SESSION } from "../config";
 import type { LeaderboardEntry } from "../types";
 import { formatScore } from "../utils";
 import { makeText } from "./theme";
+import { TEXT } from "../texts";
 
 export interface LeaderboardTableOptions {
   x: number;
@@ -95,7 +96,7 @@ export function drawLeaderboardRow(
     const stripe = new Graphics();
     stripe
       .rect(x - 2, y - 2, width + 4, rowHeight)
-      .fill({ color: C.steel, alpha: 0.07 });
+      .fill({ color: C.brown, alpha: 0.06 });
     parent.addChild(stripe);
   }
 
@@ -108,35 +109,42 @@ export function drawLeaderboardRow(
           ? C.brownLight
           : C.steelPale;
   const nameColor = highlighted ? C.gold : C.cream;
+  const centerY = y + rowHeight / 2 - 2;
 
   const rankText = makeText(`${rank}`, {
     size: fontSize,
     weight: 700,
     color: rankColor,
   });
-  rankText.position.set(rankX, y);
+  rankText.anchor.set(0, 0.5);
+  rankText.position.set(rankX, centerY);
   parent.addChild(rankText);
 
   const maxName = Math.max(6, Math.floor((caughtRight - nameX) / 4.6));
   const displayName =
     entry.name.length > maxName
-      ? `${entry.name.slice(0, maxName - 1)}…`
+      ? `${entry.name.slice(0, maxName - 1)}${TEXT.common.ellipsis}`
       : entry.name;
   const name = makeText(displayName, {
     size: fontSize,
     weight: highlighted ? 700 : 500,
     color: nameColor,
   });
-  name.position.set(nameX, y);
+  name.anchor.set(0, 0.5);
+  name.position.set(nameX, centerY);
   parent.addChild(name);
 
   if (showCaught) {
-    const caught = makeText(`${entry.caught}/10`, {
-      size: fontSize - 1,
-      color: highlighted ? C.cream : C.steelPale,
-      align: "right",
-    });
-    caught.position.set(caughtRight, y + 1);
+    const caught = makeText(
+      TEXT.leaderboard.caught(entry.caught, CASTS_PER_SESSION),
+      {
+        size: fontSize - 1,
+        color: highlighted ? C.cream : C.steelPale,
+        align: "right",
+      },
+    );
+    caught.anchor.set(1, 0.5);
+    caught.position.set(caughtRight, centerY);
     parent.addChild(caught);
   }
 
@@ -146,7 +154,8 @@ export function drawLeaderboardRow(
     color: highlighted ? C.gold : C.yellow,
     align: "right",
   });
-  score.position.set(scoreRight, y - 1);
+  score.anchor.set(1, 0.5);
+  score.position.set(scoreRight, centerY);
   parent.addChild(score);
 }
 
@@ -178,47 +187,52 @@ export function drawLeaderboardTable(
     const header = new Graphics();
     header
       .rect(x, y + headerHeight - 1, width, 1)
-      .fill({ color: C.steel, alpha: 0.55 });
+      .fill({ color: C.brownDark, alpha: 0.7 });
     parent.addChild(header);
 
-    const rankHead = makeText("#", {
+    const headerCenter = y + headerHeight / 2;
+    const rankHead = makeText(TEXT.leaderboard.headerRank, {
       size: labelSize,
       color: C.steelPale,
       weight: 600,
       letterSpacing: 0.5,
     });
-    rankHead.position.set(rankX, y);
+    rankHead.anchor.set(0, 0.5);
+    rankHead.position.set(rankX, headerCenter);
     parent.addChild(rankHead);
 
-    const nameHead = makeText("ИМЯ", {
+    const nameHead = makeText(TEXT.leaderboard.headerName, {
       size: labelSize,
       color: C.steelPale,
       weight: 600,
       letterSpacing: 0.8,
     });
-    nameHead.position.set(nameX, y);
+    nameHead.anchor.set(0, 0.5);
+    nameHead.position.set(nameX, headerCenter);
     parent.addChild(nameHead);
 
     if (showCaught) {
-      const caughtHead = makeText("УЛОВ", {
+      const caughtHead = makeText(TEXT.leaderboard.headerCaught, {
         size: labelSize,
         color: C.steelPale,
         weight: 600,
         align: "right",
         letterSpacing: 0.5,
       });
-      caughtHead.position.set(caughtRight, y);
+      caughtHead.anchor.set(1, 0.5);
+      caughtHead.position.set(caughtRight, headerCenter);
       parent.addChild(caughtHead);
     }
 
-    const scoreHead = makeText("ОЧКИ", {
+    const scoreHead = makeText(TEXT.common.score, {
       size: labelSize,
       color: C.steelPale,
       weight: 600,
       align: "right",
       letterSpacing: 0.8,
     });
-    scoreHead.position.set(scoreRight, y);
+    scoreHead.anchor.set(1, 0.5);
+    scoreHead.position.set(scoreRight, headerCenter);
     parent.addChild(scoreHead);
   }
 
