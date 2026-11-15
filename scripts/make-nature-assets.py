@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Rebuild the five procedural nature sprites as padded winter versions.
+"""Rebuild the bush and the rocks as padded winter versions.
 
 The original sprites were generated in code (no AI art). This script keeps the
 same silhouettes and pixel palette, restores the crowns that were clipped by
 the canvas edge, adds a transparent margin and paints snow caps on the foliage
-and rocks. Run from the repository root:
+and rocks.
+
+The two spruces used to be rebuilt here as well, as recoloured broadleaf
+crowns. They are now drawn from scratch by `make-spruce-assets.py`, which owns
+`tree-a.png` and `tree-b.png`; this script only handles the bush and the rocks
+so regenerating nothing puts the old round crowns back. Run from the repository
+root:
 
     python scripts/make-nature-assets.py
 """
@@ -48,32 +54,6 @@ def color_map(image: Image.Image, mapping: dict[tuple[int, int, int], tuple[int,
                 pixels[x, y] = replacement
     return out
 
-
-TREE_A_MAP = {
-    (59, 125, 79): (54, 112, 92, 255),
-    (47, 87, 83): (39, 82, 96, 255),
-    (99, 171, 63): (92, 158, 116, 255),
-    (27, 47, 38): (21, 41, 47, 255),
-    (143, 191, 74): (156, 199, 203, 255),
-    (215, 232, 160): SNOW_SHADE,
-    (90, 42, 38): (92, 58, 48, 255),
-    (125, 56, 51): (121, 66, 55, 255),
-    (171, 81, 48): (164, 89, 55, 255),
-    (16, 36, 28): (54, 88, 110, 70),
-}
-
-TREE_B_MAP = {
-    (63, 125, 85): (58, 114, 96, 255),
-    (45, 90, 69): (42, 84, 97, 255),
-    (98, 169, 90): (91, 157, 118, 255),
-    (27, 47, 38): (21, 41, 47, 255),
-    (156, 207, 106): (171, 210, 212, 255),
-    (215, 232, 160): SNOW_SHADE,
-    (107, 90, 65): (101, 92, 72, 255),
-    (207, 176, 131): (203, 188, 156, 255),
-    (240, 217, 166): (231, 226, 203, 255),
-    (16, 36, 28): (54, 88, 110, 70),
-}
 
 BUSH_MAP = {
     (59, 125, 79): (55, 113, 93, 255),
@@ -163,31 +143,6 @@ def snow_cap(image: Image.Image, fraction: float, max_depth: int = 2) -> None:
                 pixels[x, top_y + 2] = SNOW_BLUE
 
 
-def winterize_tree(name: str, mapping: dict, top_rows: int, paste_y: int) -> None:
-    source = color_map(load(name), mapping)
-    canvas = pad(source, 52, 60, 2, paste_y)
-
-    # Restore the clipped crown with a small rounded dome above the old edge.
-    # Row widths taper upwards; the first and last pixel stay as the dark rim.
-    pixels = canvas.load()
-    center = 26
-    widths = [3, 7, 11, 15] if top_rows == 4 else [3, 7]
-    top = paste_y - top_rows
-    for index, width in enumerate(widths):
-        y = top + index
-        start = center - width // 2
-        for x in range(start, start + width):
-            if x in (start, start + width - 1):
-                pixels[x, y] = (21, 41, 47, 255)
-            else:
-                pixels[x, y] = mapping[(59, 125, 79)] if name.startswith("tree-a") else mapping[(63, 125, 85)]
-
-    remove_specks(canvas)
-    snow_cap(canvas, 0.42, 2)
-
-    save(name, canvas)
-
-
 def winterize_bush() -> None:
     source = color_map(load("bush-a.png"), BUSH_MAP)
     canvas = pad(source, 17, 15, 1, 1)
@@ -215,8 +170,6 @@ def winterize_rock(name: str, mapping: dict) -> None:
 
 
 def main() -> None:
-    winterize_tree("tree-a.png", TREE_A_MAP, 4, 5)
-    winterize_tree("tree-b.png", TREE_B_MAP, 2, 3)
     winterize_bush()
     winterize_rock("rock-a.png", ROCK_A_MAP)
     winterize_rock("rock-b.png", ROCK_B_MAP)

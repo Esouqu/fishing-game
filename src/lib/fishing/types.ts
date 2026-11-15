@@ -1,49 +1,83 @@
 import type { Application } from "pixi.js";
 
-export type WeatherId = "clear" | "overcast" | "rain" | "storm" | "fog";
-export type TimePhase = "dawn" | "day" | "dusk" | "night";
+export type WeatherId = "clear" | "overcast" | "snow" | "blizzard" | "fog";
 
-export interface CatchRecord {
+/**
+ * Fixed personality of a species. The temperament is authored per fish instead
+ * of rolled per fight, so the codex can teach the player what to expect.
+ */
+export type Temperament = "calm" | "aggressive" | "skittish" | "stubborn";
+
+export const TEMPERAMENT_IDS: readonly Temperament[] = [
+  "calm",
+  "aggressive",
+  "skittish",
+  "stubborn",
+];
+
+/**
+ * Water body ids. The ids are historical (they name the bank each scene was
+ * built for) and are kept so persisted progress and the ambience map stay
+ * valid. Every id is exactly one water type:
+ *
+ * - `deep`  — the lake (`WaterKind` "lake");
+ * - `rapids`— the river ("river");
+ * - `cove`  — the sea bay ("sea").
+ */
+export type AreaId = "cove" | "deep" | "rapids";
+
+/** The three kinds of water the fish are divided into. */
+export type WaterKind = "lake" | "sea" | "river";
+
+/**
+ * Rarity class of a species. Every water body is built to roughly
+ * 70% common / 20% rare / 10% legendary; rare fish bite less often and fight
+ * harder, legendary ones are the narrow-window trophies.
+ */
+export type FishTier = "common" | "rare" | "legendary";
+
+/** In-game minutes from midnight; `from` inclusive, `to` exclusive. */
+export interface TimeWindow {
+  from: number;
+  to: number;
+}
+
+/** Fired on every landed fish, after the progress record is updated. */
+export interface CatchEvent {
   fishId: string;
-  name: string;
-  latin: string;
-  points: number;
-  perfect: boolean;
-  /** Rolled catch weight in kilograms. */
+  areaId: AreaId;
   weightKg: number;
-  /** Combo multiplier applied to this catch. */
-  multiplier: number;
+  firstCatch: boolean;
+  at: number;
 }
 
-export interface SessionResult {
-  score: number;
-  casts: number;
+export interface FishProgress {
+  /** Total catches of this species. */
   caught: number;
-  perfect: number;
-  bestFish: CatchRecord | null;
-  catches: CatchRecord[];
-  /** Longest streak of successful catches in a row. */
-  bestStreak: number;
-  /** Highest combo multiplier reached during the session. */
-  bestMultiplier: number;
-  date: number;
+  /** Heaviest landed specimen, kg. */
+  bestKg: number;
 }
 
-export interface LeaderboardEntry {
-  id: string;
-  name: string;
-  score: number;
-  caught: number;
-  best: string;
-  date: number;
-  bot?: boolean;
+/**
+ * One serializable document with all player progress. It is intentionally a
+ * plain JSON object: an HTTP/DB adapter can PUT it verbatim and load it back
+ * with `parseProgress`.
+ */
+export interface ProgressSnapshot {
+  version: number;
+  selectedArea: AreaId;
+  fish: Record<string, FishProgress>;
+  updatedAt: number;
 }
 
-export interface LeaderboardStanding {
-  rank: number;
-  total: number;
-  inTop: boolean;
-  entry: LeaderboardEntry;
+/**
+ * Persistence seam for progress. Implement this with fetch/localStorage/IndexedDB
+ * and pass it as `progress` to the game. Both methods may reject; the game keeps
+ * playing and retries the save on the next flush.
+ */
+export interface ProgressRepository {
+  load(): Promise<unknown>;
+  save(snapshot: ProgressSnapshot): Promise<void>;
 }
 
 export type StartScreen = "menu" | "game";
@@ -53,20 +87,22 @@ export interface FishingGameOptions {
   container: HTMLElement;
   /** Base URL of the copied art/font folder. Default: `/assets/fishing`. */
   assetBase?: string;
-  /** localStorage namespace so multiple games do not share scores. */
+  /** localStorage namespace so multiple games do not share progress. */
   storagePrefix?: string;
   /** Start muted. */
   muted?: boolean;
   /** Open the menu or jump straight into a session. */
   startScreen?: StartScreen;
-  /** Nickname saved with the result in the local leaderboard. */
-  playerName?: string;
   /** Called when the player presses "Выход" in the menu (if provided). */
   onExit?: () => void;
-  /** Called once a 10-cast session is completed. */
-  onScore?: (result: SessionResult) => void;
+  /** Called after every landed fish. */
+  onCatch?: (event: CatchEvent) => void;
+  /** Called whenever the persisted progress document changes. */
+  onProgress?: (snapshot: ProgressSnapshot) => void;
   /** Called when the painter is ready to be interacted with. */
   onReady?: () => void;
+  /** Optional DB/HTTP-backed progress storage. Default: localStorage. */
+  progress?: ProgressRepository;
 }
 
 export interface FishingGameInstance {
@@ -78,6 +114,8 @@ export interface FishingGameInstance {
   restart(): void;
   showMenu(): void;
   setMuted(muted: boolean): void;
+  /** Forces a progress save and resolves when the repository accepted it. */
+  flushProgress(): Promise<void>;
 }
 
 export interface NormalizedOptions {
@@ -86,25 +124,9 @@ export interface NormalizedOptions {
   storagePrefix: string;
   muted: boolean;
   startScreen: StartScreen;
-  playerName: string;
   onExit?: () => void;
-  onScore?: (result: SessionResult) => void;
+  onCatch?: (event: CatchEvent) => void;
+  onProgress?: (snapshot: ProgressSnapshot) => void;
   onReady?: () => void;
-}
-
-export function normalizeOptions(
-  options: FishingGameOptions,
-): NormalizedOptions {
-  const base = options.assetBase ?? `${import.meta.env.BASE_URL}assets/fishing`;
-  return {
-    container: options.container,
-    assetBase: base.replace(/\/+$/, ""),
-    storagePrefix: options.storagePrefix ?? "quiet-cove",
-    muted: options.muted ?? false,
-    startScreen: options.startScreen ?? "menu",
-    playerName: (options.playerName ?? "").trim(),
-    onExit: options.onExit,
-    onScore: options.onScore,
-    onReady: options.onReady,
-  };
+  progress?: ProgressRepository;
 }

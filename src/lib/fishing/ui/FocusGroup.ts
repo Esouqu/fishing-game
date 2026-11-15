@@ -6,11 +6,18 @@ export interface Focusable {
 /**
  * Keyboard navigation helper. A plain list (`columns = 1`) is navigated with
  * up/down (or left/right); grids additionally support horizontal movement.
+ *
+ * The highlight is a keyboard affordance, not a default state: a panel that
+ * opens with one button already outlined reads as an answer that has been
+ * given. Nothing is lit until the player navigates with the keyboard, and the
+ * first navigation key only reveals the ring where the panel already points.
  */
 export class FocusGroup {
   private items: Focusable[] = [];
   private columns = 1;
   private index = -1;
+  /** True once the keyboard has been used in this group. */
+  private keyboard = false;
 
   onMove?: () => void;
 
@@ -29,10 +36,30 @@ export class FocusGroup {
     return this.index;
   }
 
-  focus(index = 0): void {
+  /** True once the player has navigated this group with the keyboard. */
+  get keyboardActive(): boolean {
+    return this.keyboard;
+  }
+
+  /**
+   * Points the group at an item without lighting it. Panels use this to open
+   * on the current choice; the pointer is never shown a ring it did not ask
+   * for.
+   */
+  select(index = 0): void {
     if (this.items.length === 0) return;
-    this.index = Math.max(0, Math.min(this.items.length - 1, index));
-    this.items[this.index].setFocused(true);
+    const next = Math.max(0, Math.min(this.items.length - 1, index));
+    if (this.index >= 0 && this.index !== next) {
+      this.items[this.index]?.setFocused(false);
+    }
+    this.index = next;
+  }
+
+  /** Points at an item and lights it: a key press asked for the ring. */
+  focus(index = 0): void {
+    this.keyboard = true;
+    this.select(index);
+    if (this.index >= 0) this.items[this.index].setFocused(true);
   }
 
   blur(): void {
@@ -40,10 +67,20 @@ export class FocusGroup {
     this.index = -1;
   }
 
+  /** Forgets the keyboard state, so a freshly opened panel starts unlit. */
+  reset(): void {
+    this.blur();
+    this.keyboard = false;
+  }
+
   move(dx: number, dy: number): void {
     if (this.items.length === 0) return;
-    if (this.index < 0) {
-      this.focus(0);
+    if (!this.keyboard) {
+      // The first navigation key reveals the ring on the item the panel
+      // already points at, or on the first one when it points at nothing.
+      this.keyboard = true;
+      if (this.index < 0) this.select(0);
+      this.items[this.index]?.setFocused(true);
       this.onMove?.();
       return;
     }

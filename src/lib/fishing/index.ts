@@ -17,19 +17,36 @@ export async function createFishingGame(
 }
 
 export { Game } from "./Game";
-export type { LeaderboardViewOptions } from "./Game";
-export type {
-  CatchRecord,
-  FishingGameInstance,
-  FishingGameOptions,
-  LeaderboardEntry,
-  LeaderboardStanding,
-  SessionResult,
-  StartScreen,
-} from "./types";
+export type { CodexReturn } from "./Game";
+export { AREAS, AREA_BY_ID, DEFAULT_AREA_ID } from "./areas";
+export type { AreaDef, SceneLayout } from "./areas";
 export {
   FISH,
-  CASTS_PER_SESSION,
-  COMBO_MULTIPLIERS,
-  PERFECT_MULTIPLIER,
-} from "./config";
+  FISH_BY_ID,
+  fishDescription,
+  fishInArea,
+  isFishActive,
+  whenPhrase,
+} from "./fish";
+export type { FishSpecies } from "./fish";
+export {
+  LocalProgressRepository,
+  MemoryProgressRepository,
+  ProgressTracker,
+  createHttpProgressRepository,
+  parseProgress,
+} from "./progress";
+export type {
+  AreaId,
+  CatchEvent,
+  FishingGameInstance,
+  FishingGameOptions,
+  FishProgress,
+  FishTier,
+  ProgressRepository,
+  ProgressSnapshot,
+  StartScreen,
+  Temperament,
+  TimeWindow,
+  WaterKind,
+} from "./types";

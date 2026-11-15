@@ -1,125 +1,16 @@
-import type {
-  LeaderboardEntry,
-  LeaderboardStanding,
-  SessionResult,
-} from "./types";
-import { SEED_LEADERBOARD, TEXT } from "./texts";
-
-const BOARD_SIZE = 14;
-const STORE_LIMIT = 20;
-
-function compareEntries(a: LeaderboardEntry, b: LeaderboardEntry): number {
-  if (b.score !== a.score) return b.score - a.score;
-  return a.date - b.date;
-}
-
-function validEntry(value: unknown): value is LeaderboardEntry {
-  if (!value || typeof value !== "object") return false;
-  const entry = value as Record<string, unknown>;
-  return (
-    typeof entry.id === "string" &&
-    typeof entry.name === "string" &&
-    typeof entry.score === "number" &&
-    typeof entry.caught === "number" &&
-    typeof entry.best === "string" &&
-    typeof entry.date === "number"
-  );
-}
-
-export class Leaderboard {
-  private readonly key: string;
-  private entries: LeaderboardEntry[] = [];
-
-  constructor(prefix: string) {
-    this.key = `${prefix}:leaderboard:v1`;
-    this.entries = this.read();
-  }
-
-  private read(): LeaderboardEntry[] {
-    try {
-      const raw = localStorage.getItem(this.key);
-      if (!raw) return [];
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(validEntry).slice(0, STORE_LIMIT);
-    } catch {
-      return [];
-    }
-  }
-
-  private write(): void {
-    try {
-      localStorage.setItem(this.key, JSON.stringify(this.entries));
-    } catch {
-      // Storage can be blocked; leaderboard still works for this session.
-    }
-  }
-
-  private merged(): LeaderboardEntry[] {
-    return [...this.entries, ...SEED_LEADERBOARD].sort(compareEntries);
-  }
-
-  /** Top entries including the seeded rivals. */
-  top(count: number = BOARD_SIZE): LeaderboardEntry[] {
-    return this.merged().slice(0, count);
-  }
-
-  /** Every entry, best first — the board may grow beyond a fixed size. */
-  all(): LeaderboardEntry[] {
-    return this.merged();
-  }
-
-  /** Best score saved by the local player (bots excluded). */
-  personalBest(): LeaderboardEntry | null {
-    if (this.entries.length === 0) return null;
-    return this.entries.reduce((best, entry) =>
-      entry.score > best.score ? entry : best,
-    );
-  }
-
-  previewRank(score: number): number {
-    return this.merged().filter((entry) => entry.score > score).length + 1;
-  }
-
-  qualifies(score: number): boolean {
-    return this.previewRank(score) <= BOARD_SIZE;
-  }
-
-  submit(name: string, result: SessionResult): LeaderboardStanding {
-    const entry: LeaderboardEntry = {
-      id: `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      name: (name.trim() || TEXT.common.playerFallback).slice(0, 12),
-      score: Math.round(result.score),
-      caught: result.caught,
-      best: result.bestFish?.name ?? TEXT.common.dash,
-      date: Date.now(),
-    };
-    this.entries.push(entry);
-    this.entries.sort(compareEntries);
-    this.entries = this.entries.slice(0, STORE_LIMIT);
-    this.write();
-
-    const merged = this.merged();
-    const rank = merged.findIndex((item) => item.id === entry.id) + 1;
-    return {
-      rank: rank > 0 ? rank : merged.length,
-      total: merged.length,
-      inTop: rank > 0 && rank <= BOARD_SIZE,
-      entry,
-    };
-  }
-
-  reset(): void {
-    this.entries = [];
-    this.write();
-  }
-}
+import { normalizeMix, type AudioMix } from "./audioMix";
 
 interface SettingsData {
   muted?: boolean;
   tutorialSeen?: boolean;
+  /**
+   * Audio balance tuned in the dev panel. It only overrides the channels it
+   * names, so saving the mix into `audioMix.ts` still wins for the rest.
+   */
+  mix?: Partial<AudioMix>;
 }
 
+/** Device-local settings that should not travel with the player profile. */
 export class SettingsStore {
   private readonly key: string;
   private data: SettingsData;
@@ -141,6 +32,12 @@ export class SettingsStore {
       if (typeof record.tutorialSeen === "boolean") {
         data.tutorialSeen = record.tutorialSeen;
       }
+      const mix = normalizeMix(
+        record.mix && typeof record.mix === "object"
+          ? (record.mix as Record<string, number>)
+          : null,
+      );
+      if (Object.keys(mix).length > 0) data.mix = mix;
       return data;
     } catch {
       return {};
@@ -172,15 +69,29 @@ export class SettingsStore {
     this.data.tutorialSeen = value;
     this.write();
   }
+
+  /** Dev-panel balance overrides, or `undefined` when the code values are used. */
+  get mix(): Partial<AudioMix> | undefined {
+    return this.data.mix;
+  }
+
+  set mix(value: Partial<AudioMix> | null) {
+    if (value) this.data.mix = normalizeMix(value);
+    else delete this.data.mix;
+    this.write();
+  }
 }
 
 export interface WorldData {
-  /** Minutes since midnight, 0..1439. */
-  minutes: number;
-  weather: string;
+  /**
+   * Weather fronts, one per area. Older saves hold a single front as a plain
+   * string; the clock expands it to every area on load. The time of day is not
+   * stored any more: the clock follows the player's wall clock.
+   */
+  weather: Record<string, string> | string;
 }
 
-/** Time of day and current weather front, shared between sessions. */
+/** Weather fronts of every water body. */
 export class WorldStore {
   private readonly key: string;
 
@@ -195,17 +106,24 @@ export class WorldStore {
       const parsed: unknown = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object") return null;
       const record = parsed as Record<string, unknown>;
-      if (typeof record.minutes !== "number") return null;
-      if (typeof record.weather !== "string") return null;
-      return { minutes: record.minutes, weather: record.weather };
+      const weather = record.weather;
+      if (typeof weather === "string") return { weather };
+      if (!weather || typeof weather !== "object" || Array.isArray(weather)) {
+        return null;
+      }
+      const fronts: Record<string, string> = {};
+      for (const [areaId, value] of Object.entries(weather)) {
+        if (typeof value === "string") fronts[areaId] = value;
+      }
+      return { weather: fronts };
     } catch {
       return null;
     }
   }
 
-  write(minutes: number, weather: string): void {
+  write(weather: Record<string, string>): void {
     try {
-      localStorage.setItem(this.key, JSON.stringify({ minutes, weather }));
+      localStorage.setItem(this.key, JSON.stringify({ weather }));
     } catch {
       // ignore
     }

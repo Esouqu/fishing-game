@@ -1,14 +1,13 @@
 import {
   FIGHT,
-  RARE_SCORE,
   TEMPERAMENTS,
   TIMING,
   VIEW,
-  pickTemperament,
   type FishSpecies,
   type Temperament,
 } from "../config";
-import { clamp, easeInOutQuad, lerp } from "../utils";
+import { clamp, easeInOutQuad, lerp, randRange } from "../utils";
+import { temperamentFor } from "../fish";
 import { buildScript, type Move } from "./behaviors";
 
 export interface MinigameResult {
@@ -19,8 +18,12 @@ export interface MinigameResult {
 export interface MinigameOptions {
   /** Where the bobber landed; the circle is built around this point. */
   anchor: { x: number; y: number };
-  /** Water roughness from the cast distance: 0.88 calm .. 1.05 rough. */
-  wildness?: number;
+  /**
+   * Weight of the catch in kg. Bigger fish inside the species range are pulled
+   * in slower, drain the angler's grip faster and spend less endurance; omitted
+   * means the neutral, mid-range fight.
+   */
+  weightKg?: number;
   /** Called when a strong dash is telegraphed. */
   onWarn?: () => void;
   /** Called when the player lands a counter-pull. */
@@ -50,6 +53,52 @@ const ESCAPE_HOLD = 2.1;
 const PULL_ACCEL = 540;
 const MAX_SPEED = 260;
 
+/**
+ * What the catch's weight does to the fight. Every value is 1 for a fish in the
+ * middle of its species range, so a light and a heavy catch pull in opposite
+ * directions around the same neutral fight.
+ */
+export interface WeightLoad {
+  /** Multiplier on the angler's pull: below 1 the fish comes in slower. */
+  pull: number;
+  /** Multiplier on the angler's grip drain while pulling. */
+  grip: number;
+  /** Multiplier on the fish's endurance drain while it is being pulled. */
+  tire: number;
+}
+
+/**
+ * Map a catch weight onto the fight. The weight matters *inside* the species
+ * range and across species.
+ *
+ * Inside the range: a 100 g minnow at the top of its range and a 40 kg catfish
+ * at its minimum both sit at the neutral 0, because species difficulty is
+ * already carried by `resistance` and `speed`. That keeps a record-sized fish
+ * of any species a better fight without turning small fish into trawling.
+ *
+ * Across species the catch's own mass is what the angler actually reels in, so
+ * a mean species weight also scales the pull — gently, with a square root, so a
+ * perch comes in a touch quicker than a pike and both come in much quicker than
+ * a halibut, without turning the big fish into a tug-of-war.
+ */
+export function weightLoad(fish: FishSpecies, kg?: number): WeightLoad {
+  const [min, max] = fish.weightKg;
+  const mean = (min + max) / 2;
+  /** Species mass: 1 for a fish of no weight, falling as the mean grows. */
+  const mass = 1 / Math.sqrt(1 + Math.max(0, mean) * FIGHT.massPull);
+  if (kg === undefined || !Number.isFinite(kg) || max <= min) {
+    return { pull: mass, grip: 1, tire: 1 };
+  }
+  const t = clamp((kg - min) / (max - min), 0, 1);
+  /** -1 at the lightest catch of the range, 0 mid, +1 at the heaviest. */
+  const swing = t * 2 - 1;
+  return {
+    pull: (1 - FIGHT.weightPull * swing) * mass,
+    grip: 1 + FIGHT.weightGrip * swing,
+    tire: 1 - FIGHT.weightTire * swing,
+  };
+}
+
 function angleDelta(from: number, to: number): number {
   let delta = (to - from + Math.PI) % TAU;
   if (delta < 0) delta += TAU;
@@ -70,9 +119,10 @@ function angleDelta(from: number, to: number): number {
  */
 export class FightModel {
   readonly fish: FishSpecies;
-  readonly wildness: number;
   readonly centerX: number;
   readonly centerY: number;
+  /** What the weight of this catch does to the fight. */
+  private readonly load: WeightLoad;
 
   private fishX = 0;
   private fishY = 0;
@@ -92,7 +142,12 @@ export class FightModel {
   private warnTime = 0;
   private warnAngle = 0;
   private warnRest = 0;
-  private flash = 0;
+  /** A strong dash that first lunges toward a false warning. */
+  private feintActive = false;
+  private feintTimer = 0;
+  private feintAngle = 0;
+  private feintHasRevealed = false;
+  private turnFlashValue = 0;
 
   private endurance = 1;
   private grip = 1;
@@ -159,14 +214,14 @@ export class FightModel {
 
   constructor(fish: FishSpecies, options: MinigameOptions) {
     this.fish = fish;
-    this.wildness = options.wildness ?? 1;
+    this.load = weightLoad(fish, options.weightKg);
     this.onWarn = options.onWarn;
     this.onCounter = options.onCounter;
     this.onReady = options.onReady;
     this.onResist = options.onResist;
     this.onGripOut = options.onGripOut;
 
-    this.temperament = pickTemperament();
+    this.temperament = temperamentFor(fish);
     const mood = TEMPERAMENTS[this.temperament];
     this.tempo = mood.tempo;
     this.runPower = mood.run;
@@ -203,11 +258,6 @@ export class FightModel {
 
   get isRunning(): boolean {
     return this.running;
-  }
-
-  /** Perfect slips still available, shown by the HUD pips. */
-  get slipsLeft(): number {
-    return Math.max(0, MAX_SLIPS - this.slips);
   }
 
   /** True while the player is actively steering; drives the reel sound. */
@@ -257,10 +307,6 @@ export class FightModel {
     return this.outside;
   }
 
-  get outsideProgress(): number {
-    return clamp(this.outsideTimer / this.escapeHold, 0, 1);
-  }
-
   /** 0..1 escape meter; 1 means the fish has torn free. */
   get escapeMeter(): number {
     return clamp(this.outsideTimer / this.escapeHold, 0, 1);
@@ -274,8 +320,28 @@ export class FightModel {
     return this.warnAngle;
   }
 
-  get impactFlash(): number {
-    return this.flash;
+  /** True while a feinting dash is still hiding its true heading. */
+  get isFeint(): boolean {
+    return this.feintActive;
+  }
+
+  /** True once the false lunge has turned into the real dash. */
+  get feintRevealed(): boolean {
+    return this.feintHasRevealed;
+  }
+
+  /** The heading the counter should oppose; true heading after a feint. */
+  get counterHeading(): number {
+    return this.escapeAngle;
+  }
+
+  /** True heading of the last feint, for the short turn flash. */
+  get turnHeading(): number {
+    return this.escapeAngle;
+  }
+
+  get turnFlash(): number {
+    return this.turnFlashValue;
   }
 
   get counterFlashValue(): number {
@@ -305,10 +371,6 @@ export class FightModel {
     }
   }
 
-  get isHeld(): boolean {
-    return this.hold;
-  }
-
   /** Separate final pull: RMB/F, or a tap on the tired fish. */
   finalPull(): void {
     if (!this.running || this.finalCooldown > 0) return;
@@ -325,7 +387,6 @@ export class FightModel {
     this.grip = clamp(this.grip - FIGHT.resistGrip);
     this.escapeAngle = this.fishAngle() + (Math.random() - 0.5) * 0.6;
     this.bolt(0.45);
-    this.flash = 0.24;
     this.onResist?.();
   }
 
@@ -378,12 +439,12 @@ export class FightModel {
     this.advantage = Math.max(0, this.advantage - step);
     this.counterFlash = Math.max(0, this.counterFlash - step);
     this.stun = Math.max(0, this.stun - step);
+    this.turnFlashValue = Math.max(0, this.turnFlashValue - step);
 
     if (this.warnTime > 0) {
       this.warnTime = Math.max(0, this.warnTime - step);
       // Rest means releasing the pull button, as in the mod.
       this.warnRest = this.hold ? 0 : this.warnRest + step;
-      this.flash = Math.max(0, this.flash - step);
       // The fish holds still and shivers while the warning is shown.
       this.vx *= Math.max(0, 1 - 7 * step);
       this.vy *= Math.max(0, 1 - 7 * step);
@@ -393,9 +454,29 @@ export class FightModel {
         this.spawnBubble(false);
       }
       if (this.warnTime === 0) {
-        this.bolt();
+        if (this.feintActive) {
+          // False start: the fish lunges toward the arrow, then turns.
+          this.boltAt(this.warnAngle, FIGHT.feintPower);
+          this.feintTimer = FIGHT.feintDelay;
+          this.spawnBubbleBurst();
+        } else {
+          this.bolt();
+          this.spawnBubbleBurst();
+          this.openCounterWindow();
+        }
+      }
+    } else if (this.feintTimer > 0) {
+      this.warnRest = this.hold ? 0 : this.warnRest + step;
+      this.feintTimer = Math.max(0, this.feintTimer - step);
+      if (this.feintTimer === 0) {
+        // The turn: kill the false velocity and strike along the true heading.
+        this.vx = 0;
+        this.vy = 0;
+        this.boltAt(this.escapeAngle, 1);
+        this.turnFlashValue = 0.18;
+        this.feintHasRevealed = true;
         this.spawnBubbleBurst();
-        this.openCounterWindow();
+        this.openCounterWindow(FIGHT.feintWindow);
       }
     } else {
       if (this.stun > 0) {
@@ -413,8 +494,11 @@ export class FightModel {
     this.updateCounter(step, pull);
 
     if (pull) {
-      this.vx += pull.x * PULL_ACCEL * step;
-      this.vy += pull.y * PULL_ACCEL * step;
+      // A heavier fish comes in slower: the angler's pull has to drag its mass
+      // across the circle, so the same input moves it less far per second.
+      const power = PULL_ACCEL * this.load.pull;
+      this.vx += pull.x * power * step;
+      this.vy += pull.y * power * step;
     }
 
     // Water drag plus a hard speed cap keeps the pull responsive but fair.
@@ -492,8 +576,13 @@ export class FightModel {
     }
 
     if (steering) {
+      // Fighting the weight of the catch spends the angler's grip: a heavy fish
+      // is a heavier line to hold, so every second of pull costs more.
       this.grip -=
-        FIGHT.gripDrain * (this.advantage > 0 ? FIGHT.advantageGrip : 1) * step;
+        FIGHT.gripDrain *
+        this.load.grip *
+        (this.advantage > 0 ? FIGHT.advantageGrip : 1) *
+        step;
       if (this.grip <= 0) {
         this.grip = 0;
         this.gripLock = FIGHT.gripLock;
@@ -526,7 +615,10 @@ export class FightModel {
       }
       const aim = FIGHT.tireAimBase + FIGHT.tireAimGain * alignment;
       const rate = FIGHT.tireBase - this.fish.resistance * FIGHT.tireScale;
-      const tire = rate * (inside ? 1 : 0.3) * this.tirePower * aim;
+      // A heavy fish spends its endurance more slowly — it has more mass to
+      // fight with — so tiring a record catch out is a longer job.
+      const tire =
+        rate * this.load.tire * (inside ? 1 : 0.3) * this.tirePower * aim;
       const bonus = this.advantage > 0 ? FIGHT.advantageTire : 1;
       this.endurance = clamp(this.endurance - tire * bonus * step);
       return;
@@ -551,13 +643,17 @@ export class FightModel {
         : this.temperament === "stubborn"
           ? 0.15
           : 0) +
-      (this.fish.points >= RARE_SCORE ? 0.15 : 0);
+      (this.fish.tier === "legendary"
+        ? 0.15
+        : this.fish.tier === "rare"
+          ? 0.07
+          : 0);
     if (Math.random() < chance) this.lastRunPending = true;
   }
 
-  private openCounterWindow(): void {
-    this.counterWindow = FIGHT.counterWindow;
-    this.counterAngle = this.warnAngle;
+  private openCounterWindow(window: number = FIGHT.counterWindow): void {
+    this.counterWindow = window;
+    this.counterAngle = this.escapeAngle;
     this.counterArmed = this.warnRest >= FIGHT.counterRest;
     this.preBurstAngle = this.lastSteerAngle;
     this.counterUsed = false;
@@ -598,7 +694,6 @@ export class FightModel {
     this.outsideTimer = Math.max(0, this.outsideTimer - FIGHT.counterRelief);
     this.advantage = FIGHT.advantage;
     this.counterFlash = 0.6;
-    this.flash = 0.18;
     this.vx = 0;
     this.vy = 0;
     if (this.current) this.moveTime = this.current.dur;
@@ -644,9 +739,11 @@ export class FightModel {
     this.moveIndex += 1;
     this.current = move;
     this.moveTime = 0;
-    this.flash = 0;
     this.warnRest = 0;
     this.counterWindow = 0;
+    this.feintActive = false;
+    this.feintHasRevealed = false;
+    this.feintTimer = 0;
     this.moveStartAngle = this.fishAngle();
     this.moveStartRadius = this.fishRadius();
     this.escapeAngle = this.resolveAngle(move);
@@ -657,12 +754,24 @@ export class FightModel {
       // A fish that senses an empty grip warns a little later.
       const pressure = this.grip < FIGHT.lowGrip ? 0.88 : 1;
       this.warnTime = TIMING.telegraph * pressure;
-      this.warnAngle = this.escapeAngle;
+      const feint = this.feintPending || Math.random() < this.feintChance;
+      this.feintActive = feint;
+      if (feint) {
+        this.feintPending = false;
+        this.feintAngle =
+          this.escapeAngle +
+          (Math.random() < 0.5 ? -1 : 1) *
+            randRange(FIGHT.feintAngleMin, FIGHT.feintAngleMax);
+        this.warnAngle = this.feintAngle;
+      } else {
+        this.warnAngle = this.escapeAngle;
+      }
       this.bubbleTimer = 0;
       this.onWarn?.();
       return;
     }
     this.warnTime = 0;
+    this.warnAngle = this.escapeAngle;
     if (move.kind === "dash") this.bolt(0.7);
   }
 
@@ -679,21 +788,18 @@ export class FightModel {
     else if (dir === "same") base = this.lastAngle + jitter(0.35);
     else base = this.lastAngle + Math.PI + jitter(0.75);
 
-    const feint = this.feintPending || Math.random() < this.feintChance;
-    this.feintPending = false;
-    if (feint && dir !== "toward") {
-      base += (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.5);
-    }
     return base;
   }
 
-  /** A sudden burst, used by dash moves and after a telegraph ends. */
+  /** A sudden burst along `angle`; the default is the move's true heading. */
+  private boltAt(angle: number, scale = 1): void {
+    const power = (110 + this.fish.speed * 70) * scale * this.runPower;
+    this.vx += Math.cos(angle) * power;
+    this.vy += Math.sin(angle) * power;
+  }
+
   private bolt(scale = 1): void {
-    const power =
-      (110 + this.fish.speed * 70) * scale * this.wildness * this.runPower;
-    this.vx += Math.cos(this.escapeAngle) * power;
-    this.vy += Math.sin(this.escapeAngle) * power;
-    this.flash = 0.16;
+    this.boltAt(this.escapeAngle, scale);
   }
 
   private updateTarget(): void {
@@ -770,7 +876,6 @@ export class FightModel {
       steer = 2;
     }
 
-    speed *= this.wildness;
     const dx = this.targetX - this.fishX;
     const dy = this.targetY - this.fishY;
     const distance = Math.hypot(dx, dy);
@@ -790,7 +895,6 @@ export class FightModel {
       this.slips += 1;
       this.perfect = this.slips <= MAX_SLIPS;
       this.slipCooldown = 0.5;
-      this.flash = 0.2;
     }
     this.outside = outside;
     this.slipCooldown = Math.max(0, this.slipCooldown - dt);

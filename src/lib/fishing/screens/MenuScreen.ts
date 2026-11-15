@@ -1,72 +1,15 @@
-import {
-  Container,
-  Graphics,
-  Rectangle,
-  type FederatedPointerEvent,
-} from "pixi.js";
 import type { Game } from "../Game";
-import { C, VIEW } from "../config";
+import { VIEW } from "../config";
+import { TEXT } from "../texts";
 import { Screen } from "../ui/Screen";
 import { Backdrop } from "../ui/Backdrop";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
-import {
-  drawLeaderboardTable,
-  drawLeaderboardRow,
-} from "../ui/LeaderboardTable";
+import { UI } from "../ui/palette";
 import { makeText } from "../ui/theme";
-import { TEXT } from "../texts";
-import { CURSORS } from "../cursors";
-import { clamp } from "../utils";
-import type { LeaderboardEntry } from "../types";
 
-const MARGIN = 20;
-const PANEL_X = MARGIN;
-const PANEL_Y = MARGIN;
-const PANEL_W = 264;
-const PANEL_H = 230;
-const PAD = 16;
-
-const BOARD_W = 160;
-const BOARD_H = PANEL_H;
-const BOARD_X = VIEW.width - MARGIN - BOARD_W;
-const BOARD_Y = MARGIN;
-const BOARD_TABLE_X = BOARD_X + 12;
-const BOARD_TABLE_Y = BOARD_Y + 30;
-const BOARD_TABLE_W = BOARD_W - 24;
-const TABLE_ROW_H = 13;
-const TABLE_FONT = 9;
-
-/** Rounded panel used by both menu columns. */
-function drawMenuPanel(
-  g: Graphics,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  alpha: number,
-): void {
-  g.rect(x + 3, y + 4, width, height).fill({
-    color: C.ink,
-    alpha: 0.32,
-  });
-  g.rect(x, y, width, height).fill({ color: C.panel, alpha });
-  g.rect(x, y, width, height).stroke({
-    width: 1,
-    color: C.ink,
-    alignment: 0,
-  });
-  g.rect(x + 1, y + 1, width - 2, height - 2).stroke({
-    width: 1,
-    color: C.brownDark,
-    alpha: 0.5,
-    alignment: 0,
-  });
-  g.rect(x + 10, y + 1, width - 20, 1).fill({
-    color: C.cream,
-    alpha: 0.14,
-  });
-}
+const MAIN = { x: 130, y: 92, width: 220, height: 28, gap: 8 };
+const FOOTER = { y: 206, height: 24, width: 106, gap: 8 };
 
 export class MenuScreen extends Screen {
   private readonly game: Game;
@@ -75,118 +18,87 @@ export class MenuScreen extends Screen {
   private readonly buttons: Button[] = [];
   private muteButton!: Button;
 
-  private readonly leaderboardViewport = new Container();
-  private readonly leaderboardContent = new Container();
-  private readonly leaderboardMask = new Graphics();
-  private leaderboardScroll = 0;
-  private leaderboardMaxScroll = 0;
-  private leaderboardVisibleH = 0;
-  private leaderboardThumb: Graphics | null = null;
-  private thumbTrackY = 0;
-  private thumbTrackH = 0;
-  private pinnedRow: Container | null = null;
-  private pinnedRowIndex = -1;
-  private thumbHeight = 0;
-  private scrollDragging = false;
-
   constructor(game: Game) {
     super();
     this.game = game;
-    this.backdrop = new Backdrop(game.assets, game.clock);
+    game.audio.setAmbience(game.areaId);
+    this.backdrop = new Backdrop(
+      game.previewFor(game.areaId),
+      game.clock,
+      game.area,
+    );
     this.addChild(this.backdrop);
 
-    this.buildActions();
-    this.buildLeaderboard();
+    this.buildTitle();
+    this.buildButtons();
   }
 
-  private buildActions(): void {
-    const panel = new Graphics();
-    drawMenuPanel(panel, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 0.86);
-    this.addChild(panel);
-
-    const left = PANEL_X + PAD;
-    const width = PANEL_W - PAD * 2;
-
+  private buildTitle(): void {
     const title = makeText(TEXT.menu.title, {
       size: 26,
       weight: 800,
-      color: C.cream,
+      color: UI.text,
+      align: "center",
       letterSpacing: 0.5,
     });
-    title.position.set(left, PANEL_Y + 18);
+    title.position.set(VIEW.width / 2, 34);
+    title.style.stroke = { color: UI.ink, width: 3 };
     this.addChild(title);
+  }
 
-    // One short gold stroke reads as a water ripple under the wordmark.
-    const ripple = new Graphics();
-    ripple.rect(left, PANEL_Y + 68, 64, 3).fill(C.gold);
-    ripple.rect(left + 70, PANEL_Y + 69, 18, 1).fill({
-      color: C.gold,
-      alpha: 0.55,
-    });
-    ripple.rect(left + 94, PANEL_Y + 69, 7, 1).fill({
-      color: C.gold,
-      alpha: 0.3,
-    });
-    this.addChild(ripple);
-
-    const gap = 9;
-    const primaryH = 34;
-    const secondaryH = 28;
-    const stackH = primaryH + gap + secondaryH + gap + secondaryH;
-    let y = PANEL_Y + PANEL_H - PAD - stackH;
-
-    const play = new Button({
-      label: TEXT.common.play,
-      width,
-      height: primaryH,
-      variant: "primary",
-      size: 14,
-      onClick: () => this.game.startGame(),
-    });
-    play.position.set(left, y);
-    this.addChild(play);
-    this.buttons.push(play);
-    y += primaryH + gap;
-
-    const help = new Button({
-      label: TEXT.common.howToPlay,
-      width,
-      height: secondaryH,
-      variant: "secondary",
-      size: 12,
-      onClick: () => this.game.showHelp(),
-    });
-    help.position.set(left, y);
-    this.addChild(help);
-    this.buttons.push(help);
-    y += secondaryH + gap;
+  private buildButtons(): void {
+    const play = this.makeMainButton(
+      TEXT.common.play,
+      0,
+      34,
+      14,
+      "primary",
+      () => this.game.showAreas(),
+    );
+    const codex = this.makeMainButton(
+      TEXT.codex.title,
+      1,
+      24,
+      12,
+      "secondary",
+      () => this.game.showCodex("menu"),
+    );
+    const help = this.makeMainButton(
+      TEXT.common.howToPlay,
+      2,
+      24,
+      12,
+      "secondary",
+      () => this.game.showHelp(),
+    );
+    this.buttons.push(play, codex, help);
 
     const hasExit = this.game.options.onExit !== undefined;
-    const smallW = hasExit ? Math.floor((width - 8) / 2) : width;
+    const footerWidth = hasExit ? FOOTER.width : FOOTER.width * 2 + FOOTER.gap;
 
     this.muteButton = new Button({
       label: this.muteLabel(),
-      width: smallW,
-      height: secondaryH,
-      size: hasExit ? 10 : 12,
+      width: footerWidth,
+      height: FOOTER.height,
+      size: 10,
       onClick: () => {
         this.game.toggleMute();
         this.muteButton.setLabel(this.muteLabel());
       },
     });
-    this.muteButton.position.set(left, y);
+    this.muteButton.position.set(MAIN.x, FOOTER.y);
     this.addChild(this.muteButton);
     this.buttons.push(this.muteButton);
 
     if (hasExit) {
       const exit = new Button({
         label: TEXT.common.exit,
-        width: smallW,
-        height: secondaryH,
+        width: FOOTER.width,
+        height: FOOTER.height,
         size: 10,
         onClick: () => this.game.exit(),
       });
-      exit.position.set(left + smallW + 8, y);
+      exit.position.set(MAIN.x + FOOTER.width + FOOTER.gap, FOOTER.y);
       this.addChild(exit);
       this.buttons.push(exit);
     }
@@ -195,210 +107,29 @@ export class MenuScreen extends Screen {
     this.focus.onMove = () => this.game.audio.hover();
   }
 
-  private buildLeaderboard(): void {
-    const personal = this.game.leaderboard.personalBest();
-    const entries = this.game.leaderboard.all();
-    const personalIndex = personal
-      ? entries.findIndex((entry) => entry.id === personal.id)
-      : -1;
-    const hasPersonal = personal !== null && personalIndex >= 0;
-
-    const panel = new Graphics();
-    drawMenuPanel(panel, BOARD_X, BOARD_Y, BOARD_W, BOARD_H, 0.9);
-    this.addChild(panel);
-
-    const title = makeText(TEXT.menu.leaderboardTitle, {
-      size: 12,
-      weight: 800,
-      color: C.gold,
-      align: "center",
-      letterSpacing: 0.8,
-    });
-    title.position.set(BOARD_X + BOARD_W / 2, BOARD_Y + 12);
-    this.addChild(title);
-
-    // Column header stays put while the rows scroll beneath it.
-    const headerH = TABLE_FONT + 4;
-    drawLeaderboardTable(this, [], {
-      x: BOARD_TABLE_X,
-      y: BOARD_TABLE_Y,
-      width: BOARD_TABLE_W,
-      rowHeight: TABLE_ROW_H,
-      fontSize: TABLE_FONT,
-    });
-
-    // The pinned player row owns the last row of the panel, so the scroll
-    // area is one row shorter and never hides data behind the pin.
-    const available = BOARD_H - (BOARD_TABLE_Y - BOARD_Y) - 2;
-    const baseVisibleH =
-      Math.floor((available - headerH) / TABLE_ROW_H) * TABLE_ROW_H;
-    const visibleH = hasPersonal ? baseVisibleH - TABLE_ROW_H : baseVisibleH;
-    this.leaderboardViewport.eventMode = "none";
-    this.addChild(this.leaderboardViewport);
-
-    this.leaderboardContent.eventMode = "none";
-    this.leaderboardViewport.addChild(this.leaderboardContent);
-
-    this.leaderboardMask.eventMode = "none";
-    this.leaderboardMask
-      .rect(BOARD_X, BOARD_TABLE_Y + headerH, BOARD_W, visibleH)
-      .fill(0xffffff);
-    this.leaderboardViewport.addChild(this.leaderboardMask);
-    this.leaderboardContent.mask = this.leaderboardMask;
-
-    const tableHeight = drawLeaderboardTable(this.leaderboardContent, entries, {
-      x: BOARD_TABLE_X,
-      y: BOARD_TABLE_Y + headerH,
-      width: BOARD_TABLE_W,
-      highlightId: personal?.id,
-      rowHeight: TABLE_ROW_H,
-      fontSize: TABLE_FONT,
-      showHeader: false,
-    });
-    this.leaderboardMaxScroll = Math.max(0, tableHeight - visibleH);
-    this.leaderboardVisibleH = visibleH;
-    this.thumbTrackY = BOARD_TABLE_Y + headerH;
-    this.thumbTrackH = visibleH;
-
-    if (hasPersonal && personal) {
-      this.buildPinnedRow(personal, personalIndex, headerH, visibleH);
-    }
-
-    if (this.leaderboardMaxScroll > 0) {
-      const track = new Graphics();
-      track
-        .rect(BOARD_X + BOARD_W - 6, this.thumbTrackY, 2, visibleH)
-        .fill({ color: C.ink, alpha: 0.35 });
-      this.addChild(track);
-
-      this.leaderboardThumb = new Graphics();
-      this.leaderboardThumb.eventMode = "none";
-      this.addChild(this.leaderboardThumb);
-
-      this.buildScrollbar(visibleH);
-    }
-    this.applyLeaderboardScroll();
-  }
-
-  private buildPinnedRow(
-    entry: LeaderboardEntry,
+  private makeMainButton(
+    label: string,
     index: number,
-    headerH: number,
-    visibleH: number,
-  ): void {
-    const y = BOARD_TABLE_Y + headerH + visibleH;
-    const pinned = new Container();
-    pinned.eventMode = "none";
-
-    const cover = new Graphics();
-    cover
-      .rect(BOARD_X + 2, y - 2, BOARD_W - 4, TABLE_ROW_H + 2)
-      .fill({ color: C.panel, alpha: 0.98 });
-    pinned.addChild(cover);
-
-    drawLeaderboardRow(pinned, entry, {
-      x: BOARD_TABLE_X,
-      y,
-      width: BOARD_TABLE_W,
-      rank: index + 1,
-      rowHeight: TABLE_ROW_H,
-      fontSize: TABLE_FONT,
-      highlighted: true,
+    height: number,
+    size: number,
+    variant: "primary" | "secondary",
+    onClick: () => void,
+  ): Button {
+    const button = new Button({
+      label,
+      width: MAIN.width,
+      height,
+      variant,
+      size,
+      onClick,
     });
-
-    const divider = new Graphics();
-    divider
-      .rect(BOARD_X + 8, y - 2, BOARD_W - 16, 1)
-      .fill({ color: C.gold, alpha: 0.5 });
-    pinned.addChild(divider);
-
-    this.addChild(pinned);
-    this.pinnedRow = pinned;
-    this.pinnedRowIndex = index;
-  }
-
-  private updatePinnedRow(): void {
-    if (!this.pinnedRow) return;
-    const rowTop = this.pinnedRowIndex * TABLE_ROW_H;
-    const rowBottom = rowTop + TABLE_ROW_H;
-    const top = this.leaderboardScroll;
-    const bottom = top + this.leaderboardVisibleH;
-    this.pinnedRow.visible = !(rowBottom > top && rowTop < bottom);
-  }
-
-  private buildScrollbar(visibleH: number): void {
-    const hit = new Graphics();
-    hit.eventMode = "static";
-    hit.cursor = CURSORS.default;
-    hit.hitArea = new Rectangle(
-      BOARD_X + BOARD_W - 12,
-      this.thumbTrackY,
-      14,
-      visibleH,
-    );
-    hit.on("pointerdown", (event: FederatedPointerEvent) => {
-      this.scrollDragging = true;
-      this.scrollToPointer(event);
-    });
-    hit.on("globalpointermove", (event: FederatedPointerEvent) => {
-      if (this.scrollDragging) this.scrollToPointer(event);
-    });
-    const end = (): void => {
-      this.scrollDragging = false;
-    };
-    hit.on("pointerup", end);
-    hit.on("pointerupoutside", end);
-    this.addChild(hit);
-  }
-
-  private scrollToPointer(event: FederatedPointerEvent): void {
-    const travel = this.thumbTrackH - this.thumbHeight;
-    if (travel <= 0) return;
-    const local = event.getLocalPosition(this);
-    const ratio = clamp(
-      (local.y - this.thumbTrackY - this.thumbHeight / 2) / travel,
-      0,
-      1,
-    );
-    this.leaderboardScroll = ratio * this.leaderboardMaxScroll;
-    this.applyLeaderboardScroll();
-  }
-
-  private applyLeaderboardScroll(): void {
-    this.leaderboardContent.position.y = -this.leaderboardScroll;
-    this.updatePinnedRow();
-
-    const thumb = this.leaderboardThumb;
-    if (thumb === null) return;
-    const total = this.thumbTrackH + this.leaderboardMaxScroll;
-    this.thumbHeight = Math.max(
-      18,
-      (this.thumbTrackH * this.thumbTrackH) / total,
-    );
-    const progress =
-      this.leaderboardMaxScroll > 0
-        ? this.leaderboardScroll / this.leaderboardMaxScroll
-        : 0;
-    thumb.clear();
-    thumb
-      .rect(
-        BOARD_X + BOARD_W - 6,
-        this.thumbTrackY + (this.thumbTrackH - this.thumbHeight) * progress,
-        2,
-        this.thumbHeight,
-      )
-      .fill({ color: C.steelPale, alpha: 0.5 });
-  }
-
-  override handleWheel(event: WheelEvent): boolean {
-    if (this.leaderboardMaxScroll <= 0) return false;
-    this.leaderboardScroll = clamp(
-      this.leaderboardScroll + event.deltaY * 0.05,
-      0,
-      this.leaderboardMaxScroll,
-    );
-    this.applyLeaderboardScroll();
-    return true;
+    const y =
+      index === 0
+        ? MAIN.y
+        : MAIN.y + 34 + MAIN.gap + (index - 1) * (MAIN.height + MAIN.gap);
+    button.position.set(MAIN.x, y);
+    this.addChild(button);
+    return button;
   }
 
   private muteLabel(): string {
@@ -406,9 +137,8 @@ export class MenuScreen extends Screen {
   }
 
   override onEnter(): void {
-    this.leaderboardScroll = 0;
-    this.applyLeaderboardScroll();
-    this.focus.focus(0);
+    // Nothing is outlined on entry: the ring is a keyboard affordance, and it
+    // appears on the first arrow key (see `FocusGroup`).
   }
 
   override onExit(): void {

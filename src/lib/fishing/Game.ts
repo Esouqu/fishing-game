@@ -1,34 +1,53 @@
-import { Application, Container, Graphics } from "pixi.js";
+import { Application, Container, Graphics, Rectangle, Texture } from "pixi.js";
 import { C, VIEW } from "./config";
-import { WINTER, winterWaterAt } from "./world";
+import { WINTER, WorldClock, winterWaterAt } from "./world";
 import { TEXT } from "./texts";
 import { CURSORS, type CursorName, type CursorTextures } from "./cursors";
 import { AudioKit } from "./audio";
-import { loadGameAssets, type AssetBag } from "./assets";
-import { Leaderboard, SettingsStore, WorldStore } from "./storage";
-import { WorldClock } from "./world";
+import { AUDIO_MIX, MIX_CHANNELS, mixWith, type AudioMix } from "./audioMix";
+import { copyOrDownloadMix, saveOrDownloadMix } from "./audioMixSave";
+import {
+  loadGameAssets,
+  loadHelpTexture,
+  prefetchHelpPages,
+  type AssetBag,
+} from "./assets";
+import type { HelpPageId } from "./texts";
+import { SettingsStore, WorldStore } from "./storage";
+import { AREAS, AREA_BY_ID, DEFAULT_AREA_ID, type AreaDef } from "./areas";
+import {
+  LocalProgressRepository,
+  ProgressTracker,
+  parseProgress,
+} from "./progress";
 import type {
+  AreaId,
+  CatchEvent,
   FishingGameInstance,
   FishingGameOptions,
-  LeaderboardStanding,
   NormalizedOptions,
-  SessionResult,
+  WeatherId,
 } from "./types";
-import { normalizeOptions } from "./types";
+import { normalizeOptions } from "./options";
 import { ScreenManager } from "./ui/ScreenManager";
+import { AudioMixPanel } from "./ui/AudioMixPanel";
+import { DevWeatherPanel } from "./ui/DevWeatherPanel";
 import { drawFishGlyph, drawPanel } from "./ui/theme";
+import { UI } from "./ui/palette";
 import { setUiSoundHandler } from "./ui/Button";
 import { MenuScreen } from "./screens/MenuScreen";
 import { HelpScreen } from "./screens/HelpScreen";
-import { LeaderboardScreen } from "./screens/LeaderboardScreen";
+import {
+  AreaSelectScreen,
+  type AreaPickOrigin,
+} from "./screens/AreaSelectScreen";
+import { CodexScreen } from "./screens/CodexScreen";
 import { GameScreen } from "./screens/GameScreen";
-import { ResultsScreen } from "./screens/ResultsScreen";
 import { CursorOverlay } from "./ui/CursorOverlay";
+import { IceVeil } from "./ui/IceVeil";
+import { createFishingScene } from "./game/scenes";
 
-export interface LeaderboardViewOptions {
-  highlightId?: string;
-  from?: "menu" | "result";
-}
+export type CodexReturn = "menu" | "areas";
 
 export class Game implements FishingGameInstance {
   readonly app: Application;
@@ -38,9 +57,12 @@ export class Game implements FishingGameInstance {
 
   private assetBag: AssetBag | null = null;
   private audioKit: AudioKit | null = null;
-  private leaderboardStore: Leaderboard | null = null;
   private settingsStore: SettingsStore | null = null;
   private worldClock: WorldClock | null = null;
+  private progressTracker: ProgressTracker | null = null;
+  private readonly previews: Partial<Record<AreaId, Texture>> = {};
+  /** Gradient stand-ins for previews that are not rendered yet. */
+  private readonly fallbackPreviews = new Map<AreaId, Texture>();
 
   private bootLayer: Container | null = null;
   private bootMarker: Graphics | null = null;
@@ -49,17 +71,39 @@ export class Game implements FishingGameInstance {
   private cursorOverlay: CursorOverlay | null = null;
   private cursorX = 0;
   private cursorY = 0;
+  /** Dev audio balance panel, built the first time it is opened. */
+  private audioPanel: AudioMixPanel | null = null;
+  /** Dev weather picker, built the first time it is opened. */
+  private devPanel: DevWeatherPanel | null = null;
 
   /** Clips all game content to the 480×270 frame inside the letterbox. */
   private readonly worldMask = new Graphics();
 
   private destroyed = false;
-  private hostPaused = false;
   private pointerInside = false;
   private readonly resizeObserver: ResizeObserver;
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (this.destroyed || !this.isEngaged() || this.assetBag === null) return;
+    // The audio mixer and the weather picker are authoring tools, not cheats
+    // for the shipped game: in a production build they do nothing.
+    if (event.code === "F2" || event.code === "F3") {
+      if (!import.meta.env.DEV) return;
+      event.preventDefault();
+      if (event.code === "F2") this.toggleAudioPanel();
+      else this.toggleDevPanel();
+      return;
+    }
+    if (this.audioPanel?.isOpen) {
+      // The panel owns the keyboard while it is up: no cast, no pause menu.
+      this.audioPanel.handleKey(event);
+      event.preventDefault();
+      return;
+    }
+    if (this.devPanel?.handleKey(event)) {
+      event.preventDefault();
+      return;
+    }
     if (
       event.code === "Space" ||
       event.code === "ArrowUp" ||
@@ -85,12 +129,13 @@ export class Game implements FishingGameInstance {
 
   private readonly onVisibility = (): void => {
     if (this.destroyed) return;
-    if (document.hidden) {
-      this.worldClock?.persist();
-      this.screens.onHostPause(true);
-    } else {
-      this.screens.onHostPause(this.hostPaused);
-    }
+    // Leaving the tab pauses the round; coming back does NOT resume it. The
+    // player left mid-fight, so the game waits for a deliberate «продолжить»
+    // instead of dropping them back into a landing window they cannot see.
+    if (!document.hidden) return;
+    this.worldClock?.persist();
+    void this.progressTracker?.flush();
+    this.screens.onHostPause(true);
   };
 
   private constructor(app: Application, options: NormalizedOptions) {
@@ -136,7 +181,7 @@ export class Game implements FishingGameInstance {
     await app.init({
       width,
       height,
-      background: C.ink,
+      background: UI.night,
       antialias: false,
       autoDensity: true,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -175,13 +220,6 @@ export class Game implements FishingGameInstance {
     return this.audioKit;
   }
 
-  get leaderboard(): Leaderboard {
-    if (!this.leaderboardStore) {
-      throw new Error("[fishing] leaderboard is not ready yet");
-    }
-    return this.leaderboardStore;
-  }
-
   get settings(): SettingsStore {
     if (!this.settingsStore) {
       throw new Error("[fishing] settings are not ready yet");
@@ -197,8 +235,49 @@ export class Game implements FishingGameInstance {
     return this.worldClock;
   }
 
+  /** Player progress: codex, area visits and the selected water body. */
+  get progress(): ProgressTracker {
+    if (!this.progressTracker) {
+      throw new Error("[fishing] progress is not ready yet");
+    }
+    return this.progressTracker;
+  }
+
+  get area(): AreaDef {
+    return AREA_BY_ID[this.areaId] ?? AREA_BY_ID[DEFAULT_AREA_ID];
+  }
+
+  /**
+   * The selected water body, falling back to the default one. A saved or
+   * hand-passed id that no longer exists (a renamed area, a stale session) used
+   * to reach the screen as `undefined` and crash on `area.layout`.
+   */
+  get areaId(): AreaId {
+    const saved = this.progressTracker?.snapshot.selectedArea;
+    return saved && saved in AREA_BY_ID ? saved : DEFAULT_AREA_ID;
+  }
+
   get muted(): boolean {
     return this.audioKit?.isMuted ?? this.options.muted;
+  }
+
+  /** Full-screen still of a water body, used by cards and menu backdrops. */
+  previewFor(areaId: AreaId): Texture {
+    const ready = this.previews[areaId] ?? this.previews[DEFAULT_AREA_ID];
+    if (ready) return ready;
+    // The two water bodies that are not selected are rendered on idle after
+    // the menu is up; until then the cheap gradient stands in for them.
+    let fallback = this.fallbackPreviews.get(areaId);
+    if (!fallback) {
+      fallback = this.fallbackPreview(AREA_BY_ID[areaId] ?? this.area);
+      this.fallbackPreviews.set(areaId, fallback);
+    }
+    return fallback;
+  }
+
+  /** Help screenshots are lazy: the screen paints first, the shot follows. */
+  helpTexture(page: HelpPageId): Promise<Texture> {
+    return loadHelpTexture(page);
   }
 
   // -------------------------------------------------------------------- boot
@@ -206,23 +285,61 @@ export class Game implements FishingGameInstance {
   private async boot(): Promise<void> {
     this.mountBoot();
 
-    const bag = await loadGameAssets(this.options.assetBase, (progress) => {
-      this.setBootProgress(progress);
+    // Decorative frost over every screen. It is fetched alongside the rest of
+    // the art but never awaited: a missing or slow ice.png must not hold the
+    // boot screen, and the veil is attached whenever it arrives.
+    const veil = IceVeil.load();
+
+    const repository =
+      this.options.progress ??
+      new LocalProgressRepository(this.options.storagePrefix);
+    const progressPromise = repository.load().catch((error: unknown) => {
+      console.warn("[fishing] progress load failed", error);
+      return null;
     });
+
+    const [bag, rawProgress] = await Promise.all([
+      loadGameAssets(this.options.assetBase, (progress) => {
+        this.setBootProgress(progress);
+      }),
+      progressPromise,
+    ]);
 
     this.assetBag = bag;
     this.mountCursor(bag.cursors);
     this.settingsStore = new SettingsStore(this.options.storagePrefix);
-    this.leaderboardStore = new Leaderboard(this.options.storagePrefix);
     this.worldClock = new WorldClock(
       new WorldStore(this.options.storagePrefix),
     );
     this.audioKit = new AudioKit(
       this.settingsStore.muted ?? this.options.muted,
+      this.options.assetBase,
+      mixWith(this.settingsStore.mix),
     );
+    this.progressTracker = new ProgressTracker(
+      repository,
+      parseProgress(rawProgress),
+    );
+    this.progressTracker.onChange = (snapshot) =>
+      this.options.onProgress?.(snapshot);
+
+    // Menus show a still of the selected water body, so the water bed starts
+    // with the boot instead of the first cast. Web Audio only begins on the
+    // first gesture, which `AudioKit.unlock` handles.
+    this.audioKit.setAmbience(this.areaId);
+
+    // Only the selected water body is rendered before the menu. The other two
+    // previews are three full scene draws each; on software rendering they
+    // were the last two long tasks of the boot, for pictures nobody was
+    // looking at yet.
+    this.buildAreaPreview(this.area);
 
     this.unmountBoot();
     this.world.addChild(this.screens.layer);
+    void veil.then((overlay) => {
+      if (overlay && !this.destroyed) this.screens.setVeil(overlay);
+      else overlay?.destroy({ children: true });
+    });
 
     if (this.options.startScreen === "game") {
       this.startGame();
@@ -231,6 +348,78 @@ export class Game implements FishingGameInstance {
     }
     this.applyResize();
     this.options.onReady?.();
+    this.warmInBackground();
+  }
+
+  /**
+   * Fills the rest of the previews and the help screenshots while the player
+   * is on the menu. Nothing here is on the boot path; `showAreas` still forces
+   * any missing preview before it constructs the picker.
+   */
+  private warmInBackground(): void {
+    const run = (): void => {
+      if (this.destroyed) return;
+      for (const area of AREAS) this.buildAreaPreview(area);
+      void prefetchHelpPages();
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      window.setTimeout(run, 300);
+    }
+  }
+
+  /**
+   * Renders one scene once and keeps the resulting texture. Cards and menu
+   * backdrops then show a real screenshot of the water body instead of a
+   * hand-drawn approximation.
+   */
+  private buildAreaPreview(area: AreaDef): void {
+    if (!this.assetBag || this.previews[area.id]) return;
+    const scene = createFishingScene(area, this.assetBag);
+    try {
+      scene.update(1 / 60);
+      this.previews[area.id] = this.app.renderer.extract.texture({
+        target: scene,
+        frame: new Rectangle(0, 0, VIEW.width, VIEW.height),
+        resolution: 1,
+      });
+    } catch (error) {
+      console.warn(`[fishing] preview for ${area.id} failed`, error);
+      this.previews[area.id] = this.fallbackPreview(area);
+    } finally {
+      scene.destroy({ children: true });
+    }
+  }
+
+  /** The area picker needs all three cards, all with real screenshots. */
+  private ensureAreaPreviews(): void {
+    for (const area of AREAS) this.buildAreaPreview(area);
+  }
+
+  private fallbackPreview(area: AreaDef): Texture {
+    const canvas = document.createElement("canvas");
+    canvas.width = VIEW.width;
+    canvas.height = VIEW.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return Texture.WHITE;
+    const stops = area.palette.waterStops;
+    const gradient = ctx.createLinearGradient(0, 0, 0, VIEW.height);
+    for (const stop of stops) {
+      gradient.addColorStop(
+        stop.at,
+        `#${stop.color.toString(16).padStart(6, "0")}`,
+      );
+    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+    ctx.fillStyle = `#${area.palette.farShore.toString(16).padStart(6, "0")}`;
+    ctx.fillRect(0, 0, VIEW.width, 26);
+    ctx.fillStyle = `#${area.palette.snow.toString(16).padStart(6, "0")}`;
+    ctx.fillRect(0, 24, VIEW.width, 3);
+    const texture = Texture.from(canvas);
+    texture.source.scaleMode = "nearest";
+    return texture;
   }
 
   private mountBoot(): void {
@@ -334,19 +523,19 @@ export class Game implements FishingGameInstance {
     halo.circle(237, 96, 43).fill({ color: WINTER.ice, alpha: 0.05 });
 
     const glyph = new Graphics();
-    drawFishGlyph(glyph, C.gold);
+    drawFishGlyph(glyph, UI.primary);
     glyph.position.set(205, 62);
     glyph.scale.set(5);
 
     const barBg = new Graphics();
-    drawPanel(barBg, 150, 156, 180, 14, { fill: C.ink, inner: false });
+    drawPanel(barBg, 150, 156, 180, 14, { fill: UI.ink, inner: false });
 
     this.bootFill = new Graphics();
     this.bootMarker = new Graphics();
-    this.bootMarker.rect(-2, -4, 5, 4).fill(C.ink);
-    this.bootMarker.rect(-1, -3, 3, 2).fill(C.red);
-    this.bootMarker.rect(-1, -1, 3, 1).fill(C.cream);
-    this.bootMarker.rect(0, -6, 1, 2).fill(C.ink);
+    this.bootMarker.rect(-2, -4, 5, 4).fill(UI.ink);
+    this.bootMarker.rect(-1, -3, 3, 2).fill(UI.rose);
+    this.bootMarker.rect(-1, -1, 3, 1).fill(UI.text);
+    this.bootMarker.rect(0, -6, 1, 2).fill(UI.ink);
     this.bootMarker.ellipse(0, 0, 5, 1.5).stroke({
       width: 1,
       color: WINTER.ice,
@@ -365,10 +554,10 @@ export class Game implements FishingGameInstance {
     this.bootFill.clear();
     this.bootFill
       .rect(152, 158, 176 * clamped, 10)
-      .fill({ color: C.gold, alpha: 0.95 });
+      .fill({ color: UI.periwinkle, alpha: 0.95 });
     this.bootFill
       .rect(152, 158, 176 * clamped, 2)
-      .fill({ color: C.yellow, alpha: 0.9 });
+      .fill({ color: UI.primary, alpha: 0.9 });
   }
 
   private unmountBoot(): void {
@@ -434,25 +623,24 @@ export class Game implements FishingGameInstance {
     this.screens.show(new HelpScreen(this));
   }
 
-  showLeaderboard(view: LeaderboardViewOptions = {}): void {
-    this.screens.show(new LeaderboardScreen(this, view));
+  showAreas(origin: AreaPickOrigin = "menu"): void {
+    // Cards and the backdrop both need the real stills; anything the idle
+    // warm-up has not reached yet is rendered now, before the screen reads it.
+    this.ensureAreaPreviews();
+    this.screens.show(new AreaSelectScreen(this, origin));
   }
 
-  startGame(): void {
-    this.screens.show(new GameScreen(this));
+  showCodex(returnTo: CodexReturn = "menu"): void {
+    this.screens.show(new CodexScreen(this, returnTo));
   }
 
-  showResults(
-    result: SessionResult,
-    notify = true,
-    standing?: LeaderboardStanding,
-  ): void {
-    if (notify) this.options.onScore?.(result);
-    this.screens.show(new ResultsScreen(this, result, standing));
-  }
-
-  submitScore(name: string, result: SessionResult): LeaderboardStanding {
-    return this.leaderboard.submit(name, result);
+  startGame(areaId?: AreaId): void {
+    if (areaId && areaId !== this.areaId) {
+      this.progress.setArea(areaId);
+    }
+    void this.progress.flush();
+    this.screens.show(new GameScreen(this, this.area));
+    this.devPanel?.refresh();
   }
 
   exit(): void {
@@ -470,18 +658,132 @@ export class Game implements FishingGameInstance {
     return this.muted;
   }
 
+  // ------------------------------------------------------------- dev tools
+
+  /** Opens or closes the audio balance panel (`F2`, dev only). */
+  toggleAudioPanel(): void {
+    if (!import.meta.env.DEV) return;
+    if (this.audioPanel?.isOpen) this.closeAudioPanel();
+    else this.openAudioPanel();
+  }
+
+  openAudioPanel(): void {
+    if (!import.meta.env.DEV || this.assetBag === null) return;
+    const panel = this.audioPanel ?? this.mountAudioPanel();
+    if (!panel.isOpen) {
+      panel.open();
+      // Lift any pause duck: the mixer has to hear the channels it edits.
+      this.screens.active?.onAudioPanel(true);
+    }
+  }
+
+  closeAudioPanel(): void {
+    if (!this.audioPanel?.isOpen) return;
+    this.audioPanel.close();
+    this.screens.active?.onAudioPanel(false);
+  }
+
+  /** Opens or closes the dev weather picker (`F3`, dev only). */
+  toggleDevPanel(): void {
+    if (!import.meta.env.DEV) return;
+    if (this.devPanel?.isOpen) this.closeDevPanel();
+    else this.openDevPanel();
+  }
+
+  openDevPanel(): void {
+    if (!import.meta.env.DEV || this.assetBag === null) return;
+    const panel = this.devPanel ?? this.mountDevPanel();
+    if (!panel.isOpen) panel.open();
+  }
+
+  closeDevPanel(): void {
+    this.devPanel?.close();
+  }
+
+  /**
+   * Pins the weather of the current water body (`F3` panel). Saved like a
+   * normal front, so the pick survives a reload.
+   */
+  setWeather(weather: WeatherId, areaId: AreaId = this.areaId): void {
+    this.clock.setWeather(weather, areaId);
+    this.clock.persist();
+    const active = this.screens.active;
+    if (active instanceof GameScreen && areaId === this.areaId) {
+      active.snapWeather();
+    }
+    this.devPanel?.refresh();
+  }
+
+  private mountDevPanel(): DevWeatherPanel {
+    const panel = new DevWeatherPanel({
+      current: () => this.clock.weatherFor(this.areaId),
+      onPick: (weather) => this.setWeather(weather),
+      onClose: () => this.closeDevPanel(),
+    });
+    this.devPanel = panel;
+    // Above the screen layer, so the picker is never clipped by the letterbox
+    // and its buttons take the click before the water does.
+    this.world.addChild(panel);
+    return panel;
+  }
+
+  private mountAudioPanel(): AudioMixPanel {
+    const panel = new AudioMixPanel({
+      audio: this.audio,
+      onPersist: (mix) => this.persistMix(mix),
+      onSave: async (mix) => {
+        const message = await saveOrDownloadMix(mix);
+        // Once the block is in the source it *is* the code default, so the
+        // device-local overrides have to go or they would shadow it forever.
+        if (message === TEXT.devtools.savedToCode) this.settings.mix = null;
+        return message;
+      },
+      onCopy: (mix) => copyOrDownloadMix(mix),
+      isMuted: () => this.muted,
+      onToggleMute: () => this.toggleMute(),
+      onClose: () => this.closeAudioPanel(),
+    });
+    this.audioPanel = panel;
+    // Above the screen layer, so the panel is not clipped by the letterbox and
+    // receives pointer events before the game does.
+    this.world.addChild(panel);
+    return panel;
+  }
+
+  /**
+   * Stores only the channels that differ from the code defaults, so a later
+   * edit to `audioMix.ts` still wins for everything the panel did not touch.
+   */
+  private persistMix(mix: AudioMix): void {
+    const overrides: Partial<AudioMix> = {};
+    for (const channel of MIX_CHANNELS) {
+      const value = mix[channel.id];
+      if (Math.abs(value - AUDIO_MIX[channel.id]) > 0.004) {
+        overrides[channel.id] = value;
+      }
+    }
+    this.settings.mix = Object.keys(overrides).length > 0 ? overrides : null;
+  }
+
   restart(): void {
     this.startGame();
   }
 
   pause(): void {
-    this.hostPaused = true;
     this.screens.onHostPause(true);
   }
 
   resume(): void {
-    this.hostPaused = false;
     this.screens.onHostPause(false);
+  }
+
+  /** Host hook: forward a landed fish to the embedder. */
+  handleCatch(event: CatchEvent): void {
+    this.options.onCatch?.(event);
+  }
+
+  flushProgress(): Promise<void> {
+    return this.progressTracker?.flush() ?? Promise.resolve();
   }
 
   // ------------------------------------------------------------------ input
@@ -555,6 +857,8 @@ export class Game implements FishingGameInstance {
     if (this.destroyed) return;
     this.destroyed = true;
     this.worldClock?.persist();
+    void this.progressTracker?.flush();
+    this.progressTracker?.dispose();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     this.app.canvas.removeEventListener("wheel", this.onWheel);
@@ -567,6 +871,14 @@ export class Game implements FishingGameInstance {
     this.app.canvas.classList.remove("cursor-hidden");
     this.cursorOverlay?.destroy({ children: true });
     this.cursorOverlay = null;
+    if (this.audioPanel) {
+      this.audioPanel.destroy({ children: true });
+      this.audioPanel = null;
+    }
+    if (this.devPanel) {
+      this.devPanel.destroy({ children: true });
+      this.devPanel = null;
+    }
     this.app.ticker.remove(this.tick);
     setUiSoundHandler(null);
     this.audioKit?.destroy();

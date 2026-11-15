@@ -3,26 +3,32 @@
 ## Tiny Coast Pack
 
 - Author: **Vryell** ([@Vryell](https://twitter.com/Vryell))
-- Used for: angler sprite, water details, tree, bush, rock.
+- Used for: angler sprite sheet, boat, sign and fishing rod (runtime art in `public/assets/fishing/`).
 - License: free for commercial and non-commercial games and personal projects; modification allowed; credit is appreciated but not required.
 - Restrictions: do not resell, repackage or redistribute the asset (even modified).
 - The original pack is **not** included in this repository. Run `pnpm assets` with your own copy of `assetspacks/Tiny Coast Pack` to generate `public/assets/fishing`.
 
 ## Critters of Yonder — Gone Fishing
 
-- Used for: freshwater and saltwater fish icons for the 20-species lake roster.
+- Used for: all 40 freshwater and saltwater fish icons in the three-water-body roster (18 freshwater + 22 saltwater, including the shrimp).
 - License: commercial and non-commercial games, personal projects and promotional materials; modification allowed; credit appreciated.
 - Restrictions: do not resell, repackage or redistribute the asset (even modified); do not use it to train AI image generators; do not use it in logos, trademarks or service marks; do not include it in game-making tools or code templates; do not use it in crypto, NFT, p2e or meta projects.
 - The original pack is **not** included in this repository. Run `pnpm assets` with your own copy of `assetspacks/Critters of Yonder - Gone Fishing` to generate `public/assets/fishing`.
 
-## Handjet
+## Stardew Valley sound effects
 
-- Copyright 2018 The Handjet Project Authors (<https://github.com/rosettatype/Handjet/>).
-- License: SIL Open Font License 1.1 (<https://openfontlicense.org>).
-- Distributed via `@fontsource-variable/handjet`; the script copies the needed WOFF2 subsets into `public/assets/fishing/fonts`.
+- Source: `assetspacks/stardew valley sounds` (sound effects and ambience from **Stardew Valley**, © ConcernedApe).
+- Used for: UI clicks, cast/bite/reel/catch feedback and one ambience loop per water body.
+- Rights remain with the author. These files are included only because the project owner supplied them; do not redistribute the audio separately from this project.
+
+## Tiny5
+
+- Self-hosted as four woff2 subsets in `public/assets/fishing/fonts/` (`tiny5-latin`, `tiny5-latin-ext`, `tiny5-cyrillic`, `tiny5-cyrillic-ext`), split by `unicode-range` and loaded by `src/lib/fishing/fonts.ts`. The original single TTF was 230 KB on the boot path; the subsets are ~18 KB together.
+- License: SIL Open Font License 1.1 (OFL), source: <https://fonts.google.com/specimen/Tiny5>.
 
 ## Other
 
 - All game code, UI layout, procedural Web Audio effects and Russian copy were written for this project.
+- The frost veil ships as `public/assets/ice-480.webp` (99 KB), baked from the original 2560×1440 cut-out in `assets-src/ice.png` by `scripts/bake-veil.mjs`; the Canvas downscale keeps the alpha silhouette bit-for-bit, and `src/lib/fishing/ui/IceVeil.ts` only re-shapes the alpha at runtime.
 - The winter trees, bush and rocks in `src/assets/fishing/` are procedurally generated pixel art. `scripts/make-nature-assets.py` rebuilds them from the project's earlier procedural sprites (kept in `scripts/nature-originals/`) with restored crowns and snow caps.
 - The DTF article “13 базовых принципов геймдизайна” was used as a design reference; no text from the article is reproduced.

@@ -142,7 +142,7 @@ const SCRIPTS: Record<string, () => Move[]> = {
   ],
   // Долгое затишье, затем короткий сильный рывок.
   walleye: () => [pause(1.2), dash("flip", 0.3, true), pause(0.7)],
-  // Два тяжёлых рывка в противоположные стороны и долгий отдых.
+  // Два тяжелых рывка в противоположные стороны и долгий отдых.
   catfish: () => [
     dash("away", 0.62, true),
     pause(0.5),
@@ -160,7 +160,7 @@ const SCRIPTS: Record<string, () => Move[]> = {
     dash("flip", 0.28),
     pause(0.6),
   ],
-  // Затишье, тяжёлый рывок, снова затишье.
+  // Затишье, тяжелый рывок, снова затишье.
   lionfish: () => [
     pause(0.5),
     dash("away", 0.62, true),
@@ -182,7 +182,86 @@ const SCRIPTS: Record<string, () => Move[]> = {
     dash("toward", 0.42, true),
     pause(0.5),
   ],
+  // Мелкая стайка: короткие броски и зигзаг.
+  minnow: () => [
+    dash("flip", 0.18),
+    pause(0.25),
+    zigzag(3, 0.5, 0.22),
+    pause(0.45),
+  ],
+  // Полосатый хищник: дуга, пауза и короткий бросок.
+  perch: () => [arc("away", 0.8), pause(0.25), dash("flip", 0.28), pause(0.55)],
+  // Щука бьет из засады длинным прямым рывком.
+  pike: () => [
+    pause(0.45),
+    dash("away", 0.55, true),
+    pause(0.4),
+    arc("flip", 0.7),
+  ],
+  // Кои ходит широко и тяжело, но финальный рывок сильный.
+  koi: () => [
+    arc("away", 1.2),
+    arc("toward", 1),
+    pause(0.7),
+    dash("away", 0.3, true),
+    pause(0.9),
+  ],
+  // Лосось идет против течения волной и срывается в рывок.
+  salmon: () => [wave(1, 0.25, 1), dash("away", 0.6, true), pause(0.7)],
+  // Прыгун мечется зигзагом и замирает.
+  mudskipper: () => [zigzag(4, 0.7, 0.3), pause(0.45), dash("flip", 0.24)],
+  // Тигровая рыба: резкий бросок вбок и мощный прямой.
+  tigerfish: () => [
+    dash("flip", 0.3),
+    pause(0.2),
+    dash("away", 0.5, true),
+    pause(0.6),
+  ],
+  // Барракуда — один стремительный прямой рывок.
+  barracuda: () => [
+    dash("away", 0.55, true),
+    pause(0.3),
+    dash("flip", 0.28),
+    pause(0.7),
+  ],
+  // Бабочка ходит мягкими дугами.
+  butterflyfish: () => [
+    arc("flip", 0.7),
+    pause(0.3),
+    arc("away", 0.7),
+    pause(0.5),
+  ],
+  // Клоун: короткие броски в укрытие и зигзаг.
+  clownfish: () => [
+    dash("flip", 0.22),
+    pause(0.22),
+    zigzag(3, 0.6, 0.22),
+    pause(0.5),
+  ],
+  // Палтус тяжело идет волной и тянет ко дну.
+  halibut: () => [wave(1.4, 0.3, 1), pause(0.5), dash("toward", 0.4)],
+  // Марлин — два длинных сильных выпада.
+  marlin: () => [
+    dash("away", 1, true),
+    pause(0.4),
+    dash("toward", 0.9, true),
+    pause(0.8),
+  ],
+  // Сельдяной король — длинная змеистая лента.
+  oarfish: () => [wave(1.8, 0.42, 1.5), dash("away", 0.8, true), pause(1)],
+  // Меч-рыба: резкий боковой удар и мощный уход.
+  swordfish: () => [
+    dash("flip", 0.5, true),
+    pause(0.35),
+    dash("away", 0.7, true),
+    pause(0.7),
+  ],
 };
+
+/** True when a fish's `behavior` key has a dedicated movement script. */
+export function hasBehaviorScript(id: string): boolean {
+  return id in SCRIPTS;
+}
 
 const FALLBACK: Move[] = [
   dash("flip", 0.35),

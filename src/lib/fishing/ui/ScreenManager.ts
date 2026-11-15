@@ -1,5 +1,6 @@
 import { Container, Graphics } from "pixi.js";
-import { C, VIEW } from "../config";
+import { VIEW } from "../config";
+import { UI } from "./palette";
 import type { Screen } from "./Screen";
 
 /**
@@ -13,9 +14,15 @@ export class ScreenManager {
   private pending: Screen | null = null;
   private phase: "idle" | "out" | "in" = "idle";
   private progress = 0;
+  /**
+   * Decoration that outlives the screens: it sits above whichever screen is
+   * showing and below the fade, so the ice stays put across transitions while
+   * the cross-fade still dips to black.
+   */
+  private veil: Container | null = null;
 
   constructor() {
-    this.fade.rect(0, 0, VIEW.width, VIEW.height).fill({ color: C.ink });
+    this.fade.rect(0, 0, VIEW.width, VIEW.height).fill({ color: UI.ink });
     this.fade.alpha = 0;
     this.fade.eventMode = "none";
     this.layer.addChild(this.fade);
@@ -43,8 +50,24 @@ export class ScreenManager {
 
   private setCurrent(screen: Screen): void {
     this.current = screen;
-    this.layer.addChildAt(screen, this.layer.children.length - 1);
+    this.layer.addChildAt(screen, this.screenIndex());
     screen.onEnter();
+  }
+
+  /** Screens stack just under the veil, which stacks just under the fade. */
+  private screenIndex(): number {
+    return this.veil ? this.layer.getChildIndex(this.veil) : 0;
+  }
+
+  /** Installs (or replaces) the decorative layer shared by every screen. */
+  setVeil(veil: Container | null): void {
+    if (this.veil === veil) return;
+    if (this.veil) {
+      this.layer.removeChild(this.veil);
+      this.veil.destroy({ children: true });
+    }
+    this.veil = veil;
+    if (veil) this.layer.addChildAt(veil, this.layer.children.length - 1);
   }
 
   private swap(): void {

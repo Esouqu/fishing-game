@@ -1,8 +1,10 @@
 import { Container, Graphics } from "pixi.js";
-import { SCENE, VIEW } from "../config";
+import { VIEW } from "../config";
+import type { AreaMood } from "../areas";
 import type { WeatherDef, WorldPalette } from "../world";
-import { WEATHER, WINTER } from "../world";
-import { randRange } from "../utils";
+import { WEATHER, WINTER, mixColor } from "../world";
+import { clamp, randRange } from "../utils";
+import { FogLayer } from "./fog";
 
 interface Flake {
   x: number;
@@ -11,6 +13,8 @@ interface Flake {
   speed: number;
   drift: number;
   phase: number;
+  /** How much the wind pushes this flake, so the sheet never moves as a block. */
+  wind: number;
 }
 
 interface Star {
@@ -39,17 +43,22 @@ const DAY: WorldPalette = {
 };
 
 const STAR_COUNT = 44;
-const FLAKE_COUNT = 190;
-/** Even a clear winter sky keeps a light snowfall going. */
-const BASE_SNOW = 0.34;
+/**
+ * Flake pool. A clear sky uses none of it and a snowfall a quarter, so the pool
+ * has to be big enough for the blizzard: at full gust every one of these is on
+ * screen.
+ */
+const FLAKE_COUNT = 820;
 /** Time constant for a weather front easing into the scene. */
 const WEATHER_BLEND_SECONDS = 8;
 
 interface WeatherVisual {
-  rain: number;
+  snow: number;
+  gust: number;
   fog: number;
   dark: number;
-  flash: number;
+  /** Cloud cover, 0..1: the grey lid and the shadows on the water. */
+  cloud: number;
 }
 
 /**
@@ -61,10 +70,9 @@ export class Atmosphere extends Container {
   private readonly wash = new Graphics();
   private readonly sky = new Graphics();
   private readonly glow = new Graphics();
-  private readonly fogG = new Graphics();
+  /** Dark cloud bank around the frame; see `fog.ts`. */
+  private readonly fog = new FogLayer();
   private readonly snowG = new Graphics();
-  private readonly boltG = new Graphics();
-  private readonly flashG = new Graphics();
 
   private readonly flakes: Flake[] = [];
   private readonly stars: Star[] = [];
@@ -74,21 +82,42 @@ export class Atmosphere extends Container {
   private weather: WeatherDef = WEATHER.clear;
   private weatherReady = false;
   private readonly visual: WeatherVisual = {
-    rain: WEATHER.clear.rain,
+    snow: WEATHER.clear.snow,
+    gust: WEATHER.clear.gust,
     fog: WEATHER.clear.fog,
     dark: WEATHER.clear.dark,
-    flash: 0,
+    cloud: WEATHER.clear.cloud,
   };
   private time = 0;
+  /** Phase offsets so the gust pattern differs between sessions. */
+  private readonly gustSeed = randRange(0, Math.PI * 2);
+  /**
+   * Bearing of the current front, -1..1, picked once when the front arrives.
+   *
+   * A blizzard used to swing round every few seconds, which read as a flag
+   * snapping in a machine-made wind. A real front keeps one bearing for its
+   * whole life; `windDir` only eases towards it, so the first seconds of a
+   * front do not flip the snow sheet sideways. The gust envelope still makes
+   * the speed pulse, so the snow arrives in bursts without changing sides.
+   */
+  private windDir = 1;
+  private windTarget = 1;
 
-  private boltTimer = randRange(4, 9);
-  private boltLife = 0;
-  private flash = 0;
-  private thunderTimer = 0;
-  private boltPoints: Array<[number, number]> = [];
-
-  /** Called shortly after a lightning flash so the caller can play thunder. */
-  onThunder?: () => void;
+  private lightX: number | null = null;
+  private lightY: number | null = null;
+  /**
+   * Open-water test of the current scene. A drop of snow or rain only lands
+   * where there is water to ring; without it the whole frame took splashes,
+   * including the pier planks and the snow banks.
+   */
+  private isWater: ((x: number, y: number) => boolean) | null = null;
+  private mood: AreaMood = {
+    dark: 0,
+    snow: 1,
+    wind: 0,
+    overlay: 0xffffff,
+    overlayAlpha: 0,
+  };
 
   constructor() {
     super();
@@ -112,33 +141,72 @@ export class Atmosphere extends Container {
         speed: randRange(12, 34),
         drift: randRange(3, 13),
         phase: randRange(0, Math.PI * 2),
+        wind: randRange(0.5, 1.35),
       });
     }
 
-    this.addChild(
-      this.wash,
-      this.sky,
-      this.glow,
-      this.fogG,
-      this.snowG,
-      this.boltG,
-      this.flashG,
-    );
+    this.addChild(this.wash, this.sky, this.glow, this.fog, this.snowG);
+  }
+
+  /** Area-specific mood layered on top of the shared weather. */
+  setMood(mood: AreaMood): void {
+    this.mood = mood;
+  }
+
+  /**
+   * Where the angler stands. Fog closes in around him: the clear pocket follows
+   * him, so what the player can see is the water he is actually fishing.
+   */
+  setFocus(x: number, y: number): void {
+    this.fog.setFocus(x, y);
+  }
+
+  /** Warm light position for the night glow (null hides it). */
+  setLight(x: number | null, y: number | null): void {
+    this.lightX = x;
+    this.lightY = y;
+  }
+
+  /**
+   * Tells the atmosphere where the open water is, so the splash rings of
+   * falling snow stay on it. The scene owns the geometry; this layer only asks.
+   */
+  setWaterTest(test: ((x: number, y: number) => boolean) | null): void {
+    this.isWater = test;
   }
 
   setWorld(palette: WorldPalette, weather: WeatherDef): void {
     this.world = palette;
     if (weather.id === this.weather.id && this.weatherReady) return;
     this.weather = weather;
+    // A new front brings its own bearing and keeps it until the next one.
+    this.pickWindBearing();
     if (!this.weatherReady) {
       // The first frame of a session shows the current front immediately;
       // transitions only matter when the clock rolls into a new one.
-      this.visual.rain = weather.rain;
+      this.visual.snow = weather.snow;
+      this.visual.gust = weather.gust;
       this.visual.fog = weather.fog;
       this.visual.dark = weather.dark;
-      this.visual.flash = weather.flash ? 1 : 0;
+      this.visual.cloud = weather.cloud;
       this.weatherReady = true;
     }
+  }
+
+  /**
+   * Dev hook: switch the front on the spot instead of easing into it. A front
+   * that rolled in on its own takes seconds to blend; a dev pick has to be in
+   * front of the player immediately.
+   */
+  snapTo(weather: WeatherDef): void {
+    this.weather = weather;
+    this.pickWindBearing();
+    this.weatherReady = true;
+    this.visual.snow = weather.snow;
+    this.visual.gust = weather.gust;
+    this.visual.fog = weather.fog;
+    this.visual.dark = weather.dark;
+    this.visual.cloud = weather.cloud;
   }
 
   update(dt: number): void {
@@ -147,19 +215,37 @@ export class Atmosphere extends Container {
     this.drawWash();
     this.drawSky();
     this.drawGlow();
-    this.drawFog();
+    this.updateFog(dt);
     this.drawSnow(dt);
-    this.drawLightning(dt);
   }
 
   private smoothWeather(dt: number): void {
     if (!this.weatherReady) return;
     const k = 1 - Math.exp(-dt / WEATHER_BLEND_SECONDS);
     const target = this.weather;
-    this.visual.rain += (target.rain - this.visual.rain) * k;
+    this.visual.snow += (target.snow - this.visual.snow) * k;
+    this.visual.gust += (target.gust - this.visual.gust) * k;
     this.visual.fog += (target.fog - this.visual.fog) * k;
     this.visual.dark += (target.dark - this.visual.dark) * k;
-    this.visual.flash += ((target.flash ? 1 : 0) - this.visual.flash) * k;
+    this.visual.cloud += (target.cloud - this.visual.cloud) * k;
+  }
+
+  /**
+   * Wind speed multiplier, 0..1.4, as a sum of three incommensurate waves.
+   *
+   * A constant push reads as a fan rather than as weather; a blizzard arrives
+   * in bursts, so the flakes are driven by this envelope instead of a fixed
+   * horizontal speed. The waves never repeat inside a session, which is what
+   * makes the gusts feel random without a timer.
+   */
+  private gustAt(time: number): number {
+    const seed = this.gustSeed;
+    const value =
+      0.5 +
+      Math.sin(time * 0.41 + seed) * 0.28 +
+      Math.sin(time * 1.27 + seed * 2.1) * 0.16 +
+      Math.sin(time * 0.19 + seed * 3.7) * 0.22;
+    return clamp(value, 0.05, 1.4);
   }
 
   // ------------------------------------------------------------------ layers
@@ -173,10 +259,26 @@ export class Atmosphere extends Container {
         alpha: this.world.overlayAlpha,
       });
     }
-    if (this.visual.dark > 0.002) {
+    if (this.mood.overlayAlpha > 0.002) {
+      g.rect(0, 0, VIEW.width, VIEW.height).fill({
+        color: this.mood.overlay,
+        alpha: this.mood.overlayAlpha,
+      });
+    }
+    const dark = this.visual.dark + this.mood.dark;
+    if (dark > 0.002) {
       g.rect(0, 0, VIEW.width, VIEW.height).fill({
         color: 0x050b1c,
-        alpha: this.visual.dark * 0.5,
+        alpha: dark * 0.5,
+      });
+    }
+    // A grey lid over the whole frame: an overcast sky is not just a bit
+    // darker, it drains the colour out of the snow and the water.
+    const cloud = this.visual.cloud;
+    if (cloud > 0.02) {
+      g.rect(0, 0, VIEW.width, VIEW.height).fill({
+        color: 0x6d8296,
+        alpha: cloud * 0.13,
       });
     }
   }
@@ -226,12 +328,12 @@ export class Atmosphere extends Container {
     const g = this.glow;
     g.clear();
     const lantern = this.world.lantern;
-    if (lantern <= 0.02) return;
+    if (lantern <= 0.02 || this.lightX === null || this.lightY === null) return;
 
-    // Warm pool of light around the pier lantern at the top-right corner.
-    // Several low-alpha rings read as a soft wash instead of hard circles.
-    const x = SCENE.lanternX;
-    const y = SCENE.lanternY - 7;
+    // Warm pool of light around the area's lamp/fire. Several low-alpha rings
+    // read as a soft wash instead of hard circles.
+    const x = this.lightX;
+    const y = this.lightY - 7;
     for (let i = 0; i < 8; i += 1) {
       const t = i / 7;
       const radius = 44 * (1 - t * 0.82);
@@ -243,58 +345,70 @@ export class Atmosphere extends Container {
     }
   }
 
-  private drawFog(): void {
-    const g = this.fogG;
-    g.clear();
-    const fog = this.visual.fog;
-    if (fog <= 0.02) return;
-
-    // Frost haze rather than a warm summer fog.
-    g.rect(0, 0, VIEW.width, VIEW.height).fill({
-      color: WINTER.frost,
-      alpha: fog * 0.09,
-    });
-
-    for (let i = 0; i < 9; i += 1) {
-      const speed = 9 + (i % 4) * 4;
-      const span = VIEW.width + 260;
-      const x = ((this.time * speed + i * 73) % span) - 130;
-      const y = 24 + i * 26 + Math.sin(this.time * 0.6 + i) * 4;
-      const rx = 150 + (i % 3) * 34;
-      g.ellipse(x, y, rx, 13).fill({
-        color: WINTER.frost,
-        alpha: fog * (0.05 + (i % 3) * 0.012),
-      });
-    }
-
-    // A few ice crystals clinging to the frame in heavy fog.
-    for (let i = 0; i < 18; i += 1) {
-      const x =
-        i % 2 === 0 ? 2 + ((i * 7) % 16) : VIEW.width - 4 - ((i * 11) % 18);
-      const y = 26 + ((i * 31) % (VIEW.height - 40));
-      g.rect(x, y, 1, 3).fill({
-        color: WINTER.snowLight,
-        alpha: fog * 0.35,
-      });
-    }
+  /**
+   * Fog is a framing device now, not a full-frame wash: dark cloud banks close
+   * in from the edges and leave a clearing around the water the player is
+   * fishing. Heavy weather thickens the banks instead of greying everything out.
+   */
+  /**
+   * Fog is its own weather, not a permanent dressing: the other fronts keep the
+   * plain scene, and only a fog front pulls the bank in around the angler. The
+   * density ramps in over the front's own blend, so the layer creeps up instead
+   * of popping on.
+   */
+  private updateFog(dt: number): void {
+    const density = clamp((this.visual.fog - 0.3) / 0.7);
+    // Pale frozen air, not a dark cloud: winter fog is lit from above, so it
+    // reads as a bright wash that swallows the far bank. A dark tint over dark
+    // water looked like a dimmed screen instead of mist, and pure snow white
+    // was brighter than the snow itself.
+    this.fog.setDensity(density, mixColor(WINTER.snow, 0x93aebd, 0.38));
+    this.fog.tick(dt);
   }
 
   private drawSnow(dt: number): void {
     const g = this.snowG;
     g.clear();
 
-    const intensity = BASE_SNOW + this.visual.rain * 0.66;
+    // The blizzard is wind before it is density: the gust envelope sets both
+    // the sideways speed and how far each flake is smeared into a streak.
+    const gust = this.gustAt(this.time);
+    this.updateWind(dt);
+    const windSpeed = this.visual.gust * (26 + gust * 104);
+    const wind = windSpeed * this.windDir;
+    const streak = Math.abs(wind) * 0.04;
+
+    // Cold air whitened by the snow it carries. Drawn under the flakes, and
+    // only during a real gust, so a calm snowfall never fogs the frame.
+    if (this.visual.gust > 0.05 && gust > 0.45) {
+      g.rect(0, 0, VIEW.width, VIEW.height).fill({
+        color: 0xdff0f8,
+        alpha: 0.08 * this.visual.gust * (gust - 0.35),
+      });
+    }
+
+    // A gust carries more snow with it, so density follows the same envelope
+    // (with the baseline restored, so calm fronts keep their usual count).
+    const gustDensity = 1 + this.visual.gust * (gust * 0.35 - 0.35);
+    // Snowfall comes only from the front: a clear or overcast sky drops
+    // nothing, which is what makes the clear sky read as clear.
+    const intensity =
+      (this.visual.snow * 0.2 + this.visual.gust * 0.85) *
+      this.mood.snow *
+      gustDensity;
     const count = Math.min(
       this.flakes.length,
       Math.floor(this.flakes.length * intensity),
     );
-    const fallScale = 1 + this.visual.rain * 0.8;
+    const fallScale =
+      1 + this.visual.snow * 1.1 + this.visual.gust * gust * 0.9;
 
     for (let i = 0; i < count; i += 1) {
       const flake = this.flakes[i];
       flake.y += flake.speed * fallScale * dt;
+      const push = wind * flake.wind;
       flake.x +=
-        (flake.drift + Math.sin(this.time * 0.9 + flake.phase) * 5) * dt;
+        (flake.drift + Math.sin(this.time * 0.9 + flake.phase) * 5 + push) * dt;
       if (flake.y > VIEW.height + 4) {
         flake.y = -4;
         flake.x = randRange(-20, VIEW.width + 20);
@@ -302,20 +416,53 @@ export class Atmosphere extends Container {
       if (flake.x > VIEW.width + 20) flake.x = -20;
       if (flake.x < -20) flake.x = VIEW.width + 20;
 
-      g.rect(flake.x, flake.y, flake.size, flake.size).fill({
+      // Fast snow reads as short horizontal smears rather than round dots, and
+      // the flakes closest to the camera grow a pixel at the top of a gust.
+      const smear = streak > 0.35 ? streak * (0.25 + flake.wind * 0.35) : 0;
+      const grow = gust > 0.9 && this.visual.gust > 0.6 ? 1 : 0;
+      const size = flake.size + grow;
+      // The smear trails behind the flake, so it points the way the wind blows:
+      // to the left of a rightward gust and to the right of a leftward one.
+      const tail = this.windDir >= 0 ? -smear : 0;
+      g.rect(flake.x + tail, flake.y, size + smear, size).fill({
         color: WINTER.snow,
-        alpha: flake.size > 1 ? 0.82 : 0.5,
+        alpha:
+          (flake.size > 1 ? 0.82 : 0.5) * (1 - Math.min(0.2, smear * 0.06)),
       });
     }
 
-    // Snow landing on the water leaves tiny, short-lived rings.
+    // Horizontal wind streaks for an exposed reach of river. They follow the
+    // same bearing as the snow, so the whole frame blows one way.
+    if (this.mood.wind > 0.01) {
+      for (let i = 0; i < 18; i += 1) {
+        const travel = (this.time * (170 + (i % 5) * 30) + i * 53) % 540;
+        const x = this.windDir >= 0 ? travel - 45 : VIEW.width + 45 - travel;
+        const y = 18 + ((i * 29) % (VIEW.height - 30));
+        const length = 8 + (i % 4) * 5;
+        g.rect(x, y, length, 1).fill({
+          color: WINTER.frost,
+          alpha:
+            0.05 *
+            this.mood.wind *
+            (0.5 + (i % 3) * 0.25) *
+            Math.abs(this.windDir),
+        });
+      }
+    }
+
+    // Snow landing on the water leaves tiny, short-lived rings. The spot is
+    // drawn from the water body's own outline, so a drop never rings on the
+    // pier, the bank or the snowfield behind it.
     if (Math.random() < dt * 14 * intensity) {
-      this.splashes.push({
-        x: randRange(10, VIEW.width - 10),
-        y: randRange(26, 228),
-        life: 0.34,
-        maxLife: 0.34,
-      });
+      const spot = this.pickWaterSpot();
+      if (spot) {
+        this.splashes.push({
+          x: spot.x,
+          y: spot.y,
+          life: 0.34,
+          maxLife: 0.34,
+        });
+      }
     }
 
     this.splashes = this.splashes.filter((splash) => {
@@ -331,63 +478,37 @@ export class Atmosphere extends Container {
     });
   }
 
-  private drawLightning(dt: number): void {
-    if (this.visual.flash > 0.5) {
-      this.boltTimer -= dt;
-      if (this.boltTimer <= 0) {
-        this.boltTimer = randRange(4.5, 11);
-        this.flash = 1;
-        this.boltLife = 0.26;
-        this.thunderTimer = randRange(0.4, 1.2);
-        this.makeBolt();
-      }
+  /**
+   * A point on open water for a splash ring, or `null` when this frame's roll
+   * found only land. The frame is mostly water on the lake and the bay, so a
+   * few tries are enough; the river channel is narrower, hence the wider cap.
+   */
+  private pickWaterSpot(): { x: number; y: number } | null {
+    const isWater = this.isWater;
+    if (!isWater) return null;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const x = randRange(10, VIEW.width - 10);
+      const y = randRange(26, 228);
+      if (isWater(x, y)) return { x, y };
     }
-
-    if (this.thunderTimer > 0) {
-      this.thunderTimer -= dt;
-      if (this.thunderTimer <= 0) this.onThunder?.();
-    }
-
-    const bolt = this.boltG;
-    bolt.clear();
-    if (this.boltLife > 0) {
-      this.boltLife -= dt;
-      if (this.boltPoints.length > 1) {
-        bolt.moveTo(this.boltPoints[0][0], this.boltPoints[0][1]);
-        for (let i = 1; i < this.boltPoints.length; i += 1) {
-          bolt.lineTo(this.boltPoints[i][0], this.boltPoints[i][1]);
-        }
-        bolt.stroke({ width: 3, color: 0xfff6c8, alpha: 0.22 });
-        bolt.moveTo(this.boltPoints[0][0], this.boltPoints[0][1]);
-        for (let i = 1; i < this.boltPoints.length; i += 1) {
-          bolt.lineTo(this.boltPoints[i][0], this.boltPoints[i][1]);
-        }
-        bolt.stroke({ width: 1, color: 0xffffff, alpha: 0.9 });
-      }
-    }
-
-    const flash = this.flashG;
-    flash.clear();
-    if (this.flash > 0) {
-      this.flash = Math.max(0, this.flash - dt * 3.2);
-      flash.rect(0, 0, VIEW.width, VIEW.height).fill({
-        color: 0xf4f8ff,
-        alpha: this.flash * 0.34,
-      });
-    }
+    return null;
   }
 
-  private makeBolt(): void {
-    const x = randRange(60, VIEW.width - 60);
-    const points: Array<[number, number]> = [[x, 0]];
-    let px = x;
-    let py = 0;
-    const steps = 4 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < steps; i += 1) {
-      px += randRange(-13, 13);
-      py += randRange(7, 13);
-      points.push([px, py]);
-    }
-    this.boltPoints = points;
+  /**
+   * Picks the bearing a front will keep. The strength stays in ±0.45..1 so the
+   * snow always has a real slant: a dead calm would drop it straight down and
+   * stop reading as a blizzard.
+   */
+  private pickWindBearing(): void {
+    const strength = randRange(0.45, 1);
+    this.windTarget = Math.random() < 0.5 ? -strength : strength;
+  }
+
+  /**
+   * Eases the snow onto the bearing the front arrived with and holds it there
+   * for the rest of the front.
+   */
+  private updateWind(dt: number): void {
+    this.windDir += (this.windTarget - this.windDir) * Math.min(1, dt * 1.1);
   }
 }

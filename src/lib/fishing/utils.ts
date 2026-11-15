@@ -38,13 +38,14 @@ export function pickWeighted<T>(
   return items[items.length - 1];
 }
 
-export function formatScore(score: number): string {
-  const rounded = Math.round(score);
-  return rounded.toLocaleString("ru-RU").replace(/\u00a0/g, " ");
-}
-
-export function formatMultiplier(value: number): string {
-  return `×${value}`;
+/** `07:05` for an in-game minute count. */
+export function formatClock(minutes: number): string {
+  const m = Math.round(((minutes % 1440) + 1440) % 1440);
+  const hh = Math.floor(m / 60)
+    .toString()
+    .padStart(2, "0");
+  const mm = (m % 60).toString().padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 export function formatNumber(value: number): string {

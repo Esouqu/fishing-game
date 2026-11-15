@@ -14,11 +14,6 @@ export function weightT(fish: FishSpecies, kg: number): number {
   return clamp((kg - min) / (max - min), 0, 1);
 }
 
-/** Bigger fish inside the same species are worth up to 20% more. */
-export function weightFactor(fish: FishSpecies, kg: number): number {
-  return 0.8 + 0.4 * weightT(fish, kg);
-}
-
 /** Subtle post-catch size difference; never used before the fish is landed. */
 export function weightScale(fish: FishSpecies, kg: number): number {
   return 0.94 + 0.12 * weightT(fish, kg);

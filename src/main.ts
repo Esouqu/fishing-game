@@ -10,31 +10,48 @@ declare global {
 }
 
 const host = document.getElementById("game");
-
-// Stand-in for the host application's player store. In a real embed, pass the
-// signed-in nickname here and it will be saved with every session result.
-const playerName = TEXT.common.playerFallback;
+const splash = document.getElementById("boot-splash");
 
 document.title = TEXT.page.title;
 document
   .querySelector('meta[name="description"]')
   ?.setAttribute("content", TEXT.page.description);
 
+/**
+ * The splash is plain HTML painted before any script, so it is the first thing
+ * on screen and does not wait for Pixi, the font or the assets. It leaves once
+ * the menu exists; on failure it stays with the error state instead of a
+ * forever-loading bar.
+ */
+function dismissSplash(failed = false): void {
+  if (!splash) return;
+  splash.dataset.state = failed ? "error" : "done";
+  if (failed) {
+    splash.querySelector(".boot-note")?.replaceChildren("не удалось загрузить");
+    return;
+  }
+  window.setTimeout(() => splash.remove(), 280);
+}
+
 if (host) {
   void createFishingGame({
     container: host,
     storagePrefix: "quiet-cove",
-    playerName,
-    onScore: (result) => {
+    onCatch: (event) => {
       console.info(
-        `[quiet-cove] session finished: ${result.score} points, ${result.caught}/${result.casts} fish`,
+        `[quiet-cove] caught ${event.fishId} (${event.weightKg.toFixed(2)} kg)` +
+          `${event.firstCatch ? " — new species!" : ""}`,
       );
     },
   })
     .then((game) => {
       window.__fishing = game;
+      dismissSplash();
     })
     .catch((error: unknown) => {
       console.error("[quiet-cove] failed to start", error);
+      dismissSplash(true);
     });
+} else {
+  dismissSplash(true);
 }

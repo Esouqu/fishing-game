@@ -13,4 +13,10 @@ export abstract class Screen extends Container {
   }
   onHostPause(_paused: boolean): void {}
   onMuteChanged(): void {}
+  /**
+   * The dev audio panel opened or closed over this screen. The panel has to
+   * hear the faders it is tuning, so a screen that ducks its own audio lifts
+   * that duck while the panel is up.
+   */
+  onAudioPanel(_open: boolean): void {}
 }

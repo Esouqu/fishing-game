@@ -2,8 +2,10 @@ import { Container, Sprite } from "pixi.js";
 import type { CursorName, CursorTextures } from "../cursors";
 
 /**
- * One Pixi-rendered cursor for the whole game. Every texture is the same
- * 24×24 box, and the overlay follows the pointer directly — no easing.
+ * One Pixi-rendered cursor for the whole game. System cursors are normalised to
+ * one 24 px box, the crosshair keeps its native 8 px art, and every texture is
+ * drawn at its own display scale so no cursor art is resampled. The overlay
+ * follows the pointer directly — no easing.
  */
 export class CursorOverlay extends Container {
   private readonly sprites: Record<CursorName, Sprite>;
@@ -20,13 +22,13 @@ export class CursorOverlay extends Container {
       const data = textures[name];
       const sprite = new Sprite(data.texture);
       sprite.anchor.set(data.anchorX, data.anchorY);
+      sprite.scale.set(data.scale);
       sprite.visible = false;
       this.addChild(sprite);
       sprites[name] = sprite;
     }
     this.sprites = sprites;
-    // The fishing crosshair is deliberately smaller than the menu pointer.
-    this.sprites.crosshair.scale.set(0.6);
+    // The menu arrow is visible until the pointer moves onto a target.
     this.sprites.default.visible = true;
     this.visible = false;
   }

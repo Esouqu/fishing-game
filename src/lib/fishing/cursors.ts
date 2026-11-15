@@ -17,6 +17,8 @@ export interface CursorTexture {
   /** Hotspot normalized to the 0..1 cursor box. */
   anchorX: number;
   anchorY: number;
+  /** Display scale on top of the overlay scale; 1 draws the texture 1:1. */
+  scale: number;
 }
 
 export type CursorTextures = Record<CursorName, CursorTexture>;
@@ -56,12 +58,6 @@ const CURSOR_DEFS: readonly CursorDef[] = [
     hotspotX: 12,
     hotspotY: 12,
   },
-  {
-    name: "crosshair",
-    file: "crosshair-000.png",
-    hotspotX: 37,
-    hotspotY: 37,
-  },
 ];
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -82,7 +78,9 @@ function imageBounds(image: HTMLImageElement): {
   const canvas = document.createElement("canvas");
   canvas.width = image.width;
   canvas.height = image.height;
-  const ctx = canvas.getContext("2d");
+  // Runs getImageData immediately after drawImage: keep the canvas CPU-backed so
+  // the readback does not force a GPU sync.
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return { x: 0, y: 0, width: image.width, height: image.height };
   ctx.drawImage(image, 0, 0);
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -116,13 +114,70 @@ function fallbackTexture(): CursorTexture {
   canvas.height = CURSOR_SIZE;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    ctx.fillStyle = "#f5ffe8";
+    ctx.fillStyle = "#eef2ff";
     ctx.fillRect(9, 4, 6, 16);
     ctx.fillRect(4, 10, 16, 6);
   }
   const texture = Texture.from(canvas);
   texture.source.scaleMode = "nearest";
-  return { texture, anchorX: 0.5, anchorY: 0.5 };
+  return { texture, anchorX: 0.5, anchorY: 0.5, scale: 1 };
+}
+
+/**
+ * The aiming crosshair. The sprite ships as a 74×74 pack canvas with a tiny
+ * 8×8 dot in the middle, so it is loaded at its native size instead of being
+ * fitted to the 24 px system box below.
+ */
+const CROSSHAIR_DEF: CursorDef = {
+  name: "crosshair",
+  file: "crosshair-000.png",
+  hotspotX: 37,
+  hotspotY: 37,
+};
+
+/** The crosshair is drawn half again as large as the pixels it ships with. */
+const CROSSHAIR_SCALE = 1.5;
+
+/**
+ * Loads a cursor at the native size of its painted pixels.
+ *
+ * Fitting the 74×74 crosshair canvas into the 24 px system box scaled its dot
+ * up until it filled the box as a black square with a white core, so the
+ * painted pixels are copied 1:1 into their own texture here. Nothing is
+ * resampled — canvas smoothing is off and the texture samples nearest — so the
+ * dot keeps hard pixels when the game draws it larger instead of turning into
+ * a blurred smudge.
+ */
+async function nativeCursor(def: CursorDef): Promise<CursorTexture> {
+  const image = await loadImage(`${CURSOR_BASE}/${def.file}`);
+  const bounds = imageBounds(image);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = bounds.width;
+  canvas.height = bounds.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return fallbackTexture();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(
+    image,
+    bounds.x,
+    bounds.y,
+    bounds.width,
+    bounds.height,
+    0,
+    0,
+    bounds.width,
+    bounds.height,
+  );
+
+  const texture = Texture.from(canvas);
+  texture.source.scaleMode = "nearest";
+  return {
+    texture,
+    anchorX: (def.hotspotX - bounds.x) / bounds.width,
+    anchorY: (def.hotspotY - bounds.y) / bounds.height,
+    scale: CROSSHAIR_SCALE,
+  };
 }
 
 async function normaliseCursor(def: CursorDef): Promise<CursorTexture> {
@@ -137,7 +192,7 @@ async function normaliseCursor(def: CursorDef): Promise<CursorTexture> {
   const canvas = document.createElement("canvas");
   canvas.width = CURSOR_SIZE;
   canvas.height = CURSOR_SIZE;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return fallbackTexture();
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(
@@ -166,10 +221,11 @@ async function normaliseCursor(def: CursorDef): Promise<CursorTexture> {
     texture,
     anchorX: (x + (def.hotspotX - bounds.x) * scale) / CURSOR_SIZE,
     anchorY: (y + (def.hotspotY - bounds.y) * scale) / CURSOR_SIZE,
+    scale: 1,
   };
 }
 
-/** All cursor art is normalised to one 24×24 box with a nearest-neighbour fit. */
+/** All system cursor art is normalised to one 24×24 box with a nearest fit. */
 export async function loadCursorTextures(): Promise<CursorTextures> {
   const textures = new Map<CursorName, CursorTexture>();
   await Promise.all(
@@ -186,6 +242,14 @@ export async function loadCursorTextures(): Promise<CursorTextures> {
     pointer: textures.get("pointer") ?? fallbackTexture(),
     grab: textures.get("grab") ?? fallbackTexture(),
     grabbing: textures.get("grabbing") ?? fallbackTexture(),
-    crosshair: textures.get("crosshair") ?? fallbackTexture(),
+    crosshair: await loadCrosshair(),
   };
+}
+
+async function loadCrosshair(): Promise<CursorTexture> {
+  try {
+    return await nativeCursor(CROSSHAIR_DEF);
+  } catch {
+    return fallbackTexture();
+  }
 }

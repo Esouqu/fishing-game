@@ -2,8 +2,10 @@
   import { onMount } from "svelte";
   import { TEXT } from "./fishing/texts";
   import type {
+    CatchEvent,
     FishingGameInstance,
-    SessionResult,
+    ProgressRepository,
+    ProgressSnapshot,
     StartScreen,
   } from "./fishing";
 
@@ -14,9 +16,11 @@
     storagePrefix?: string;
     muted?: boolean;
     startScreen?: StartScreen;
-    playerName?: string;
+    /** Optional DB/HTTP-backed progress storage. */
+    progress?: ProgressRepository;
     onExit?: () => void;
-    onScore?: (result: SessionResult) => void;
+    onCatch?: (event: CatchEvent) => void;
+    onProgress?: (snapshot: ProgressSnapshot) => void;
     onReady?: () => void;
     class?: string;
   }
@@ -26,9 +30,10 @@
     storagePrefix = "quiet-cove",
     muted = false,
     startScreen = "menu",
-    playerName = "",
+    progress,
     onExit,
-    onScore,
+    onCatch,
+    onProgress,
     onReady,
     class: className = "",
   }: Props = $props();
@@ -53,9 +58,10 @@
           storagePrefix,
           muted,
           startScreen,
-          playerName,
+          progress,
           onExit,
-          onScore,
+          onCatch,
+          onProgress,
           onReady,
         });
 
@@ -95,6 +101,10 @@
   export function setMuted(value: boolean): void {
     game?.setMuted(value);
   }
+
+  export function flushProgress(): Promise<void> {
+    return game?.flushProgress() ?? Promise.resolve();
+  }
 </script>
 
 <div
@@ -112,7 +122,7 @@
     height: 100%;
     min-height: 220px;
     overflow: hidden;
-    background: #14182e;
+    background: #232a56;
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;

@@ -1,19 +1,19 @@
 import { Assets, Rectangle, Texture } from "pixi.js";
 import { FISH } from "./config";
 import { FONT_OPTIONS, currentFont } from "./fonts";
-import { TEXT } from "./texts";
+import { HELP_PAGES, TEXT } from "./texts";
 import type { HelpPageId } from "./texts";
 import { loadCursorTextures, type CursorTextures } from "./cursors";
 import treeAUrl from "../../assets/fishing/tree-a.png";
 import treeBUrl from "../../assets/fishing/tree-b.png";
+import treeCUrl from "../../assets/fishing/tree-c.png";
 import bushAUrl from "../../assets/fishing/bush-a.png";
 import rockAUrl from "../../assets/fishing/rock-a.png";
 import rockBUrl from "../../assets/fishing/rock-b.png";
-import bucketUrl from "../../assets/fishing/bucket.png";
-import helpCastUrl from "../../assets/help/cast.png";
-import helpFightUrl from "../../assets/help/fight.png";
-import helpCounterUrl from "../../assets/help/counter.png";
-import helpLandUrl from "../../assets/help/land.png";
+import helpCastUrl from "../../assets/help/cast.webp";
+import helpFightUrl from "../../assets/help/fight.webp";
+import helpCounterUrl from "../../assets/help/counter.webp";
+import helpLandUrl from "../../assets/help/land.webp";
 
 export interface AssetBag {
   base: string;
@@ -23,10 +23,45 @@ export interface AssetBag {
   trees: Texture[];
   bushes: Texture[];
   rocks: Texture[];
-  bucket: Texture;
+  sign: Texture;
+  rod: Texture;
+  /** 8×4 sheet of 64px rowboat variants. */
+  boat: Texture[];
   fish: Record<string, Texture>;
-  help: Record<HelpPageId, Texture>;
   cursors: CursorTextures;
+}
+
+/**
+ * Help screenshots are 96 KB of WebP for four pages that are only visible
+ * behind the «Как играть» screen. They are loaded on demand (and warmed up
+ * while the menu is idle) instead of sitting on the boot path.
+ */
+const HELP_URLS: Record<HelpPageId, string> = {
+  cast: helpCastUrl,
+  fight: helpFightUrl,
+  counter: helpCounterUrl,
+  land: helpLandUrl,
+};
+
+const helpTextures = new Map<HelpPageId, Texture>();
+
+/** Loads one help page, cached for the session. */
+export async function loadHelpTexture(page: HelpPageId): Promise<Texture> {
+  const cached = helpTextures.get(page);
+  if (cached) return cached;
+  try {
+    const texture = await Assets.load<Texture>(HELP_URLS[page]);
+    helpTextures.set(page, texture);
+    return texture;
+  } catch (error) {
+    console.warn(`[fishing] missing help page ${page}`, error);
+    return Texture.WHITE;
+  }
+}
+
+/** Warms the whole help set during idle time, never on the boot path. */
+export function prefetchHelpPages(): Promise<Texture[]> {
+  return Promise.all(HELP_PAGES.map((page) => loadHelpTexture(page.id)));
 }
 
 async function loadFonts(base: string): Promise<boolean> {
@@ -112,7 +147,9 @@ function fallbackTexture(
     rect(5, 5, 6, 3, hex);
     rect(3, 12, 10, 2, dark);
   }
-  return Texture.from(canvas);
+  const texture = Texture.from(canvas);
+  texture.source.scaleMode = "nearest";
+  return texture;
 }
 
 export async function loadGameAssets(
@@ -120,7 +157,6 @@ export async function loadGameAssets(
   onProgress: (progress: number, label: string) => void,
 ): Promise<AssetBag> {
   onProgress(0.02, TEXT.boot.font);
-  const fontLoaded = await loadFonts(base);
 
   const fishList = FISH.map((fish) => ({
     id: fish.id,
@@ -149,6 +185,11 @@ export async function loadGameAssets(
       fallback: () => fallbackTexture(0x63ab3f, 48, "plant"),
     },
     {
+      key: "tree-c",
+      url: treeCUrl,
+      fallback: () => fallbackTexture(0x63ab3f, 48, "plant"),
+    },
+    {
       key: "bush-a",
       url: bushAUrl,
       fallback: () => fallbackTexture(0x3b7d4f, 16, "plant"),
@@ -164,14 +205,20 @@ export async function loadGameAssets(
       fallback: () => fallbackTexture(0x686f99, 16, "rock"),
     },
     {
-      key: "bucket",
-      url: bucketUrl,
-      fallback: () => fallbackTexture(0x4c6885, 16, "rock"),
+      key: "sign",
+      url: `${base}/sign.png`,
+      fallback: () => fallbackTexture(0xcf752b, 16, "rock"),
     },
-    { key: "help:cast", url: helpCastUrl, fallback: () => Texture.WHITE },
-    { key: "help:fight", url: helpFightUrl, fallback: () => Texture.WHITE },
-    { key: "help:counter", url: helpCounterUrl, fallback: () => Texture.WHITE },
-    { key: "help:land", url: helpLandUrl, fallback: () => Texture.WHITE },
+    {
+      key: "boat",
+      url: `${base}/boat.png`,
+      fallback: () => fallbackTexture(0x4c6885, 64, "rock"),
+    },
+    {
+      key: "fishing-rod",
+      url: `${base}/fishing-rod.png`,
+      fallback: () => fallbackTexture(0xab5130, 16, "rock"),
+    },
     ...fishList.map((fish) => ({
       key: `fish:${fish.id}`,
       url: fish.url,
@@ -179,11 +226,24 @@ export async function loadGameAssets(
     })),
   ];
 
+  // Fonts and textures are independent: start both now. Awaiting the font
+  // first used to put a 230 KB TTF in front of every other request.
+  const fontPromise = loadFonts(base);
   const loaded = new Map<string, Texture>();
   let done = 0;
-  for (const entry of textureEntries) {
+
+  // The loader walked this list one `await` at a time. Every texture is tiny,
+  // so the cost was pure latency: on a 150 ms-RTT phone the ~50 files meant
+  // seconds of dead waiting. A small pool keeps the worker busy without
+  // flooding it, and the progress bar still advances once per file.
+  await mapLimit(textureEntries, LOAD_CONCURRENCY, async (entry) => {
     try {
       const texture = await Assets.load<Texture>(entry.url);
+      // Every sprite in the game is pixel art, and the world is scaled up to
+      // the host size (2.5× at 1200×675) on top of the per-sprite scales.
+      // Pixi samples textures linearly by default, which turns those few
+      // texels into a soft mush; nearest keeps the pixels square.
+      texture.source.scaleMode = "nearest";
       loaded.set(entry.key, texture);
     } catch (error) {
       console.warn(`[fishing] missing texture ${entry.url}`, error);
@@ -191,7 +251,9 @@ export async function loadGameAssets(
     }
     done += 1;
     onProgress(0.05 + (done / textureEntries.length) * 0.95, TEXT.boot.loading);
-  }
+  });
+
+  const fontLoaded = await fontPromise;
 
   const anglerSheet = loaded.get("angler") ?? Texture.WHITE;
   const angler: Texture[] = [];
@@ -210,6 +272,21 @@ export async function loadGameAssets(
     fish[fishItem.id] = loaded.get(`fish:${fishItem.id}`) ?? Texture.WHITE;
   }
 
+  const boatSheet = loaded.get("boat") ?? Texture.WHITE;
+  const boat: Texture[] = [];
+  if (boatSheet.width >= 64 && boatSheet.height >= 64) {
+    for (let row = 0; row < 4; row += 1) {
+      for (let col = 0; col < 8; col += 1) {
+        boat.push(frame(boatSheet, col * 64, row * 64, 64, 64));
+      }
+    }
+  } else {
+    boat.push(boatSheet);
+  }
+
+  const rodSheet = loaded.get("fishing-rod") ?? Texture.WHITE;
+  const rod = rodSheet.width >= 16 ? frame(rodSheet, 0, 0, 16, 16) : rodSheet;
+
   const cursors = await loadCursorTextures();
   onProgress(1, TEXT.boot.loading);
 
@@ -220,20 +297,46 @@ export async function loadGameAssets(
     trees: [
       loaded.get("tree-a") ?? Texture.WHITE,
       loaded.get("tree-b") ?? Texture.WHITE,
+      loaded.get("tree-c") ?? Texture.WHITE,
     ],
     bushes: [loaded.get("bush-a") ?? Texture.WHITE],
     rocks: [
       loaded.get("rock-a") ?? Texture.WHITE,
       loaded.get("rock-b") ?? Texture.WHITE,
     ],
-    bucket: loaded.get("bucket") ?? Texture.WHITE,
+    sign: loaded.get("sign") ?? Texture.WHITE,
+    rod,
+    boat,
     fish,
-    help: {
-      cast: loaded.get("help:cast") ?? Texture.WHITE,
-      fight: loaded.get("help:fight") ?? Texture.WHITE,
-      counter: loaded.get("help:counter") ?? Texture.WHITE,
-      land: loaded.get("help:land") ?? Texture.WHITE,
-    },
     cursors,
   };
+}
+
+/** How many textures the loader keeps in flight at once. */
+const LOAD_CONCURRENCY = 8;
+
+/**
+ * Runs `task` over `items` with at most `limit` promises in flight, preserving
+ * the input order of the results. A bounded pool is enough here: the list is
+ * small, and the point is only to overlap the per-file request latency.
+ */
+async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (next < items.length) {
+        const index = next;
+        next += 1;
+        results[index] = await task(items[index], index);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
 }

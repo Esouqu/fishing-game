@@ -1,8 +1,9 @@
 import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
-import { C, FIGHT } from "../config";
-import { WINTER } from "../world";
+import { FIGHT } from "../config";
+import { WINTER, mixColor } from "../world";
 import type { FishSpecies } from "../config";
 import { clamp, easeOutCubic } from "../utils";
+import { UI } from "../ui/palette";
 import { makeText } from "../ui/theme";
 import { TEXT } from "../texts";
 import {
@@ -11,15 +12,28 @@ import {
   type MinigameOptions,
   type MinigameResult,
 } from "./fightModel";
+import { RING_SEGMENTS, ringRadiusAt } from "./fightRing";
 
 export type { MinigameOptions, MinigameResult } from "./fightModel";
 
 const FISH_SCALE = 1;
-const SILHOUETTE = 0x123e55;
-const SILHOUETTE_WARN = 0x2a6480;
+/**
+ * The hooked fish is never shown in its own colours: through the water it is a
+ * shadow, and the fight is about reading its motion, not its livery. The tint is
+ * almost black rather than the old blue-teal, and the sprite sits below full
+ * opacity so it stays a dark shape *in* the water instead of a sticker on top of
+ * it — the red float and the warning arrow must remain the brightest things in
+ * the ring.
+ */
+const SILHOUETTE = 0x05080b;
+/** The warning only lifts the shadow to a cold slate; the arrow carries the cue. */
+const SILHOUETTE_WARN = 0x1b2830;
+/** Opacity of that shadow; low enough that the water reads through the fish. */
+const SILHOUETTE_ALPHA = 0.55;
 const TAU = Math.PI * 2;
-const WAVE_SEGMENTS = 72;
 const INTRO_DURATION = 0.42;
+/** How far above the tired fish its "land it" mark hangs, in pixels. */
+const LAND_MARK_LIFT = 17;
 
 /**
  * Ring fight at the bobber: a thin view over {@link FightModel}. The model
@@ -36,8 +50,32 @@ export class Minigame extends Container {
   private readonly gripG = new Graphics();
   private readonly warnG = new Graphics();
   private readonly counterLabel: Text;
+  /**
+   * The landing-window mark: the same "!" the bite raises over the float.
+   *
+   * The landing cue used to be a closing ring around the fish. In a fight that
+   * already draws a ring, two stamina bars and a heading arrow, one more circle
+   * was the least legible way to say "act now" — and it arrived as a pulse
+   * rather than as a point. The exclamation is the one symbol the round already
+   * teaches the player (it is the bite), so the landing window reuses it.
+   */
+  private readonly landMark: Text;
+  /**
+   * The stamina stack, in a container of its own.
+   *
+   * It is deliberately **not** a child of the minigame: the fight layer sits
+   * under the weather, so bars parented here were dimmed by the fog. The screen
+   * parents this container above the fog instead; the drawing code still lives
+   * here, and the bars are drawn in scene coordinates, so nothing else changes.
+   */
+  readonly bars = new Container();
   private intro = 0;
   private introScale = 0;
+  /** 0..1 progress of the closing landing ring; 0 while it is not landable. */
+  private landCue = 0;
+  /** 0..1 opacity of the landing cue, so it can fade in and out on its own. */
+  private landFade = 0;
+  private wasLandable = false;
 
   onFinish?: (result: MinigameResult) => void;
 
@@ -58,17 +96,32 @@ export class Minigame extends Container {
 
     this.counterLabel = makeText(TEXT.fight.counter, {
       size: 8,
-      color: C.cyan,
+      color: UI.ice,
       weight: 800,
       align: "center",
     });
     this.counterLabel.anchor.set(0.5, 1);
-    this.counterLabel.style.stroke = { color: C.ink, width: 2 };
+    this.counterLabel.style.stroke = { color: UI.ink, width: 2 };
     this.counterLabel.visible = false;
     this.addChild(this.counterLabel);
 
-    this.addChild(this.barG);
-    this.addChild(this.gripG);
+    // Mint, not the bite's gold: the bite means "a fish is on", this one means
+    // "it is spent, take it", and the mint is already the colour of the fish's
+    // stamina running out on the bar above.
+    this.landMark = makeText(TEXT.game.biteMark, {
+      size: 22,
+      color: UI.mint,
+      weight: 800,
+      align: "center",
+    });
+    this.landMark.anchor.set(0.5, 1);
+    this.landMark.style.stroke = { color: UI.ink, width: 3 };
+    this.landMark.visible = false;
+    this.addChild(this.landMark);
+
+    this.bars.addChild(this.barG);
+    this.bars.addChild(this.gripG);
+    this.bars.eventMode = "none";
     this.addChild(this.directionG);
     this.addChild(this.cueG);
     this.addChild(this.warnG);
@@ -82,11 +135,6 @@ export class Minigame extends Container {
 
   get fishSpecies(): FishSpecies {
     return this.model.fish;
-  }
-
-  /** Perfect slips still available, shown by the HUD pips. */
-  get slipsLeft(): number {
-    return this.model.slipsLeft;
   }
 
   /** True while the player is actively steering; drives the reel sound. */
@@ -162,7 +210,7 @@ export class Minigame extends Container {
     const introT = easeOutCubic(this.intro / INTRO_DURATION);
     this.introScale = 0.65 + 0.35 * introT;
 
-    this.fishSprite.alpha = 0.82;
+    this.fishSprite.alpha = SILHOUETTE_ALPHA;
     this.barG.alpha = 1;
     this.gripG.alpha = 1;
     this.counterG.alpha = 1;
@@ -172,9 +220,36 @@ export class Minigame extends Container {
 
     this.model.update(dt);
     if (!this.model.isRunning) return;
-
+    this.updateLandCue(dt);
     this.draw();
     this.syncFishVisual();
+  }
+
+  /**
+   * The landing cue is a closing ring, so it needs a clock of its own: it starts
+   * the moment the fish becomes landable, runs for {@link FIGHT.landCue}
+   * seconds — the length of the `crit` chime that opens the window — and then
+   * holds at full weight for as long as the window stays open.
+   *
+   * Visibility fades on its own clock, because the window can close again at any
+   * moment (the fish shakes the hook loose or catches its breath). A ring that
+   * blinked out of existence read as a dropped frame; it now fades in over a
+   * beat and, when the chance is gone, fades out while opening up — the opposite
+   * motion of the closing ring, so "the moment is slipping away" is legible.
+   */
+  private updateLandCue(dt: number): void {
+    const landable = this.model.canLand;
+    if (landable && !this.wasLandable) this.landCue = 0;
+    this.wasLandable = landable;
+    if (landable) {
+      this.landCue = Math.min(1, this.landCue + dt / FIGHT.landCue);
+    }
+
+    const target = landable ? 1 : 0;
+    // Fast in — the window is short — and slower out, so the eye can follow it.
+    const rate = target > this.landFade ? 11 : 6;
+    this.landFade += (target - this.landFade) * Math.min(1, dt * rate);
+    if (this.landFade < 0.002) this.landFade = 0;
   }
 
   private syncFishVisual(): void {
@@ -205,6 +280,29 @@ export class Minigame extends Container {
     this.drawCue();
     this.drawWarning();
     this.updateCounterLabel();
+    this.updateLandMark();
+  }
+
+  /**
+   * The "!" of the landing window, over the tired fish.
+   *
+   * It pops in at 1.25× and settles as the window opens, then breathes in
+   * place exactly like the bite mark does over the float, so the two moments
+   * of the round are one visual language.
+   */
+  private updateLandMark(): void {
+    const mark = this.landMark;
+    if (this.landFade <= 0.01) {
+      mark.visible = false;
+      return;
+    }
+    const point = this.model.fishPoint;
+    const settle = easeOutCubic(this.landCue);
+    const bounce = Math.abs(Math.sin(this.model.time * 6)) * 3;
+    mark.visible = true;
+    mark.position.set(point.x, point.y - LAND_MARK_LIFT - bounce);
+    mark.scale.set(1.25 - 0.25 * settle);
+    mark.alpha = this.landFade * (0.88 + 0.12 * (1 - settle));
   }
 
   private waveRadius(
@@ -213,11 +311,7 @@ export class Minigame extends Container {
     line: number,
     time: number,
   ): number {
-    const primary = Math.sin(angle * (5 + line) + time * (0.8 + line * 0.17));
-    const ripple = Math.sin(
-      angle * (11 + line * 2) - time * (1.35 + line * 0.2),
-    );
-    return radius + primary * (1.6 + line * 0.35) + ripple * 0.7;
+    return ringRadiusAt(angle, radius, line, time);
   }
 
   private wavePoints(
@@ -227,7 +321,7 @@ export class Minigame extends Container {
     to = TAU,
   ): number[] {
     const points: number[] = [];
-    const steps = Math.max(8, Math.round((WAVE_SEGMENTS * (to - from)) / TAU));
+    const steps = Math.max(8, Math.round((RING_SEGMENTS * (to - from)) / TAU));
     for (let i = 0; i <= steps; i += 1) {
       const angle = from + ((to - from) * i) / steps;
       const r = this.waveRadius(
@@ -242,6 +336,26 @@ export class Minigame extends Container {
       );
     }
     return points;
+  }
+
+  /**
+   * Stroke an arc fragment as an open path. `poly()` closes the path, so a
+   * partial arc was drawn together with its chord and read as a lens.
+   */
+  private strokeArc(
+    g: Graphics,
+    radius: number,
+    line: number,
+    from: number,
+    to: number,
+    style: { width: number; color: number; alpha: number },
+  ): void {
+    const points = this.wavePoints(radius, line, from, to);
+    g.moveTo(points[0], points[1]);
+    for (let i = 2; i < points.length; i += 2) {
+      g.lineTo(points[i], points[i + 1]);
+    }
+    g.stroke(style);
   }
 
   private drawRing(): void {
@@ -270,29 +384,25 @@ export class Minigame extends Container {
       alpha: alpha * 0.35,
     });
 
-    if (this.model.impactFlash > 0) {
-      g.poly(this.wavePoints(FIGHT_RADIUS + 2, 1)).stroke({
-        width: 1.5,
-        color: WINTER.snow,
-        alpha: this.model.impactFlash * 1.6,
-      });
-    }
+    // No extra contour on impact. A dash used to flash a second wavy ring two
+    // pixels outside the boundary, which read as the zone growing an outline
+    // exactly when the player has to judge the rim — the one moment a second
+    // circle is least welcome. The bolt is already announced by the orange
+    // pointer, the frightened fish and the bubbles.
 
     // Danger is local: a red arc only where the fish has broken the line,
     // plus a slim rim around the fish itself.
     if (this.model.isOutside) {
       const angle = this.model.fishAngle();
-      g.poly(
-        this.wavePoints(FIGHT_RADIUS, 1, angle - 0.55, angle + 0.55),
-      ).stroke({
+      this.strokeArc(g, FIGHT_RADIUS, 1, angle - 0.55, angle + 0.55, {
         width: 2,
-        color: C.red,
+        color: UI.rose,
         alpha: 0.5 + pulse * 0.3,
       });
       const point = this.model.fishPoint;
       g.circle(point.x, point.y, 9).stroke({
         width: 1.2,
-        color: C.red,
+        color: UI.rose,
         alpha: 0.3 + pulse * 0.2,
       });
     }
@@ -302,34 +412,88 @@ export class Minigame extends Container {
   private drawWarning(): void {
     const g = this.warnG;
     g.clear();
-    if (this.model.warn <= 0 || this.intro < INTRO_DURATION) return;
+    if (this.intro < INTRO_DURATION) return;
+    // After a feint the false arrow is gone; a short amber arc marks where the
+    // fish actually turned, so the reversal is readable instead of a teleport.
+    if (this.model.turnFlash > 0) {
+      this.strokeArc(
+        g,
+        FIGHT_RADIUS + 2,
+        1,
+        this.model.turnHeading - 0.35,
+        this.model.turnHeading + 0.35,
+        {
+          width: 2,
+          color: UI.amber,
+          alpha: Math.min(1, this.model.turnFlash * 5),
+        },
+      );
+    }
+    if (this.model.warn <= 0) return;
+    // The telegraphed heading. An honest dash is red; a feint is violet, so the
+    // colour itself says "this one is lying to you" before the player has read
+    // the arrow.
+    if (this.model.isFeint) {
+      // ...and under the false pointer, a barely-there red mark on the heading
+      // the fish will really take. Dim enough that it does not cancel the trick
+      // — a player who knows to look for it can learn to catch the turn.
+      this.drawWarningArrow(
+        g,
+        this.model.counterHeading,
+        (Math.sin(this.model.time * 3.2) + 1) / 2,
+        {
+          color: UI.rose,
+          scale: 0.72,
+          alpha: 0.2,
+          rim: false,
+        },
+      );
+    }
     const pulse = (Math.sin(this.model.time * 3.2) + 1) / 2;
-    this.drawWarningArrow(g, this.model.warnHeading, pulse);
+    this.drawWarningArrow(g, this.model.warnHeading, pulse, {
+      color: this.model.isFeint ? UI.violet : UI.rose,
+    });
   }
 
-  /** A clear orange pointer: the fish is about to burst in this direction. */
-  private drawWarningArrow(g: Graphics, angle: number, pulse: number): void {
+  /** A clear pointer: the fish is about to burst in this direction. */
+  private drawWarningArrow(
+    g: Graphics,
+    angle: number,
+    pulse: number,
+    style: {
+      color: number;
+      /** Hops of the pointer; 1 is the full-size cue. */
+      scale?: number;
+      /** Overall opacity, for the ghost hint of a feint's true heading. */
+      alpha?: number;
+      /** Whether the short arc at the rim is drawn. */
+      rim?: boolean;
+    },
+  ): void {
     const cx = this.model.centerX;
     const cy = this.model.centerY;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const perpX = -sin;
     const perpY = cos;
-    const flash = 0.6 + pulse * 0.4;
+    const scale = style.scale ?? 1;
+    const alpha = style.alpha ?? 1;
+    const flash = (0.6 + pulse * 0.4) * alpha;
+    const core = mixColor(style.color, UI.text, 0.55);
 
     // Short arc right at the rim, where the pointer meets the water.
-    g.poly(
-      this.wavePoints(FIGHT_RADIUS + 1, 1, angle - 0.45, angle + 0.45),
-    ).stroke({
-      width: 2,
-      color: C.orange,
-      alpha: 0.55 + pulse * 0.3,
-    });
+    if (style.rim !== false) {
+      this.strokeArc(g, FIGHT_RADIUS + 1, 1, angle - 0.45, angle + 0.45, {
+        width: 2,
+        color: style.color,
+        alpha: (0.55 + pulse * 0.3) * alpha,
+      });
+    }
 
     for (let i = 0; i < 2; i += 1) {
-      const tip = FIGHT_RADIUS + 6 + i * 6;
-      const base = tip - 6;
-      const half = 4.5 - i * 0.7;
+      const tip = FIGHT_RADIUS + (6 + i * 6) * scale;
+      const base = tip - 6 * scale;
+      const half = (4.5 - i * 0.7) * scale;
       const tipX = cx + cos * tip;
       const tipY = cy + sin * tip;
       const baseAX = cx + cos * base + perpX * half;
@@ -337,7 +501,7 @@ export class Minigame extends Container {
       const baseBX = cx + cos * base - perpX * half;
       const baseBY = cy + sin * base - perpY * half;
 
-      // Dark backing keeps the orange readable against the water.
+      // Dark backing keeps the pointer readable against the water.
       g.poly([
         tipX + cos * 1.5,
         tipY + sin * 1.5,
@@ -345,21 +509,21 @@ export class Minigame extends Container {
         baseAY + sin * 1,
         baseBX + cos * 1,
         baseBY + sin * 1,
-      ]).fill({ color: C.ink, alpha: 0.45 });
+      ]).fill({ color: UI.ink, alpha: 0.45 * alpha });
       g.poly([tipX, tipY, baseAX, baseAY, baseBX, baseBY]).fill({
-        color: C.orange,
+        color: style.color,
         alpha: flash,
       });
-      const core = 0.3;
+      const inner = 0.3;
       g.poly([
         tipX - cos * 1.5,
         tipY - sin * 1.5,
-        baseAX + (tipX - baseAX) * core,
-        baseAY + (tipY - baseAY) * core,
-        baseBX + (tipX - baseBX) * core,
-        baseBY + (tipY - baseBY) * core,
+        baseAX + (tipX - baseAX) * inner,
+        baseAY + (tipY - baseAY) * inner,
+        baseBX + (tipX - baseBX) * inner,
+        baseBY + (tipY - baseBY) * inner,
       ]).fill({
-        color: C.yellow,
+        color: core,
         alpha: flash * 0.85,
       });
     }
@@ -373,14 +537,14 @@ export class Minigame extends Container {
       const alpha = clamp(bubble.life / bubble.maxLife);
       g.circle(bubble.x, bubble.y, bubble.size).stroke({
         width: 1,
-        color: C.cream,
+        color: UI.text,
         alpha: 0.65 * alpha,
       });
       g.circle(
         bubble.x - bubble.size * 0.3,
         bubble.y - bubble.size * 0.3,
         0.55,
-      ).fill({ color: C.cyan, alpha: 0.7 * alpha });
+      ).fill({ color: UI.ice, alpha: 0.7 * alpha });
     }
 
     if (this.model.counterFlashValue > 0) {
@@ -388,7 +552,7 @@ export class Minigame extends Container {
       const progress = 1 - this.model.counterFlashValue / 0.6;
       g.circle(point.x, point.y, 5 + progress * 7).stroke({
         width: 1.5,
-        color: C.cyan,
+        color: UI.ice,
         alpha: this.model.counterFlashValue,
       });
       for (const [sx, sy] of [
@@ -401,7 +565,7 @@ export class Minigame extends Container {
           .lineTo(point.x + sx * 7, point.y + sy * 7)
           .stroke({
             width: 1,
-            color: C.cyan,
+            color: UI.ice,
             alpha: this.model.counterFlashValue * 0.9,
           });
       }
@@ -437,8 +601,8 @@ export class Minigame extends Container {
     ];
     const triangle = [...at(3, 0), ...at(-2, -3), ...at(-2, 3)];
 
-    g.poly(triangle).fill({ color: C.cream, alpha: 0.9 });
-    g.poly(triangle).stroke({ width: 1, color: C.ink, alpha: 0.9 });
+    g.poly(triangle).fill({ color: UI.text, alpha: 0.9 });
+    g.poly(triangle).stroke({ width: 1, color: UI.ink, alpha: 0.9 });
   }
 
   /** High-attention cue for the landing strike and the counter window. */
@@ -447,13 +611,8 @@ export class Minigame extends Container {
     g.clear();
     const pulse = (Math.sin(this.model.time * 6) + 1) / 2;
 
-    if (this.model.canLand) {
-      const point = this.model.fishPoint;
-      g.circle(point.x, point.y, 17 + pulse * 2).stroke({
-        width: 1.5,
-        color: C.gold,
-        alpha: 0.55 + pulse * 0.2,
-      });
+    if (this.landFade > 0.01) {
+      // The mark itself is a text laid over the fish; see `updateLandMark`.
       return;
     }
 
@@ -461,12 +620,12 @@ export class Minigame extends Container {
       const point = this.model.fishPoint;
       g.circle(point.x, point.y, 13 + pulse * 2).stroke({
         width: 1.5,
-        color: C.cyan,
+        color: UI.ice,
         alpha: 0.7,
       });
       g.circle(point.x, point.y, 19 + pulse * 3).stroke({
         width: 1,
-        color: C.cyan,
+        color: UI.ice,
         alpha: 0.3,
       });
     }
@@ -483,28 +642,28 @@ export class Minigame extends Container {
     const pulse = (Math.sin(this.model.time * 8) + 1) / 2;
     const value = clamp(this.model.enduranceValue);
     const low = value <= FIGHT.landThreshold;
-    const color = low ? C.red : value <= 0.5 ? C.yellow : C.green;
+    const color = low ? UI.danger : value <= 0.5 ? UI.amber : UI.mint;
     const border = this.model.isReady
-      ? C.gold
+      ? UI.amber
       : this.model.isOutside
-        ? C.red
+        ? UI.rose
         : this.model.warn > 0
-          ? C.gold
-          : C.brownDark;
+          ? UI.amber
+          : UI.periwinkle;
 
     g.clear();
-    g.rect(x - 1, y - 1, width + 2, height + 2).fill(C.ink);
-    g.rect(x, y, width, height).fill({ color: C.ink, alpha: 0.55 });
+    g.rect(x - 1, y - 1, width + 2, height + 2).fill(UI.ink);
+    g.rect(x, y, width, height).fill({ color: UI.ink, alpha: 0.55 });
 
     const fill = Math.max(0, Math.round(width * value));
     if (fill > 0) {
       g.rect(x, y, fill, height).fill(color);
-      g.rect(x, y, fill, 1).fill({ color: C.cream, alpha: 0.55 });
+      g.rect(x, y, fill, 1).fill({ color: UI.text, alpha: 0.55 });
     }
 
     // Landing threshold marker for the manual final pull.
     g.rect(x + width * FIGHT.landThreshold, y - 1, 1, height + 2).fill({
-      color: C.cream,
+      color: UI.text,
       alpha: 0.55,
     });
 
@@ -519,19 +678,19 @@ export class Minigame extends Container {
     const gh = 3;
     const locked = this.model.isGripLocked;
     const advantage = this.model.hasAdvantage;
-    const gripColor = locked ? C.red : advantage ? C.gold : C.cyan;
+    const gripColor = locked ? UI.danger : advantage ? UI.amber : UI.ice;
 
     gg.clear();
-    gg.rect(x - 1, gy - 1, width + 2, gh + 2).fill(C.ink);
-    gg.rect(x, gy, width, gh).fill({ color: C.ink, alpha: 0.6 });
+    gg.rect(x - 1, gy - 1, width + 2, gh + 2).fill(UI.ink);
+    gg.rect(x, gy, width, gh).fill({ color: UI.ink, alpha: 0.6 });
     const gripFill = Math.round(width * clamp(this.model.gripValue));
     if (gripFill > 0) {
       gg.rect(x, gy, gripFill, gh).fill(gripColor);
-      gg.rect(x, gy, gripFill, 1).fill({ color: C.cream, alpha: 0.5 });
+      gg.rect(x, gy, gripFill, 1).fill({ color: UI.text, alpha: 0.5 });
     }
     gg.rect(x, gy, width, gh).stroke({
       width: 1,
-      color: locked ? C.red : C.brownDark,
+      color: locked ? UI.rose : UI.periwinkle,
       alpha: locked ? 0.9 : 0.5,
     });
   }

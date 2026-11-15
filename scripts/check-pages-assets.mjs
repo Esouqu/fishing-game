@@ -6,11 +6,25 @@ const publicDir = join(root, "public");
 const assetsDir = join(publicDir, "assets");
 const fishingDir = join(assetsDir, "fishing");
 const fishDir = join(fishingDir, "fish");
+const soundsDir = join(fishingDir, "sounds");
 const cursorsDir = join(assetsDir, "cursors");
 
 const required = [
+  join(assetsDir, "ice-480.webp"),
   join(fishingDir, "angler.png"),
-  join(fishingDir, "fonts", "tiny5.ttf"),
+  join(fishingDir, "boat.png"),
+  join(fishingDir, "sign.png"),
+  join(fishingDir, "sounds", "cast.wav"),
+  join(fishingDir, "sounds", "bite.wav"),
+  join(fishingDir, "sounds", "amb-frost.wav"),
+  join(fishingDir, "fonts", "tiny5-cyrillic.woff2"),
+  join(fishingDir, "fonts", "tiny5-cyrillic-ext.woff2"),
+  join(fishingDir, "fonts", "tiny5-latin.woff2"),
+  join(fishingDir, "fonts", "tiny5-latin-ext.woff2"),
+  join(root, "src", "assets", "help", "cast.webp"),
+  join(root, "src", "assets", "help", "fight.webp"),
+  join(root, "src", "assets", "help", "counter.webp"),
+  join(root, "src", "assets", "help", "land.webp"),
   join(publicDir, "favicon.png"),
   join(cursorsDir, "tile_0026-15x.png"),
   join(cursorsDir, "tile_0134-15x.png"),
@@ -22,11 +36,20 @@ const required = [
 const missing = required.filter((path) => !existsSync(path));
 if (existsSync(fishDir)) {
   const fish = readdirSync(fishDir).filter((name) => name.endsWith(".png"));
-  if (fish.length < 20) {
-    missing.push(`${fishDir} (found ${fish.length} of 20 fish PNGs)`);
+  if (fish.length < 40) {
+    missing.push(`${fishDir} (found ${fish.length} of 40 fish PNGs)`);
   }
 } else {
   missing.push(fishDir);
+}
+
+if (existsSync(soundsDir)) {
+  const sounds = readdirSync(soundsDir).filter((name) => name.endsWith(".wav"));
+  if (sounds.length < 25) {
+    missing.push(`${soundsDir} (found ${sounds.length} of 25 WAVs)`);
+  }
+} else {
+  missing.push(soundsDir);
 }
 
 if (missing.length > 0) {
