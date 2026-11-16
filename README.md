@@ -227,7 +227,7 @@ scripts/                      сборка, ассеты, замер загру�
 
 Подробная карта модулей и правила — в [docs/modules.md](./docs/modules.md) и
 [docs/architecture.md](./docs/architecture.md). Краткая точка входа для агентов —
-[Agent.md](./Agent.md).
+[AGENTS.md](./AGENTS.md).
 
 ## Технологии
 

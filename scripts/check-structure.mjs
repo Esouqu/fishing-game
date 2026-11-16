@@ -4,7 +4,7 @@
  *  - the obsolete `game/Scene.ts` shim stays deleted;
  *  - the generated audio-mix markers are intact;
  *  - no runtime import cycles (type-only imports ignored);
- *  - relative links in Agent.md and docs/ resolve.
+ *  - relative links in AGENTS.md and docs/ resolve.
  *
  * Usage: pnpm check:structure
  */
@@ -98,7 +98,7 @@ for (const file of files) if (!color.has(file)) dfs(file);
 
 /** Relative markdown links must point at real files. */
 const mdFiles = [
-  join(root, "Agent.md"),
+  join(root, "AGENTS.md"),
   ...readdirSync(join(root, "docs"))
     .filter((name) => name.endsWith(".md"))
     .map((name) => join(root, "docs", name)),

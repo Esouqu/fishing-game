@@ -1,4 +1,4 @@
-# Agent guide — Зимняя рыбалка
+# AGENTS guide — Зимняя рыбалка
 
 Пиксельная рыбалка на PixiJS 8 + TypeScript + Vite. Три водоёма, 40 видов, HUD и меню
 отрисованы в PixiJS. `src/lib/FishingGame.svelte` — опциональная consumer-side обёртка,
