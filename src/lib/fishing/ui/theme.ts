@@ -40,7 +40,12 @@ export function makeText(value: string, options: TextOptions = {}): Text {
     wordWrap: options.wordWrapWidth !== undefined,
     wordWrapWidth: options.wordWrapWidth,
     breakWords: true,
-    trim: true,
+    // Trimming is off on purpose. Pixi measures a trimmed label by its ink, so
+    // one word with a diacritic — «ё» against «е» — produced a taller texture
+    // than its neighbours and every centred label in a row shifted by a pixel
+    // or two. Untrimmed, the box is the font's own line box: the same for every
+    // string at a given size, «ё» or not, so anchors and rows line up.
+    trim: false,
   });
   const text = new Text({ text: value, style });
   text.resolution = 4;
