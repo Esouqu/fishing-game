@@ -1,5 +1,6 @@
 import { Container } from "pixi.js";
 import { keycapWidth, makeKeycap, makeText } from "./theme";
+import { anchorInk } from "./textInk";
 import { UI } from "./palette";
 import { TEXT } from "../texts";
 
@@ -78,7 +79,7 @@ export class CastHint extends Container {
       color: UI.text,
       letterSpacing: 0.6,
     });
-    label.anchor.set(0, 0.5);
+    anchorInk(label, "left");
     // The outline is what replaces the plate: it keeps the words legible over
     // both the bright snow bank and the dark water.
     label.style.stroke = { color: UI.ink, width: OUTLINE };

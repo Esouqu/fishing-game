@@ -5,6 +5,7 @@ import { formatWeight } from "../../fishWeight";
 import { TEXT } from "../../texts";
 import { UI } from "../palette";
 import { makeText } from "../theme";
+import { anchorInk } from "../textInk";
 import { Button } from "../Button";
 import { CodexBase } from "./CodexBase";
 import { GRID, type Cell } from "./setup";
@@ -82,7 +83,7 @@ export abstract class CodexGrid extends CodexBase {
             color: UI.textMuted,
           },
         );
-        weight.anchor.set(0, 1);
+        anchorInk(weight, "left", "bottom");
         weight.position.set(4, height - 2);
         weight.eventMode = "none";
         button.addChild(weight);
@@ -91,7 +92,7 @@ export abstract class CodexGrid extends CodexBase {
           size: 6.5,
           color: UI.text,
         });
-        count.anchor.set(1, 1);
+        anchorInk(count, "right", "bottom");
         count.position.set(width - 4, height - 2);
         count.eventMode = "none";
         button.addChild(count);

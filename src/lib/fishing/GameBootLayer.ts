@@ -4,6 +4,7 @@ import { VIEW } from "./config";
 import { TEXT, type HelpPageId } from "./texts";
 import { AREA_BY_ID, AREAS, DEFAULT_AREA_ID, type AreaDef } from "./areas";
 import { drawPanel, makeText } from "./ui/theme";
+import { anchorInk, realignInk } from "./ui/textInk";
 import { UI } from "./ui/palette";
 import { loadGameAssets, loadHelpTexture, prefetchHelpPages } from "./assets";
 import { createFishingScene } from "./game/scenes";
@@ -210,6 +211,10 @@ export abstract class GameBootLayer extends GameBase {
     });
     title.position.set(VIEW.width / 2, 92);
     title.style.stroke = { color: UI.ink, width: 3 };
+    // The wordmark and the caption below it are anchored on their glyphs: the
+    // constant text box is almost twice the cap height, and the top of that box
+    // used to push the wordmark down onto the caption.
+    anchorInk(title, "center", "top");
 
     const caption = makeText(TEXT.boot.loading, {
       size: 7,
@@ -218,6 +223,7 @@ export abstract class GameBootLayer extends GameBase {
       letterSpacing: 3,
     });
     caption.position.set(VIEW.width / 2, 116);
+    anchorInk(caption, "center", "top");
 
     // One clear job: a wide rail with the percentage under it.
     const barBg = new Graphics();
@@ -230,7 +236,7 @@ export abstract class GameBootLayer extends GameBase {
       color: UI.textMuted,
       align: "center",
     });
-    this.bootPercent.anchor.set(0.5, 0.5);
+    anchorInk(this.bootPercent, "center");
     this.bootPercent.position.set(VIEW.width / 2, 166);
 
     layer.addChild(bg, title, caption, barBg, this.bootFill, this.bootPercent);
@@ -252,6 +258,7 @@ export abstract class GameBootLayer extends GameBase {
       .fill({ color: UI.primary, alpha: 0.9 });
     if (this.bootPercent) {
       this.bootPercent.text = `${Math.round(clamped * 100)}%`;
+      realignInk(this.bootPercent);
     }
   }
 

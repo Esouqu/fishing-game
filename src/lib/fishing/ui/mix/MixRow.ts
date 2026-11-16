@@ -10,6 +10,7 @@ import { clamp } from "../../utils";
 import { Button } from "../Button";
 import { UI } from "../palette";
 import { drawPlayIcon, makeText, setText } from "../theme";
+import { anchorInk } from "../textInk";
 import { GROUP_COLOR, NAME_X, ROW, ROW_END, TRACK_X } from "./layout";
 
 export class MixRow extends Container {
@@ -52,7 +53,7 @@ export class MixRow extends Container {
       weight: 700,
       color: UI.text,
     });
-    label.anchor.set(0, 0.5);
+    anchorInk(label, "left");
     label.position.set(NAME_X, ROW.height / 2);
     this.addChild(label);
 
@@ -82,7 +83,7 @@ export class MixRow extends Container {
       color: UI.textMuted,
       align: "right",
     });
-    this.valueText.anchor.set(1, 0.5);
+    anchorInk(this.valueText, "right");
     this.valueText.position.set(ROW_END, ROW.height / 2);
     this.addChild(this.valueText);
 

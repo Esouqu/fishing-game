@@ -2,6 +2,7 @@ import { Container, Graphics, Rectangle, Text } from "pixi.js";
 import { CURSORS } from "../../cursors";
 import { UI } from "../palette";
 import { makeText } from "../theme";
+import { anchorInk } from "../textInk";
 
 export interface CodexTabsOptions {
   labels: readonly string[];
@@ -46,7 +47,7 @@ export class CodexTabs extends Container {
         color: UI.textMuted,
         align: "center",
       });
-      text.anchor.set(0.5);
+      anchorInk(text, "center");
       text.position.set(this.tick * (index + 0.5), this.heightValue / 2);
       this.labels.push(text);
       this.addChild(text);

@@ -5,6 +5,7 @@ import { easeOutCubic, formatClock, lerp } from "../utils";
 import { mixColor } from "../world";
 import { UI } from "./palette";
 import { drawWeatherIcon, makeText, WEATHER_TINT } from "./theme";
+import { anchorInk, realignInk } from "./textInk";
 import {
   periodWidth,
   RAIL,
@@ -210,13 +211,14 @@ export class WeatherRail extends Container {
       color: UI.textMuted,
       letterSpacing: 0.2,
     });
-    ghost.anchor.set(0, 0.5);
+    anchorInk(ghost, "left");
     ghost.position.copyFrom(card.label.position);
     card.node.addChild(ghost);
 
     const fromIconX = card.icon.x;
     card.live = true;
     card.label.text = TEXT.forecast.now;
+    realignInk(card.label);
     card.label.style.fill = UI.text;
     this.place(card);
     const toIconX = card.icon.x;
@@ -294,7 +296,7 @@ export class WeatherRail extends Container {
         letterSpacing: 0.2,
       },
     );
-    label.anchor.set(0, 0.5);
+    anchorInk(label, "left");
     label.y = RAIL.cardHeight / 2;
     node.addChild(well, icon, label);
     this.art.addChild(node);
@@ -318,6 +320,7 @@ export class WeatherRail extends Container {
     const text = formatClock(minutes + period.startsIn / 60);
     if (card.label.text === text) return;
     card.label.text = text;
+    realignInk(card.label);
     this.place(card);
   }
 

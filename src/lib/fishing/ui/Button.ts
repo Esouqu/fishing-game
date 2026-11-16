@@ -3,6 +3,7 @@ import { CURSORS } from "../cursors";
 import type { Focusable } from "./FocusGroup";
 import { UI } from "./palette";
 import { makeText, setText } from "./theme";
+import { anchorInk } from "./textInk";
 
 export type ButtonVariant =
   "primary" | "secondary" | "ghost" | "danger" | "card";
@@ -84,7 +85,7 @@ export class Button extends Container implements Focusable {
         color: this.labelOnBright ? UI.textOnBright : UI.text,
         align: "center",
       });
-      this.labelText.anchor.set(0.5, 0.5);
+      anchorInk(this.labelText, "center");
       this.addChild(this.labelText);
 
       if (this.marksEnabled) {
@@ -94,10 +95,10 @@ export class Button extends Container implements Focusable {
           color: this.labelOnBright ? UI.textOnBright : UI.text,
         };
         this.markLeft = makeText(">", markStyle);
-        this.markLeft.anchor.set(1, 0.5);
+        anchorInk(this.markLeft, "right");
         this.markLeft.visible = false;
         this.markRight = makeText("<", markStyle);
-        this.markRight.anchor.set(0, 0.5);
+        anchorInk(this.markRight, "left");
         this.markRight.visible = false;
       }
     }

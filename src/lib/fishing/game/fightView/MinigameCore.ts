@@ -4,6 +4,7 @@ import { TEXT } from "../../texts";
 import { FIGHT_RADIUS } from "../fight";
 import { UI } from "../../ui/palette";
 import { makeText } from "../../ui/theme";
+import { anchorInk } from "../../ui/textInk";
 import {
   FightModel,
   type MinigameOptions,
@@ -74,7 +75,7 @@ export abstract class MinigameCore extends Container {
       weight: 700,
       align: "center",
     });
-    this.staminaLabel.anchor.set(0.5, 1);
+    anchorInk(this.staminaLabel, "center", "bottom");
     this.staminaLabel.style.stroke = { color: UI.ink, width: 2 };
     this.bars.addChild(this.staminaLabel);
     this.bars.eventMode = "none";

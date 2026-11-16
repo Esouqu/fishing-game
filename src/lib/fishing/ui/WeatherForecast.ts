@@ -74,6 +74,10 @@ export class WeatherForecast extends Container {
     this.addChild(this.band, this.rail, this.dimmer);
 
     this.refresh(false);
+    // The panel frame is painted here, not from a resize: the rail is a fixed
+    // four slots wide now, and its only other painter is the fight dimmer — so
+    // without this call the widget had cards but no plate until a fight began.
+    this.paint();
   }
 
   /** Puts the panel back under the fight focus without making it translucent. */

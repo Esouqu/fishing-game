@@ -15,6 +15,7 @@ import {
   drawWeatherIcon,
   makeText,
 } from "../ui/theme";
+import { anchorInk } from "../ui/textInk";
 
 /**
  * The window fills the frame with the same inset on every side; the cards and
@@ -167,12 +168,12 @@ export class AreaSelectScreen extends Screen {
       };
       const markY = nameY + name.height / 2;
       const left = makeText(">", markStyle);
-      left.anchor.set(1, 0.5);
+      anchorInk(left, "right");
       left.position.set(CARD_W / 2 - Math.ceil(name.width / 2) - 1, markY);
       left.visible = false;
       left.eventMode = "none";
       const right = makeText("<", markStyle);
-      right.anchor.set(0, 0.5);
+      anchorInk(right, "left");
       right.position.set(CARD_W / 2 + Math.ceil(name.width / 2) + 1, markY);
       right.visible = false;
       right.eventMode = "none";
@@ -199,7 +200,7 @@ export class AreaSelectScreen extends Screen {
         color: UI.text,
         letterSpacing: 0.3,
       });
-      weatherLabel.anchor.set(0, 0.5);
+      anchorInk(weatherLabel, "left");
       // The icon and the label are one centred group: left-aligning them at a
       // fixed x made each card's weather row start at a different place under
       // the centred name.
@@ -228,7 +229,7 @@ export class AreaSelectScreen extends Screen {
       color: UI.textOnBright,
       align: "center",
     });
-    this.markText.anchor.set(0.5, 0.5);
+    anchorInk(this.markText, "center");
     this.markText.eventMode = "none";
     this.addChild(this.markText);
 

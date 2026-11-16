@@ -4,6 +4,7 @@ import type { AreaDef, AreaPalette, SceneLayout } from "../../../areas";
 import { C } from "../../../config";
 import { TEXT } from "../../../texts";
 import { makeText } from "../../../ui/theme";
+import { anchorInk } from "../../../ui/textInk";
 import { CloudShadows } from "../cloudShadow";
 import type { SceneRenderer } from "../types";
 import {
@@ -186,7 +187,7 @@ export abstract class FishingSceneCore extends Container {
       weight: 800,
       align: "center",
     });
-    this.biteMark.anchor.set(0.5, 1);
+    anchorInk(this.biteMark, "center", "bottom");
     this.biteMark.visible = false;
     this.biteMark.style.stroke = { color: C.ink, width: 3 };
     // Never leave it sitting at the scene origin: if anything shows it before

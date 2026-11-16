@@ -3,6 +3,7 @@ import { VIEW } from "../config";
 import { clamp } from "../utils";
 import { UI } from "./palette";
 import { makeText } from "./theme";
+import { inkAnchorBottomY } from "./textInk";
 
 interface Floater {
   text: Text;
@@ -44,7 +45,7 @@ export class FloaterLayer extends Container {
       align: anchorX === 0 ? "left" : "center",
       lineHeight: size + 1,
     });
-    text.anchor.set(anchorX, 1);
+    text.anchor.y = inkAnchorBottomY(text);
     // A centred tag over an angler near the shore would otherwise run off the
     // playfield; keep it fully visible.
     const safeX =

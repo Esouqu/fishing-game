@@ -8,6 +8,7 @@ import type { WipePoint } from "./GridWipe";
 import { easeOutCubic, lerp } from "../utils";
 import { UI } from "./palette";
 import { drawPanel, drawWeatherIcon, makeText } from "./theme";
+import { anchorInk } from "./textInk";
 
 /** One travel card in the bottom corner. */
 const CARD = { width: 68, height: 40 } as const;
@@ -190,7 +191,7 @@ class ShortcutCard extends Container {
       align: "center",
       letterSpacing: 0.2,
     });
-    name.anchor.set(0.5, 0.5);
+    anchorInk(name, "center");
     name.position.set(CARD.width / 2, CARD.height - FOOTER / 2 - THUMB_PAD);
     this.addChild(name);
 

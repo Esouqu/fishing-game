@@ -1,5 +1,6 @@
 import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { currentFontScale, currentFontStack } from "../fonts";
+import { alignInkX, anchorInk, realignInk } from "./textInk";
 import type { WeatherId } from "../types";
 import { UI } from "./palette";
 
@@ -51,13 +52,17 @@ export function makeText(value: string, options: TextOptions = {}): Text {
   text.resolution = 4;
   text.roundPixels = true;
   text.alpha = options.alpha ?? 1;
-  if (options.align === "center") text.anchor.x = 0.5;
-  else if (options.align === "right") text.anchor.x = 1;
+  // Horizontal anchors line up with the glyphs, not with the advance box; the
+  // vertical anchor is left alone, the caller decides how the label sits.
+  alignInkX(text, options.align ?? "left");
   return text;
 }
 
 export function setText(text: Text, value: string): void {
-  if (text.text !== value) text.text = value;
+  if (text.text === value) return;
+  text.text = value;
+  // The box changes with the string, so the ink anchor has to follow it.
+  realignInk(text);
 }
 
 /** Width of a compact keycap for a short label, in virtual pixels. */
@@ -197,7 +202,7 @@ export function makeKeycap(
     align: "center",
     lineHeight: height,
   });
-  text.anchor.set(0.5, 0.5);
+  anchorInk(text, "center");
   text.position.set(width / 2, height / 2);
   container.addChild(text);
   return container;
