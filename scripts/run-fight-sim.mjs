@@ -12,14 +12,9 @@ import ts from "typescript";
 
 const root = resolve(import.meta.dirname, "..");
 const out = resolve(root, ".sim");
-const files = [
-  "src/lib/fishing/config.ts",
-  "src/lib/fishing/types.ts",
-  "src/lib/fishing/utils.ts",
-  "src/lib/fishing/game/behaviors.ts",
-  "src/lib/fishing/game/fightModel.ts",
-  "scripts/simulate-fight.ts",
-];
+// One root is enough: the compiler follows the imports into the data and fight
+// modules, so splitting a module never requires editing this list again.
+const files = ["scripts/simulate-fight.ts"];
 
 const options = {
   target: ts.ScriptTarget.ES2020,

@@ -167,6 +167,8 @@ game.destroy();
 | `pnpm preview` | Предпросмотр собранной версии |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm lint` | ESLint + Prettier |
+| `pnpm check:structure` | Лимит 400 строк, отсутствие циклов импортов и битых ссылок в docs |
+| `pnpm check` | typecheck + lint + structure + sim |
 | `pnpm check:assets` | Проверка, что для Pages на месте 40 рыб, шрифт, звуки и курсоры |
 | `pnpm assets` | Синхронизация графики и сжатие звуков в `public/assets/fishing` |
 | `pnpm measure` | Замер холодной загрузки собранной игры (свежий профиль Chrome, ready/FCP/байты) |
@@ -206,46 +208,26 @@ game.destroy();
 src/
   main.ts                     отдельная страница-хост
   lib/
-    FishingGame.svelte        Svelte 5-обертка
+    FishingGame.svelte        Svelte 5-обертка (consumer-side, здесь не собирается)
     fishing/
-      Game.ts                 жизненный цикл, экраны, ввод, resize, прогресс
-      areas.ts                три типа воды (озеро, река, море): палитры, раскладка, свет
-      fish.ts                 40 видов по типам воды, редкость 70/20/10, описания, валидация
-      progress.ts             ProgressRepository, localStorage/HTTP, дебаунс
-      config.ts               бой, арт-палитра, тайминги, зона удачи
-      types.ts                публичные типы (опции, прогресс, события)
-      utils.ts                weighted pick, форматирование, часы
-      storage.ts              настройки и мир в localStorage
-      audio.ts                Stardew-звуки и эмбиент через Web Audio
-      audioMix.ts             таблица громкостей всех сигналов (ее пишет дев-панель)
-      audioMixSave.ts         сохранение микса в код, буфер и файл
-      assets.ts               загрузка текстур
+      index.ts                публичный API
+      Game*.ts                жизненный цикл, boot, ввод, dev-панели, экраны
+      fish/                   данные 40 видов, редкость, активность, валидация
+      world/                  погода, палитра, WorldClock
+      audio/                  Web Audio, звуки, эмбиент
+      audioMix.ts             таблица громкостей (ее пишет дев-панель)
+      game/                   CastFlow, сцены, мини-игра, бой, атмосфера
+        fight/                чистая симуляция боя
+        scenes/               FishingScene + river/cove/pool
+        cast/                 фазы заброса и вываживания
       screens/                меню, выбор водоема, игра, помощь, справочник
-      game/                   сцена, мини-игра, бой, заброс, атмосфера
-        CastFlow.ts           фазы заброса, поклевки и вываживания
-        castPick.ts           выбор рыбы под время, погоду и зону удачи
-        castSafety.ts         проверка, что кольцо боя ложится на воду
-        fog.ts                туман вокруг рыбака (только в погоду «туман»)
-        FightStage.ts         живой бой: мини-игра, поплавок, виньетка
-        FightVignette.ts      затемнение вокруг кольца боя
-      game/scenes/            FishingScene + cove/pool/river
-        water.ts              живая поверхность: гребни, блики, круги, тени облаков
-      ui/                     тема, кнопки, фокус, HUD, пауза, справочник
-        palette.ts            палитра интерфейса (индиго/перивинкль), отдельно от арт-палитры
-        GameHud.ts            верхняя панель, прогноз погоды и шкала силы
-        PauseMenu.ts          меню паузы и клавиатурный фокус
-        AudioMixPanel.ts      дев-панель баланса звука (F2)
-        DevWeatherPanel.ts    дев-панель выбора погоды (F3)
-        CodexOverlay.ts       справочник поверх игры
-        FloaterLayer.ts       всплывающие подписи
-scripts/sync-assets.mjs       копирование ассетов из паков
-scripts/squeeze-audio.mjs     WAV → моно ~22 кГц (19.4 → 4.9 МБ)
-scripts/bake-veil.mjs         ice-480.webp из оригинального assets-src/ice.png
-scripts/measure-load.mjs      замер холодной загрузки (ready/FCP/байты)
-scripts/make-spruce-assets.py зимние елки tree-a/b/c: лапы, снег, ствол, наклон
-scripts/make-nature-assets.py зимний куст и камни
-scripts/simulate-fight.ts     headless-балансировка боя и валидация рыб
+      ui/                     тема, кнопки, HUD, пауза, справочник, дев-панели
+scripts/                      сборка, ассеты, замер загрузки, sim
 ```
+
+Подробная карта модулей и правила — в [docs/modules.md](./docs/modules.md) и
+[docs/architecture.md](./docs/architecture.md). Краткая точка входа для агентов —
+[Agent.md](./Agent.md).
 
 ## Технологии
 

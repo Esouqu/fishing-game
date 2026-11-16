@@ -1,4 +1,5 @@
-import type { Game, CodexReturn } from "../Game";
+import type { GameContext } from "../GameContext";
+import type { CodexReturn } from "../types";
 import { Screen } from "../ui/Screen";
 import { Backdrop } from "../ui/Backdrop";
 import { CodexView } from "../ui/CodexView";
@@ -7,7 +8,7 @@ export class CodexScreen extends Screen {
   private readonly backdrop: Backdrop;
   private readonly view: CodexView;
 
-  constructor(game: Game, returnTo: CodexReturn = "menu") {
+  constructor(game: GameContext, returnTo: CodexReturn = "menu") {
     super();
     this.backdrop = new Backdrop(
       game.previewFor(game.areaId),

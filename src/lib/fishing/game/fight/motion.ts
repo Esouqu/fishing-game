@@ -1,0 +1,194 @@
+﻿import { FIGHT, TIMING } from "../../config";
+import { clamp, easeInOutQuad, lerp, randRange } from "../../utils";
+import { angleDelta } from "./angles";
+import { FIGHT_RADIUS, TAU } from "./constants";
+import type { Move } from "../behaviors";
+import type { FightState } from "./state";
+
+/**
+ * Movement half of the fight: the authored move script, warning/feint state,
+ * target selection and the steering that pulls the fish toward that target.
+ */
+export class FightMotion {
+  constructor(private readonly state: FightState) {}
+
+  /** The heading of the fish around the ring. */
+  fishAngle(): number {
+    const s = this.state;
+    if (Math.hypot(s.fishX, s.fishY) < 0.5) return s.lastAngle;
+    return Math.atan2(s.fishY, s.fishX);
+  }
+
+  advanceScript(dt: number): void {
+    const s = this.state;
+    if (s.current === null) return;
+    s.moveTime += dt * s.tempo;
+    if (s.moveTime >= s.current.dur) this.nextMove();
+  }
+
+  nextMove(): void {
+    const s = this.state;
+    let move = s.script[s.moveIndex % s.script.length];
+    if (s.lastRunPending && !s.lastRunUsed) {
+      s.lastRunUsed = true;
+      s.lastRunPending = false;
+      move = { kind: "dash", dir: "away", dur: 0.55, strong: true };
+    }
+    s.moveIndex += 1;
+    s.current = move;
+    s.moveTime = 0;
+    s.warnRest = 0;
+    s.counterWindow = 0;
+    s.feintActive = false;
+    s.feintHasRevealed = false;
+    s.feintTimer = 0;
+    s.moveStartAngle = this.fishAngle();
+    s.moveStartRadius = this.fishRadius();
+    s.escapeAngle = this.resolveAngle(move);
+    if (move.kind === "dash" || move.kind === "arc") {
+      s.lastAngle = s.escapeAngle;
+    }
+    if (move.strong) {
+      // A fish that senses an empty grip warns a little later.
+      const pressure = s.grip < FIGHT.lowGrip ? 0.88 : 1;
+      s.warnTime = TIMING.telegraph * pressure;
+      const feint = s.feintPending || Math.random() < s.feintChance;
+      s.feintActive = feint;
+      if (feint) {
+        s.feintPending = false;
+        s.feintAngle =
+          s.escapeAngle +
+          (Math.random() < 0.5 ? -1 : 1) *
+            randRange(FIGHT.feintAngleMin, FIGHT.feintAngleMax);
+        s.warnAngle = s.feintAngle;
+      } else {
+        s.warnAngle = s.escapeAngle;
+      }
+      s.bubbleTimer = 0;
+      s.onWarn?.();
+      return;
+    }
+    s.warnTime = 0;
+    s.warnAngle = s.escapeAngle;
+    if (move.kind === "dash") this.bolt(0.7);
+  }
+
+  resolveAngle(move: Move): number {
+    const s = this.state;
+    const here = this.fishAngle();
+    const jitter = (spread: number) => (Math.random() - 0.5) * spread;
+    const dir = move.dir ?? "flip";
+    let base: number;
+
+    // Escape directions are relative to the ring, never to the cursor: the
+    // player's pull stays a counter-force instead of choosing the escape side.
+    if (dir === "away") base = here + jitter(0.55);
+    else if (dir === "toward") base = here + Math.PI + jitter(0.5);
+    else if (dir === "same") base = s.lastAngle + jitter(0.35);
+    else base = s.lastAngle + Math.PI + jitter(0.75);
+
+    return base;
+  }
+
+  /** A sudden burst along `angle`; the default is the move's true heading. */
+  boltAt(angle: number, scale = 1): void {
+    const s = this.state;
+    const power = (110 + s.fish.speed * 70) * scale * s.runPower;
+    s.vx += Math.cos(angle) * power;
+    s.vy += Math.sin(angle) * power;
+  }
+
+  bolt(scale = 1): void {
+    this.boltAt(this.state.escapeAngle, scale);
+  }
+
+  updateTarget(): void {
+    const s = this.state;
+    const move = s.current;
+    if (!move) return;
+    const t = move.dur <= 0 ? 1 : clamp(s.moveTime / move.dur);
+    const kind = move.kind;
+
+    // Dash targets sit clearly outside the ring: a fish that is not being
+    // pulled must be able to leave, so passivity is a real losing strategy.
+    if (kind === "dash") {
+      const radius = move.dir === "toward" ? 0.3 : move.strong ? 1.45 : 1.35;
+      s.targetX = Math.cos(s.escapeAngle) * FIGHT_RADIUS * radius;
+      s.targetY = Math.sin(s.escapeAngle) * FIGHT_RADIUS * radius;
+      return;
+    }
+
+    if (kind === "arc") {
+      const eased = easeInOutQuad(t);
+      const angle =
+        s.moveStartAngle + angleDelta(s.moveStartAngle, s.escapeAngle) * eased;
+      const radius = lerp(s.moveStartRadius, 1, eased) * FIGHT_RADIUS;
+      s.targetX = Math.cos(angle) * radius;
+      s.targetY = Math.sin(angle) * radius;
+      return;
+    }
+
+    if (kind === "wave") {
+      const cycles = move.cycles ?? 1;
+      const amp = (move.amplitude ?? 0.3) * 2.2;
+      const angle = s.moveStartAngle + Math.sin(t * TAU * cycles) * amp;
+      const radius = lerp(s.moveStartRadius, 1.05, t) * FIGHT_RADIUS;
+      s.targetX = Math.cos(angle) * radius;
+      s.targetY = Math.sin(angle) * radius;
+      return;
+    }
+
+    if (kind === "zigzag") {
+      const count = Math.max(1, move.count ?? 3);
+      const amp = (move.amplitude ?? 0.28) * 3;
+      const slot = Math.min(count - 1, Math.floor(t * count));
+      const angle = s.moveStartAngle + (slot % 2 === 0 ? amp : -amp);
+      const radius = FIGHT_RADIUS * 1.12;
+      s.targetX = Math.cos(angle) * radius;
+      s.targetY = Math.sin(angle) * radius;
+      return;
+    }
+
+    // Pause: drift back toward the middle and catch a breath.
+    const angle = s.moveStartAngle;
+    s.targetX = Math.cos(angle) * FIGHT_RADIUS * 0.3;
+    s.targetY = Math.sin(angle) * FIGHT_RADIUS * 0.3;
+  }
+
+  steer(dt: number): void {
+    const s = this.state;
+    const kind = s.current?.kind ?? "pause";
+    let speed = 40;
+    let steer = 4;
+    if (kind === "dash") {
+      speed = 130 + s.fish.speed * 70;
+      steer = 7.5;
+    } else if (kind === "arc") {
+      speed = 42 + s.fish.speed * 30;
+      steer = 3.6;
+    } else if (kind === "wave") {
+      speed = 38 + s.fish.speed * 28;
+      steer = 4;
+    } else if (kind === "zigzag") {
+      speed = 64 + s.fish.speed * 40;
+      steer = 6.5;
+    } else if (kind === "pause") {
+      speed = 12;
+      steer = 2;
+    }
+
+    const dx = s.targetX - s.fishX;
+    const dy = s.targetY - s.fishY;
+    const distance = Math.hypot(dx, dy);
+    const desiredX = distance > 1 ? (dx / distance) * speed : 0;
+    const desiredY = distance > 1 ? (dy / distance) * speed : 0;
+    const blend = Math.min(1, steer * dt);
+    s.vx += (desiredX - s.vx) * blend;
+    s.vy += (desiredY - s.vy) * blend;
+  }
+
+  private fishRadius(): number {
+    const s = this.state;
+    return clamp(Math.hypot(s.fishX, s.fishY) / FIGHT_RADIUS, 0, 1.4);
+  }
+}

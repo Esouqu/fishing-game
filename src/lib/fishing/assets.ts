@@ -8,23 +8,17 @@ import treeAUrl from "../../assets/fishing/tree-a.png";
 import treeBUrl from "../../assets/fishing/tree-b.png";
 import treeCUrl from "../../assets/fishing/tree-c.png";
 import bushAUrl from "../../assets/fishing/bush-a.png";
-import rockAUrl from "../../assets/fishing/rock-a.png";
-import rockBUrl from "../../assets/fishing/rock-b.png";
 import helpCastUrl from "../../assets/help/cast.webp";
 import helpFightUrl from "../../assets/help/fight.webp";
 import helpCounterUrl from "../../assets/help/counter.webp";
 import helpLandUrl from "../../assets/help/land.webp";
 
 export interface AssetBag {
-  base: string;
-  fontLoaded: boolean;
   /** 4x4 character sheet, row-major, 32px frames. */
   angler: Texture[];
   trees: Texture[];
   bushes: Texture[];
-  rocks: Texture[];
   sign: Texture;
-  rod: Texture;
   /** 8×4 sheet of 64px rowboat variants. */
   boat: Texture[];
   fish: Record<string, Texture>;
@@ -195,16 +189,6 @@ export async function loadGameAssets(
       fallback: () => fallbackTexture(0x3b7d4f, 16, "plant"),
     },
     {
-      key: "rock-a",
-      url: rockAUrl,
-      fallback: () => fallbackTexture(0x686f99, 16, "rock"),
-    },
-    {
-      key: "rock-b",
-      url: rockBUrl,
-      fallback: () => fallbackTexture(0x686f99, 16, "rock"),
-    },
-    {
       key: "sign",
       url: `${base}/sign.png`,
       fallback: () => fallbackTexture(0xcf752b, 16, "rock"),
@@ -213,11 +197,6 @@ export async function loadGameAssets(
       key: "boat",
       url: `${base}/boat.png`,
       fallback: () => fallbackTexture(0x4c6885, 64, "rock"),
-    },
-    {
-      key: "fishing-rod",
-      url: `${base}/fishing-rod.png`,
-      fallback: () => fallbackTexture(0xab5130, 16, "rock"),
     },
     ...fishList.map((fish) => ({
       key: `fish:${fish.id}`,
@@ -253,7 +232,7 @@ export async function loadGameAssets(
     onProgress(0.05 + (done / textureEntries.length) * 0.95, TEXT.boot.loading);
   });
 
-  const fontLoaded = await fontPromise;
+  await fontPromise;
 
   const anglerSheet = loaded.get("angler") ?? Texture.WHITE;
   const angler: Texture[] = [];
@@ -284,15 +263,10 @@ export async function loadGameAssets(
     boat.push(boatSheet);
   }
 
-  const rodSheet = loaded.get("fishing-rod") ?? Texture.WHITE;
-  const rod = rodSheet.width >= 16 ? frame(rodSheet, 0, 0, 16, 16) : rodSheet;
-
   const cursors = await loadCursorTextures();
   onProgress(1, TEXT.boot.loading);
 
   return {
-    base,
-    fontLoaded,
     angler,
     trees: [
       loaded.get("tree-a") ?? Texture.WHITE,
@@ -300,12 +274,7 @@ export async function loadGameAssets(
       loaded.get("tree-c") ?? Texture.WHITE,
     ],
     bushes: [loaded.get("bush-a") ?? Texture.WHITE],
-    rocks: [
-      loaded.get("rock-a") ?? Texture.WHITE,
-      loaded.get("rock-b") ?? Texture.WHITE,
-    ],
     sign: loaded.get("sign") ?? Texture.WHITE,
-    rod,
     boat,
     fish,
     cursors,

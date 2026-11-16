@@ -1,5 +1,5 @@
 import { Container, Graphics, Sprite } from "pixi.js";
-import type { Game } from "../Game";
+import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { Screen } from "../ui/Screen";
 import { Backdrop } from "../ui/Backdrop";
@@ -29,7 +29,7 @@ const TEXT_W = RIGHT - TEXT_X;
 const BUTTON_Y = PANEL.y + PANEL.height - PANEL_PAD - 21;
 
 export class HelpScreen extends Screen {
-  private readonly game: Game;
+  private readonly game: GameContext;
   private readonly backdrop: Backdrop;
   private readonly focus = new FocusGroup();
   private readonly pageLayer = new Container();
@@ -45,7 +45,7 @@ export class HelpScreen extends Screen {
    */
   private renderToken = 0;
 
-  constructor(game: Game) {
+  constructor(game: GameContext) {
     super();
     this.game = game;
     this.backdrop = new Backdrop(

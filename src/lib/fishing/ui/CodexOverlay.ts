@@ -1,5 +1,5 @@
 import { Container, Graphics, Rectangle } from "pixi.js";
-import type { Game } from "../Game";
+import type { GameContext } from "../GameContext";
 import type { AreaId } from "../types";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";
@@ -14,7 +14,7 @@ export class CodexOverlay extends Container {
   private readonly view: CodexView;
 
   constructor(
-    game: Game,
+    game: GameContext,
     areaId: AreaId,
     closeLabel: string,
     onClose: () => void,

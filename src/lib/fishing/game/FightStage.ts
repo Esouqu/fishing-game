@@ -1,13 +1,14 @@
 import type { Container } from "pixi.js";
-import type { Game } from "../Game";
+import type { GameContext } from "../GameContext";
 import type { FishSpecies } from "../config";
 import type { FishingScene } from "./scenes/FishingScene";
 import type { JuiceFx } from "./JuiceFx";
 import { Minigame, type MinigameResult } from "./Minigame";
+
 import type { FightFocus } from "./FightFocus";
 
 export interface FightStageDeps {
-  game: Game;
+  game: GameContext;
   scene: FishingScene;
   juice: JuiceFx;
   /** Layer that hosts the minigame view. */
@@ -41,7 +42,7 @@ const LAND_TICK = 1.15;
  * decides when a fight starts, receives its result and disposes of it.
  */
 export class FightStage {
-  private readonly game: Game;
+  private readonly game: GameContext;
   private readonly scene: FishingScene;
   private readonly juice: JuiceFx;
   private readonly fightLayer: Container;

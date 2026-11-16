@@ -14,10 +14,6 @@ import { mixSource, type AudioMix } from "./audioMix";
  * 3. A download of the block, for browsers that refuse clipboard access.
  */
 
-/** Marker lines that delimit the generated block in `audioMix.ts`. */
-const BLOCK_START = "// #region audio-mix";
-const BLOCK_END = "// #endregion audio-mix";
-
 /** Dev-server endpoint registered by the audio-mix Vite plugin. */
 const ENDPOINT = `${import.meta.env.BASE_URL}__fishing/audio-mix`;
 
@@ -79,11 +75,4 @@ export async function saveOrDownloadMix(mix: AudioMix): Promise<string> {
   if (await writeMixToSource(mix)) return TEXT.devtools.savedToCode;
   downloadMixSource(mix);
   return TEXT.devtools.savedToFile;
-}
-
-/** True when a block looks like a complete generated region. */
-export function isMixBlock(text: string): boolean {
-  const start = text.indexOf(BLOCK_START);
-  const end = text.indexOf(BLOCK_END);
-  return start >= 0 && end > start && text.includes("AUDIO_MIX");
 }

@@ -1,5 +1,5 @@
 import type { SceneLayout } from "../areas";
-import { FIGHT_RADIUS } from "./fightModel";
+import { FIGHT_RADIUS } from "./fight";
 
 /**
  * Keeping the ring off the bank and off the angler.

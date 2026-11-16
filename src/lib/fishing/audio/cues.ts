@@ -1,0 +1,153 @@
+import { AudioCore } from "./core";
+import {
+  CAST_BLEND,
+  PERFECT_JINGLE_DELAY,
+  PERFECT_JINGLE_LEVEL,
+} from "./catalog";
+
+/** One-shot cues: interface clicks, fishing feedback and fight telegraphs. */
+export abstract class CueBank extends AudioCore {
+  protected abstract stopCharge(release?: number): void;
+
+  // ------------------------------------------------------------ interface
+
+  hover(): void {
+    this.play("select", this.mix.hover, 1 + Math.random() * 0.06, 0, true);
+  }
+
+  click(): void {
+    this.play("button", this.mix.click, 1 + Math.random() * 0.04, 0, true);
+  }
+
+  back(): void {
+    this.play("cancel", this.mix.back, 1, 0, true);
+  }
+
+  // --------------------------------------------------------------- fishing
+
+  cast(): void {
+    this.play("cast", this.mix.cast, 1 + Math.random() * 0.03);
+    // The throw owns the hand-over: the whoosh is already sounding when the
+    // wind-up starts to leave, so the two overlap for `CAST_BLEND`.
+    this.stopCharge(CAST_BLEND);
+  }
+
+  splash(): void {
+    this.play("waterScoop", this.mix.splash, 1 + Math.random() * 0.05);
+  }
+
+  /** Bobber touches the water. */
+  plop(): void {
+    this.play("bob", this.mix.plop, 1 + Math.random() * 0.04);
+  }
+
+  bite(): void {
+    this.play("bite", this.mix.bite);
+  }
+
+  hook(): void {
+    this.play("jingle", this.mix.hook);
+  }
+
+  nibble(): void {
+    this.play("waterLap", this.mix.nibble, 1 + Math.random() * 0.06);
+  }
+
+  catchFish(perfect: boolean): void {
+    if (!perfect) {
+      this.play("reward", this.mix.catchCommon);
+      return;
+    }
+    this.play("achievement", this.mix.catchPerfect);
+    // The perfect catch is the one moment the game is allowed to show off, so
+    // the fanfare is answered by a short jingle a beat later. The delay is what
+    // makes it read as a flourish: played together the two cues just sound
+    // louder, played apart the second one lands as a reply.
+    this.play(
+      "jingle",
+      this.mix.catchPerfect * PERFECT_JINGLE_LEVEL,
+      1,
+      PERFECT_JINGLE_DELAY,
+    );
+  }
+
+  escape(): void {
+    this.play("escape", this.mix.escape);
+  }
+
+  /**
+   * Telegraph: a strong dash is about to happen.
+   *
+   * The dash is announced by the bright `crit` chime. It is the one cue in the
+   * mix with a hard, high onset, so it cuts through a fight that already has a
+   * reel sustain under it, and it is over before the dash resolves — the ear
+   * gets the warning without the sound running into the move it announces.
+   */
+  warn(): void {
+    this.play("crit", this.mix.warn, 1 + Math.random() * 0.04);
+  }
+
+  /**
+   * Successful counter-pull: the rod snaps the line taut and the dash is
+   * cancelled.
+   *
+   * A quarter-second, very bright swipe. The metallic parry that used to play
+   * here is a sword block — it is the single most out-of-place cue in a
+   * fishing fight.
+   */
+  counter(): void {
+    this.play("lineSnap", this.mix.counter, 1 + Math.random() * 0.03);
+  }
+
+  /** The fish is tired and can be landed. */
+  ready(): void {
+    this.play("shiny", this.mix.ready);
+  }
+
+  /**
+   * Landing window opened: RMB/F or a tap on the tired fish now lands it.
+   *
+   * It is the bite, note for note: the same cue that told the player "a fish is
+   * on" is the one that now tells them "it is spent, take it". That keeps the
+   * round to one signal for "act now" instead of asking the ear to learn a
+   * second one at the exact moment the hands have to move.
+   */
+  landReady(): void {
+    this.play("bite", this.mix.landReady);
+  }
+
+  /** Quiet reminder while the landing window stays open. */
+  landTick(): void {
+    this.play("blip1", this.mix.landTick, 1.9);
+  }
+
+  /** Soft tick when the charge enters the luck zone. */
+  zoneTick(): void {
+    this.play("blip1", this.mix.landTick * 0.6, 1.9);
+  }
+
+  /** Landing strike attempted too early. */
+  resist(): void {
+    this.play("thud", this.mix.resist);
+  }
+
+  /** Grip reserve burned out: the line tears loose for a moment. */
+  gripOut(): void {
+    this.play("escape", this.mix.gripOut);
+  }
+
+  /**
+   * Landing inside the luck zone: a short, quiet sparkle, not a coin jingle.
+   */
+  luck(): void {
+    this.play("shiny", this.mix.luck, 1.08);
+  }
+
+  comboBreak(): void {
+    this.play("cancel", this.mix.comboBreak);
+  }
+
+  newRecord(): void {
+    this.play("newRecord", this.mix.newRecord);
+  }
+}

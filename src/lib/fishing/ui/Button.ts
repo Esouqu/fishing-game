@@ -144,14 +144,6 @@ export class Button extends Container implements Focusable {
     this.redraw();
   }
 
-  get buttonWidth(): number {
-    return this.widthValue;
-  }
-
-  get buttonHeight(): number {
-    return this.heightValue;
-  }
-
   /**
    * True when this button's fill is light enough to need dark copy. Primary,
    * secondary and selected buttons are light; ghost and danger are not.
@@ -169,11 +161,6 @@ export class Button extends Container implements Focusable {
       setText(this.labelText, label);
       this.layoutContent();
     }
-  }
-
-  setIcon(icon: (g: Graphics) => void): void {
-    this.iconLayer.clear();
-    icon(this.iconLayer);
   }
 
   setEnabled(enabled: boolean): void {

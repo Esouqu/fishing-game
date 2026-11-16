@@ -17,7 +17,7 @@ export async function createFishingGame(
 }
 
 export { Game } from "./Game";
-export type { CodexReturn } from "./Game";
+export type { CodexReturn } from "./types";
 export { AREAS, AREA_BY_ID, DEFAULT_AREA_ID } from "./areas";
 export type { AreaDef, SceneLayout } from "./areas";
 export {

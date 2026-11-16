@@ -1,5 +1,5 @@
 import { Container, Graphics, Rectangle, Text } from "pixi.js";
-import type { Game } from "../Game";
+import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";
 import { TEXT } from "../texts";
@@ -113,7 +113,7 @@ function allocate(lengths: readonly number[], total: number): number[] {
 }
 
 export class WeatherForecast extends Container {
-  private readonly game: Game;
+  private readonly game: GameContext;
   private readonly areaId: AreaId;
   /** Band, separators, the now marker and the live column's progress fill. */
   private readonly band = new Graphics();
@@ -126,7 +126,7 @@ export class WeatherForecast extends Container {
   /** What the band was last painted from, so a still frame repaints nothing. */
   private painted = "";
 
-  constructor(game: Game, areaId: AreaId) {
+  constructor(game: GameContext, areaId: AreaId) {
     super();
     this.game = game;
     this.areaId = areaId;

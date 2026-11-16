@@ -1,5 +1,5 @@
 import { Graphics, Sprite, Text } from "pixi.js";
-import type { Game } from "../Game";
+import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { AREAS, type AreaDef } from "../areas";
 import { TEXT, WEATHER_LABEL } from "../texts";
@@ -64,7 +64,7 @@ export type AreaPickOrigin = "menu" | "game";
  * lake, and the selection has a visible state to confirm what will start.
  */
 export class AreaSelectScreen extends Screen {
-  private readonly game: Game;
+  private readonly game: GameContext;
   private readonly pickOrigin: AreaPickOrigin;
   private backdrop: Backdrop;
   private readonly focus = new FocusGroup();
@@ -79,7 +79,7 @@ export class AreaSelectScreen extends Screen {
   /** Per-card caption and the two marks that bracket it. */
   private readonly nameMarks: Array<{ left: Text; right: Text }> = [];
 
-  constructor(game: Game, origin: AreaPickOrigin = "menu") {
+  constructor(game: GameContext, origin: AreaPickOrigin = "menu") {
     super();
     this.game = game;
     this.pickOrigin = origin;

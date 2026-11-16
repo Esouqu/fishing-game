@@ -270,9 +270,4 @@ export class FogLayer extends Container {
       );
     }
   }
-
-  /** Haze opacity for debugging and screenshots. */
-  get density(): number {
-    return this.sprites[0]?.sprite.alpha ?? 0;
-  }
 }

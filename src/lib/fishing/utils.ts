@@ -7,9 +7,6 @@ export const lerp = (a: number, b: number, t: number): number =>
 export const randRange = (min: number, max: number): number =>
   min + Math.random() * (max - min);
 
-export const randInt = (min: number, max: number): number =>
-  Math.floor(randRange(min, max + 1));
-
 export const chance = (probability: number): boolean =>
   Math.random() < probability;
 
@@ -17,12 +14,6 @@ export const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 
 export const easeInOutQuad = (t: number): number =>
   t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-
-export const easeOutBack = (t: number): number => {
-  const c1 = 1.70158;
-  const c3 = c1 + 1;
-  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-};
 
 export function pickWeighted<T>(
   items: readonly T[],
@@ -46,12 +37,4 @@ export function formatClock(minutes: number): string {
     .padStart(2, "0");
   const mm = (m % 60).toString().padStart(2, "0");
   return `${hh}:${mm}`;
-}
-
-export function formatNumber(value: number): string {
-  return Math.round(value).toString();
-}
-
-export function shakeIndex(length: number): number {
-  return randInt(0, Math.max(0, length - 1));
 }

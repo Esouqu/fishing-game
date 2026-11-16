@@ -82,6 +82,9 @@ export interface ProgressRepository {
 
 export type StartScreen = "menu" | "game";
 
+/** Where the codex returns when it closes. */
+export type CodexReturn = "menu" | "areas";
+
 export interface FishingGameOptions {
   /** Element the canvas is appended to. Required. */
   container: HTMLElement;

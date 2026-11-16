@@ -1,4 +1,4 @@
-import type { Game } from "../Game";
+import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { TEXT } from "../texts";
 import { Screen } from "../ui/Screen";
@@ -12,13 +12,13 @@ const MAIN = { x: 130, y: 92, width: 220, height: 28, gap: 8 };
 const FOOTER = { y: 206, height: 24, width: 106, gap: 8 };
 
 export class MenuScreen extends Screen {
-  private readonly game: Game;
+  private readonly game: GameContext;
   private readonly backdrop: Backdrop;
   private readonly focus = new FocusGroup();
   private readonly buttons: Button[] = [];
   private muteButton!: Button;
 
-  constructor(game: Game) {
+  constructor(game: GameContext) {
     super();
     this.game = game;
     game.audio.setAmbience(game.areaId);

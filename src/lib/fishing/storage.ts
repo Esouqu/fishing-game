@@ -2,7 +2,6 @@ import { normalizeMix, type AudioMix } from "./audioMix";
 
 interface SettingsData {
   muted?: boolean;
-  tutorialSeen?: boolean;
   /**
    * Audio balance tuned in the dev panel. It only overrides the channels it
    * names, so saving the mix into `audioMix.ts` still wins for the rest.
@@ -29,9 +28,6 @@ export class SettingsStore {
       const record = parsed as Record<string, unknown>;
       const data: SettingsData = {};
       if (typeof record.muted === "boolean") data.muted = record.muted;
-      if (typeof record.tutorialSeen === "boolean") {
-        data.tutorialSeen = record.tutorialSeen;
-      }
       const mix = normalizeMix(
         record.mix && typeof record.mix === "object"
           ? (record.mix as Record<string, number>)
@@ -58,15 +54,6 @@ export class SettingsStore {
 
   set muted(value: boolean) {
     this.data.muted = value;
-    this.write();
-  }
-
-  get tutorialSeen(): boolean {
-    return this.data.tutorialSeen === true;
-  }
-
-  set tutorialSeen(value: boolean) {
-    this.data.tutorialSeen = value;
     this.write();
   }
 

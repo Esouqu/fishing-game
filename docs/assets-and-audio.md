@@ -1,0 +1,33 @@
+# Ассеты и звук
+
+## Ассеты
+
+- `assetspacks/` — исходные паки, в git не входят.
+- `pnpm assets` = `sync-assets.mjs` (копирование в `public/assets/`) + `squeeze-audio.mjs`
+  (WAV → моно ~22 кГц).
+- Одиночная графика (ели, куст, помощь) импортируется из `src/assets/` и хешируется Vite.
+- `pnpm check:assets` проверяет 40 рыб, шрифты, звуки, курсоры и `favicon.png`.
+- Не удалять вручную сгенерированные файлы из `public/assets/`: они нужны GitHub Pages.
+
+Шрифт — Tiny5 (OFL): четыре woff2-сабсета в `public/assets/fishing/fonts/`;
+`assets.ts` грузит их через `FontFace` и `unicodeRange`, поэтому качается только нужный.
+`ice-480.webp` — фон морозного слоя, грузится в фоне.
+
+## Звук
+
+`audio/`:
+
+- `catalog.ts` — имена файлов, UI/round-наборы, beds по водоёмам и погоде, тайминги;
+- `core.ts` — AudioContext, master/world bus, кэш буферов, mute/pause;
+- `cues.ts` — одноразовые сигналы;
+- `loops.ts` — катушка и синтезированный wind-up;
+- `ambience.ts` — кроссфейд water/weather beds;
+- `AudioKit.ts` — фасад, `preview` для панели.
+
+Все громкости — в `audioMix.ts` (не в местах вызова). Dev-панель `F2`:
+- ползунки, предпрослушивание, `СБРОС`, `КОПИЯ`, `В КОД`;
+- `В КОД` пишет блок между `// #region audio-mix` и `// #endregion audio-mix`
+  через Vite-middleware; маркеры не удалять.
+
+`F3` — панель погоды, применяет фронт к текущему водоёму и сохраняет в `world:v1`.
+Обе панели работают только в dev-сборке.

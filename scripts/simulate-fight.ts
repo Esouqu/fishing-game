@@ -18,7 +18,7 @@ import {
 } from "../src/lib/fishing/config";
 import { isWindowActive } from "../src/lib/fishing/fish";
 import { hasBehaviorScript } from "../src/lib/fishing/game/behaviors";
-import { FightModel } from "../src/lib/fishing/game/fightModel";
+import { FightModel } from "../src/lib/fishing/game/fight";
 
 type Policy = "passive" | "hold" | "pulse" | "skilled";
 

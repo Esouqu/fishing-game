@@ -1,6 +1,6 @@
 import { Sprite, Texture } from "pixi.js";
 import { VIEW } from "../config";
-import { FIGHT_RADIUS } from "./fightModel";
+import { FIGHT_RADIUS } from "./fight";
 import { ringOutline } from "./fightRing";
 
 /**

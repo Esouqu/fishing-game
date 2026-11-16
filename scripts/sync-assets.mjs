@@ -25,8 +25,8 @@ const critters = join(crittersRoot, "Freshwater Fish");
 
 /**
  * Only art that is addressed by a runtime URL lives here. Single-use images
- * (winter trees, bushes, rocks, bucket, help pages) are imported from
- * `src/assets/` instead, so the bundler can hash or inline them.
+ * (winter trees, bushes, help pages) are imported from `src/assets/` instead,
+ * so the bundler can hash or inline them.
  *
  * @type {Array<[string, string]>} source → destination (relative to out)
  */
@@ -42,7 +42,6 @@ const files = [
     "sign.png",
   ],
   [join(tinyCoast, "Boat", "boat_base_64x64.png"), "boat.png"],
-  [join(tinyCoast, "Other", "fishing_rod_16x16.png"), "fishing-rod.png"],
 ];
 
 /**

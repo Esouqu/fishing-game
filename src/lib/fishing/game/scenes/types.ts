@@ -1,6 +1,5 @@
 import type { Container, Graphics } from "pixi.js";
-import type { AreaDef, SceneLayout } from "../../areas";
-import type { AssetBag } from "../../assets";
+import type { SceneLayout } from "../../areas";
 
 /**
  * An area renderer draws everything that makes a water body recognizable.
@@ -33,9 +32,4 @@ export interface SceneRenderer {
   animate?(time: number): void;
   /** True when the point is open water the bobber/cursor may use. */
   isWater(x: number, y: number): boolean;
-}
-
-export interface SceneContext {
-  assets: AssetBag;
-  area: AreaDef;
 }

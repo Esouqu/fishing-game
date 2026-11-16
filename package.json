@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "check:structure": "node scripts/check-structure.mjs",
+    "check": "pnpm typecheck && pnpm lint && pnpm check:structure && pnpm sim",
     "check:assets": "node scripts/check-pages-assets.mjs",
     "assets": "node scripts/sync-assets.mjs && node scripts/squeeze-audio.mjs",
     "measure": "node scripts/measure-load.mjs",

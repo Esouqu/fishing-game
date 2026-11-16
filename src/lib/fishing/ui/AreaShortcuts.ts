@@ -1,5 +1,5 @@
 import { Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
-import type { Game } from "../Game";
+import type { GameContext } from "../GameContext";
 import { AREAS } from "../areas";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";
@@ -44,7 +44,11 @@ export class AreaShortcuts extends Container {
   }> = [];
   private elapsed = 0;
 
-  constructor(game: Game, current: AreaId, onPick: (areaId: AreaId) => void) {
+  constructor(
+    game: GameContext,
+    current: AreaId,
+    onPick: (areaId: AreaId) => void,
+  ) {
     super();
     const count = AREAS.length;
     const index = Math.max(
@@ -108,12 +112,12 @@ export class AreaShortcuts extends Container {
 
 /** A single travel card: a still of the water body with its name on a strip. */
 class ShortcutCard extends Container {
-  private readonly game: Game;
+  private readonly game: GameContext;
   private readonly hoverLayer = new Graphics();
   private available = true;
 
   constructor(
-    game: Game,
+    game: GameContext,
     texture: Texture,
     label: string,
     onClick: () => void,

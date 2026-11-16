@@ -1,5 +1,5 @@
 import { Container, Graphics, Rectangle } from "pixi.js";
-import type { Game } from "../Game";
+import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";
 import { TEXT } from "../texts";
@@ -33,11 +33,11 @@ const BUTTON_Y = PANEL.y + PANEL_PAD + 22 + 8;
  * the menu only renders the panel and tracks which button is focused.
  */
 export class PauseMenu extends Container {
-  private readonly game: Game;
+  private readonly game: GameContext;
   private readonly focus = new FocusGroup();
   private readonly soundButton: Button;
 
-  constructor(game: Game, handlers: PauseMenuHandlers) {
+  constructor(game: GameContext, handlers: PauseMenuHandlers) {
     super();
     this.game = game;
     this.visible = false;

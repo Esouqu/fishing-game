@@ -194,8 +194,6 @@ export type { FishSpecies } from "./fish";
 export {
   FISH,
   FISH_BY_ID,
-  TIER_COLOR,
-  TIER_LABEL,
   fishDescription,
   fishInArea,
   fullWeatherLabel,

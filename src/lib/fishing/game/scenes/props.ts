@@ -23,7 +23,7 @@ function noise(a: number, b: number): number {
  * Scale the pail is drawn at. It is a background prop: big enough to read as a
  * bucket beside the boat, small enough that it never competes with the float.
  */
-export const BUCKET_SCALE = 1;
+const BUCKET_SCALE = 1;
 
 /**
  * A snowdrift, ~26 × 7 px at `scale` 1, sitting on `(x, y)`.

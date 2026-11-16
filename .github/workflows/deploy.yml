@@ -45,6 +45,9 @@ jobs:
             echo "assetspacks/ is absent; using existing public assets if present."
           fi
 
+      - name: Check code and balance
+        run: pnpm check
+
       - name: Verify deploy assets
         run: pnpm check:assets
 

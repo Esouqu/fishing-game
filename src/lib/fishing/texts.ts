@@ -1,4 +1,4 @@
-import type { Temperament, WaterKind, WeatherId } from "./types";
+import type { FishTier, Temperament, WaterKind, WeatherId } from "./types";
 
 export interface FishText {
   name: string;
@@ -203,6 +203,13 @@ export const WATER_ADJ: Record<WaterKind, string> = {
   lake: "озерная",
   sea: "морская",
   river: "речная",
+};
+
+/** Rarity label used by badges and the codex tooltip. */
+export const TIER_LABEL: Record<FishTier, string> = {
+  common: "ОБЫЧНАЯ",
+  rare: "РЕДКАЯ",
+  legendary: "ЛЕГЕНДАРНАЯ",
 };
 
 /** Fixed species temperament, shown in the codex. */

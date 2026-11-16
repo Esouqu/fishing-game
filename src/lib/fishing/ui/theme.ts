@@ -244,32 +244,6 @@ export function drawPanel(
   }
 }
 
-export function drawSoundIcon(
-  g: Graphics,
-  muted: boolean,
-  color: number = UI.text,
-): void {
-  g.clear();
-  g.rect(2, 6, 3, 4).fill(color);
-  g.moveTo(5, 6)
-    .lineTo(9, 3)
-    .lineTo(9, 13)
-    .lineTo(5, 10)
-    .closePath()
-    .fill(color);
-  if (muted) {
-    g.rect(11, 6, 1, 1).fill(UI.rose);
-    g.rect(12, 7, 1, 2).fill(UI.rose);
-    g.rect(13, 9, 1, 1).fill(UI.rose);
-    g.rect(11, 10, 1, 1).fill(UI.rose);
-    g.rect(10, 7, 1, 2).fill(UI.rose);
-    g.rect(14, 7, 1, 2).fill(UI.rose);
-  } else {
-    g.rect(11, 6, 1, 4).fill(color);
-    g.rect(13, 4, 1, 8).fill({ color, alpha: 0.8 });
-  }
-}
-
 export function drawPauseIcon(g: Graphics, color: number = UI.text): void {
   g.clear();
   g.rect(4, 3, 3, 10).fill(color);
@@ -279,33 +253,6 @@ export function drawPauseIcon(g: Graphics, color: number = UI.text): void {
 export function drawPlayIcon(g: Graphics, color: number = UI.text): void {
   g.clear();
   g.moveTo(5, 3).lineTo(12, 8).lineTo(5, 13).closePath().fill(color);
-}
-
-export function drawChevron(
-  g: Graphics,
-  x: number,
-  y: number,
-  direction: "left" | "right",
-  color: number = UI.ink,
-): void {
-  g.clear();
-  if (direction === "left") {
-    g.moveTo(x + 5, y)
-      .lineTo(x, y + 4)
-      .lineTo(x + 5, y + 8)
-      .stroke({
-        width: 2,
-        color,
-      });
-  } else {
-    g.moveTo(x, y)
-      .lineTo(x + 5, y + 4)
-      .lineTo(x, y + 8)
-      .stroke({
-        width: 2,
-        color,
-      });
-  }
 }
 
 /** Small pixel fish silhouette used as a decorative bullet. */
