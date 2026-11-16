@@ -58,10 +58,13 @@ export class RiverScenery extends RiverBanks {
   }
 
   protected drawFarProps(props: Container): void {
+    // The far bank carries its spruces at full size (see `buildTrees`), so its
+    // bushes are drawn at the same apparent size instead of a distant scale:
+    // the bay's bushes sit between 0.8 and 1.1 of the sheet.
     for (const [x, scale] of [
-      [196, 0.72],
-      [268, 0.56],
-      [356, 0.64],
+      [196, 0.88],
+      [268, 0.8],
+      [356, 0.84],
     ] as const) {
       // The mound is pushed up the bank: centred on the waterline it spilled
       // over the ice rim and read as snow floating on the river.

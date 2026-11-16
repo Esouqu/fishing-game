@@ -8,6 +8,8 @@ import {
   FAR_BANK,
   NEAR_BANK,
   TREE_BODY,
+  TREE_MAX,
+  TREE_MIN,
   bankAt,
   noise,
   type BankTree,
@@ -104,10 +106,16 @@ export class RiverBase {
    * z-order, never by the scale.
    */
   protected buildTrees(): void {
+    // One shared size band for every fir in the round. The lake and the bay draw
+    // their spruces between roughly 0.9 and 1.2 of the sheet; the river used to
+    // reach 1.5 on the two firs framing the near corner, which read as a
+    // different zoom level on the same frame. The band is applied here, at the
+    // source, so a hand-placed crown cannot drift out of it either.
+    const fit = (height: number): number => clamp(height, TREE_MIN, TREE_MAX);
     let x = -8;
     let index = 0;
     while (x < VIEW.width + 10) {
-      const height = 52 + noise(index, 1) * 16;
+      const height = fit(52 + noise(index, 1) * 16);
       // Set back from the waterline, so the back row reads as a second rank of
       // forest instead of being buried behind the front row.
       const base = this.farAt(x) - 22 - noise(index, 2) * 16;
@@ -133,7 +141,7 @@ export class RiverBase {
         index += 1;
         continue;
       }
-      const height = 56 + noise(index, 6) * 16;
+      const height = fit(56 + noise(index, 6) * 16);
       // A strip of snow between the trunk and the ice rim, so no fir is
       // planted right on the edge of the water.
       const base = this.farAt(x) - 11 - noise(index, 9) * 5;
@@ -155,8 +163,8 @@ export class RiverBase {
 
     // Three large firs crown the reach where the far bank is still in frame.
     for (const tree of [
-      { x: 462, back: 20, height: 70 },
-      { x: 478, back: 30, height: 76 },
+      { x: 462, back: 20, height: 68 },
+      { x: 478, back: 30, height: 68 },
       { x: 236, back: 14, height: 60 },
     ]) {
       this.bankTrees.push({
@@ -170,9 +178,10 @@ export class RiverBase {
     }
 
     // The pair framing the near corner. They are the closest trees in the
-    // frame, so they keep the full colour of the sprite.
+    // frame, so they keep the full colour of the sprite — but not a bigger one:
+    // the whole round draws its firs inside the same band.
     for (const tree of [
-      { x: 10, drop: 58, height: 82, tint: 0xc9dbd1 },
+      { x: 10, drop: 58, height: 68, tint: 0xc9dbd1 },
       { x: 38, drop: 76, height: 66, tint: 0xb9cec4 },
     ]) {
       this.bankTrees.push({

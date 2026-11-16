@@ -256,10 +256,11 @@ export class PoolScenery extends PoolWater {
       .fill({ color: shade, alpha: 0.32 });
     boat.addChild(shadow);
 
-    // Frame 1 is the vertical hull, which reads as a boat seen from above.
+    // Frame 1 is the vertical hull, which reads as a boat seen from above. It is
+    // drawn at the same size as the bay's rowboat: one sheet, one drawn size.
     const hull = new Sprite(this.assets.boat[1] ?? this.assets.boat[0]);
     hull.anchor.set(0.5, 0.58);
-    hull.scale.set(0.58);
+    hull.scale.set(0.66);
     boat.addChild(hull);
 
     const snow = new Graphics();

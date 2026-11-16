@@ -115,6 +115,16 @@ export interface BankTree {
 /** Height of the drawn tree inside the 52×60 sprite, in sprite pixels. */
 export const TREE_BODY = 55;
 
+/**
+ * Shared size band for every fir in the round, in sprite pixels.
+ *
+ * The lake and the bay plant their spruces between roughly 0.95 and 1.25 of the
+ * sheet; the river keeps the same band so switching water does not change the
+ * apparent zoom of the forest. Depth is carried by the tint, not the scale.
+ */
+export const TREE_MIN = 52;
+export const TREE_MAX = 68;
+
 /** Smoothstep between control points so the banks never kink. */
 export function bankAt(points: readonly BankPoint[], x: number): number {
   const first = points[0];

@@ -127,7 +127,9 @@ export class CoveScenery extends CoveShore {
 
     const hull = new Sprite(this.assets.boat[0] ?? this.assets.boat[1]);
     hull.anchor.set(0.5, 0.55);
-    hull.scale.set(0.74);
+    // Same drawn size as the lake's boat: both are frames of the one 64 px
+    // rowboat sheet, so they must not read as two different vessels.
+    hull.scale.set(0.66);
     boat.addChild(hull);
 
     // The pale band under the keel is the boat's painted boot stripe, not
