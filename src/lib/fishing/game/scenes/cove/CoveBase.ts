@@ -54,6 +54,18 @@ export class CoveBase {
     return SHORE_X + Math.sin(y * 0.065) * 3.2 + Math.sin(y * 0.17 + 1.7) * 1.6;
   }
 
+  /**
+   * Centre for a snowdrift that has to stay on the bank.
+   *
+   * A drift is drawn around its centre, so mounds planted under the shoreline
+   * trees hung their waterward half over the water and read as snow sliding
+   * off the bank. The drift is pulled back until its lip stops two pixels
+   * short of the bank edge for its row.
+   */
+  protected driftX(x: number, y: number, scale: number): number {
+    return Math.min(x, this.shoreEdgeAt(y) - 2 - 13 * scale);
+  }
+
   protected addWaterRipples(): void {
     for (let i = 0; i < 44; i += 1) {
       this.ripples.push({

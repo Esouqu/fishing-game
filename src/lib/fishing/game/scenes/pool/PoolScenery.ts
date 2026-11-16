@@ -24,7 +24,7 @@ export class PoolScenery extends PoolWater {
       // the bottom-centre fir put its canopy straight over his head and rod.
       // His mooring is a clearing: no foreground tree is planted on his column.
       if (this.hidesAngler(x, y, size, texture)) continue;
-      drawSnowDrift(props, x, y, size, this.palette);
+      this.placeDrift(props, x, y, size);
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5, 1);
       sprite.position.set(x, y);
@@ -54,7 +54,7 @@ export class PoolScenery extends PoolWater {
       backTrees.push({ x, y });
       const size = 0.78 + Math.abs(jitter) * 0.42;
       if (this.hidesAngler(x, y, size, trees[i % trees.length])) continue;
-      drawSnowDrift(props, x, y, size * 0.9, this.palette);
+      this.placeDrift(props, x, y, size * 0.9);
       const sprite = new Sprite(trees[i % trees.length]);
       sprite.anchor.set(0.5, 1);
       sprite.position.set(x, y);
@@ -80,7 +80,7 @@ export class PoolScenery extends PoolWater {
       [432, 266, 0.75],
     ];
     for (const [x, y, size] of corners) {
-      drawSnowDrift(props, x, y, size, this.palette);
+      this.placeDrift(props, x, y, size);
       const sprite = new Sprite(trees[Math.round(x + y) % trees.length]);
       sprite.anchor.set(0.5, 1);
       sprite.position.set(x, y);
@@ -99,7 +99,7 @@ export class PoolScenery extends PoolWater {
       const x = CENTER.x + Math.cos(angle) * RADIUS.x * scale;
       const y = CENTER.y + Math.sin(angle) * RADIUS.y * scale;
       const size = 0.8 + (i % 3) * 0.15;
-      drawSnowDrift(props, x, y, size * 0.6, this.palette);
+      this.placeDrift(props, x, y, size * 0.6);
       drawShoreStone(props, x, y - 1, size * 0.85, this.palette);
     }
 
@@ -110,6 +110,43 @@ export class PoolScenery extends PoolWater {
 
     this.drawBoat(props);
     this.drawLampFixture(props);
+  }
+
+  /**
+   * A drift whose footprint stays on the bank.
+   *
+   * The firs of the near ring stand on the shoreline itself, so a mound drawn
+   * around a trunk could hang over the surface and read as snow afloat. The
+   * drift is nudged towards the middle of the lake, one pixel at a time, until
+   * every probe of its foot is dry.
+   */
+  protected placeDrift(
+    props: Container,
+    x: number,
+    y: number,
+    scale: number,
+  ): void {
+    const half = 13 * scale;
+    const foot = 4.2 * scale;
+    const probes: Array<[number, number]> = [
+      [half, 0],
+      [-half, 0],
+      [0, -foot],
+      [half * 0.6, foot * 0.6],
+      [-half * 0.6, foot * 0.6],
+    ];
+    const wet = (px: number, py: number): boolean =>
+      probes.some(([ox, oy]) => this.isWater(px + ox, py + oy));
+    const inward = Math.hypot(CENTER.x - x, CENTER.y - y) || 1;
+    const ux = (CENTER.x - x) / inward;
+    const uy = (CENTER.y - y) / inward;
+    let cx = x;
+    let cy = y;
+    for (let step = 0; step < 24 && wet(cx, cy); step += 1) {
+      cx += ux;
+      cy += uy;
+    }
+    drawSnowDrift(props, cx, cy, scale, this.palette);
   }
 
   protected drawShoreSign(props: Container, angle: number): void {

@@ -17,7 +17,13 @@ export class CoveScenery extends CoveShore {
     props.addChild(dock);
 
     const addMound = (item: ScenerySpot, scale: number): void => {
-      drawSnowDrift(props, item.x, item.y, scale, this.palette);
+      drawSnowDrift(
+        props,
+        this.driftX(item.x, item.y, scale),
+        item.y,
+        scale,
+        this.palette,
+      );
     };
 
     const treeSpots: ScenerySpot[] = [
@@ -60,7 +66,13 @@ export class CoveScenery extends CoveShore {
       { x: 48, y: 248, scale: 0.8 },
     ];
     rockSpots.forEach((item) => {
-      drawSnowDrift(props, item.x, item.y, item.scale * 0.6, this.palette);
+      drawSnowDrift(
+        props,
+        this.driftX(item.x, item.y, item.scale * 0.6),
+        item.y,
+        item.scale * 0.6,
+        this.palette,
+      );
       drawShoreStone(
         props,
         item.x,
