@@ -2,11 +2,16 @@ import { Container, Graphics, Text } from "pixi.js";
 import { TEXT } from "../texts";
 import type { WeatherId } from "../types";
 import { easeOutCubic, formatClock, lerp } from "../utils";
-import type { ForecastStep } from "../world";
 import { mixColor } from "../world";
 import { UI } from "./palette";
 import { drawWeatherIcon, makeText, WEATHER_TINT } from "./theme";
-import { RAIL, railWidth } from "./weatherRailLayout";
+import {
+  periodWidth,
+  RAIL,
+  RAIL_SLOTS,
+  railWidth,
+  type RailPeriod,
+} from "./weatherRailLayout";
 
 /** How long the captions take to fade in after a rebuild, in seconds. */
 const FADE = 0.2;
@@ -18,14 +23,14 @@ const SLOT = RAIL.cardWidth + RAIL.gap;
 /** One period on the strip: its card, its glyph, its caption. */
 interface Card {
   weather: WeatherId;
-  /** The period the player is standing in: raised card, bright caption. */
+  /** Slots this period is drawn across; the dividers inside collapse. */
+  slots: number;
+  /** The period the player is standing in: bright caption, same well. */
   live: boolean;
   node: Container;
   well: Graphics;
   icon: Graphics;
   label: Text;
-  /** 0..1 fill of the raised «now» well, animated when a front is promoted. */
-  glow: number;
 }
 
 /** One card's journey to its new slot in a sliding row. */
@@ -55,13 +60,18 @@ interface Slide {
 
 /**
  * The row of weather cards inside {@link WeatherForecast}: glyph and caption
- * centred together on a fixed-size card, clipped to the panel's inner face.
+ * centred together on a card, clipped to the panel's inner face.
+ *
+ * The row is always {@link RAIL_SLOTS} slots wide. A period that folded several
+ * fronts together is drawn across one slot per front with no separator between
+ * them, so the panel never changes width and the eye still sees how long a sky
+ * will last.
  *
  * When a front expires the row does not blink: every card slides one place to
  * the left, the card that becomes «now» crossfades its clock time into the live
- * caption while its well lights up, and the front that just entered the forecast
- * slides in from the right edge. A full re-layout (a different number of
- * periods) still uses a soft fade.
+ * caption, and the front that just entered the forecast slides in from the
+ * right edge. A change that also re-shapes the cards uses a soft fade instead —
+ * widths cannot slide, and a card that changed width mid-roll would jump.
  */
 export class WeatherRail extends Container {
   /** Card nodes, all in rail coordinates, clipped to the panel's inner face. */
@@ -69,8 +79,8 @@ export class WeatherRail extends Container {
   /** Inner face of the panel: cards slide in and out through this mask. */
   private readonly clip = new Graphics();
   private cards: Card[] = [];
-  /** Panel width the row is laid out for. */
-  span = railWidth(4);
+  /** Panel width the row is laid out for: fixed, the rail never resizes. */
+  span = railWidth(RAIL_SLOTS);
   /** Fade progress of `art`, 0..1, used by whole-row rebuilds. */
   private appear = 1;
   /** Slide in flight, if any. */
@@ -89,11 +99,16 @@ export class WeatherRail extends Container {
     return this.cards.map((card) => card.weather);
   }
 
+  /** Slots taken by each card; a roll needs these to line up. */
+  slots(): number[] {
+    return this.cards.map((card) => card.slots);
+  }
+
   /**
    * Refreshes the clock captions in place. Used when the row's skies did not
    * change but the schedule behind them did (a debug pin, a re-rolled queue).
    */
-  retime(periods: readonly ForecastStep[], minutes: number): void {
+  retime(periods: readonly RailPeriod[], minutes: number): void {
     this.cards.forEach((card, index) => {
       if (index === 0 || index >= periods.length) return;
       this.retimeCard(card, periods[index], minutes);
@@ -107,9 +122,9 @@ export class WeatherRail extends Container {
     this.art.alpha = this.appear;
   }
 
-  /** Lays the row out from scratch: panel width, cards, glyphs, captions. */
+  /** Lays the row out from scratch: cards, glyphs, captions. */
   rebuild(
-    periods: readonly ForecastStep[],
+    periods: readonly RailPeriod[],
     minutes: number,
     animate: boolean,
   ): void {
@@ -117,9 +132,9 @@ export class WeatherRail extends Container {
     for (const card of this.cards) this.destroyCard(card);
     this.cards = [];
 
-    this.span = railWidth(periods.length);
+    const xs = this.periodXs(periods);
     this.cards = periods.map((period, index) =>
-      this.makeCard(period, index, minutes, index === 0),
+      this.makeCard(period, xs[index], minutes, index === 0),
     );
     this.paintClip();
 
@@ -128,21 +143,18 @@ export class WeatherRail extends Container {
   }
 
   /** Starts the leftward roll: cards keep their glyphs, only slots change. */
-  roll(
-    periods: readonly ForecastStep[],
-    minutes: number,
-    removed: number,
-  ): void {
+  roll(periods: readonly RailPeriod[], minutes: number, removed: number): void {
     this.settle();
     const count = this.cards.length;
     const kept = this.cards.slice(removed);
     const exiting = this.cards.slice(0, removed);
+    const xs = this.periodXs(periods);
     const motions: SlotMotion[] = [];
 
     exiting.forEach((card, index) =>
       motions.push({
         card,
-        fromX: this.slotX(index),
+        fromX: card.node.x,
         toX: this.slotX(index - removed),
         fromAlpha: 1,
         toAlpha: 0,
@@ -155,8 +167,8 @@ export class WeatherRail extends Container {
       if (index > 0) this.retimeCard(card, periods[index], minutes);
       motions.push({
         card,
-        fromX: this.slotX(removed + index),
-        toX: this.slotX(index),
+        fromX: card.node.x,
+        toX: xs[index],
         fromAlpha: 1,
         toAlpha: 1,
       });
@@ -170,18 +182,12 @@ export class WeatherRail extends Container {
     const entries: Card[] = [];
     for (let index = 0; index < removed; index += 1) {
       const slot = count - removed + index;
-      const card = this.makeCard(
-        periods[slot],
-        slot,
-        minutes,
-        false,
-        this.span,
-      );
+      const card = this.makeCard(periods[slot], xs[slot], minutes, false);
       card.node.alpha = 0;
       motions.push({
         card,
         fromX: this.span,
-        toX: this.slotX(slot),
+        toX: xs[slot],
         fromAlpha: 0,
         toAlpha: 1,
       });
@@ -210,7 +216,6 @@ export class WeatherRail extends Container {
 
     const fromIconX = card.icon.x;
     card.live = true;
-    card.glow = 0;
     card.label.text = TEXT.forecast.now;
     card.label.style.fill = UI.text;
     this.place(card);
@@ -238,8 +243,6 @@ export class WeatherRail extends Container {
       card.icon.x = lerp(fromIconX, toIconX, eased);
       card.label.alpha = eased;
       ghost.alpha = 1 - eased;
-      card.glow = eased;
-      this.paintCard(card);
     }
 
     if (slide.elapsed < SLIDE_TIME) return;
@@ -263,22 +266,20 @@ export class WeatherRail extends Container {
       ghost.destroy();
       card.label.alpha = 1;
       card.icon.x = toIconX;
-      card.glow = 1;
-      this.paintCard(card);
     }
     this.slide = null;
   }
 
   /** One card's glyph and caption, already placed on its slot in the row. */
   private makeCard(
-    period: ForecastStep,
-    slot: number,
+    period: RailPeriod,
+    x: number,
     minutes: number,
     live: boolean,
     fromX?: number,
   ): Card {
     const node = new Container();
-    node.position.set(fromX ?? this.slotX(slot), RAIL.pad);
+    node.position.set(fromX ?? x, RAIL.pad);
     const well = new Graphics();
     const icon = new Graphics();
     // The glyph keeps the front's own colour, like the corner travel badges: a
@@ -300,12 +301,12 @@ export class WeatherRail extends Container {
 
     const card: Card = {
       weather: period.weather,
+      slots: period.slots,
       live,
       node,
       well,
       icon,
       label,
-      glow: live ? 1 : 0,
     };
     this.place(card);
     this.paintCard(card);
@@ -313,7 +314,7 @@ export class WeatherRail extends Container {
   }
 
   /** Rewrites a kept card's clock caption when the schedule moved. */
-  private retimeCard(card: Card, period: ForecastStep, minutes: number): void {
+  private retimeCard(card: Card, period: RailPeriod, minutes: number): void {
     const text = formatClock(minutes + period.startsIn / 60);
     if (card.label.text === text) return;
     card.label.text = text;
@@ -323,7 +324,7 @@ export class WeatherRail extends Container {
   /** Centres the glyph and its caption in the card as one group. */
   private place(card: Card): void {
     const group = RAIL.icon + RAIL.labelGap + card.label.width;
-    const iconX = Math.round((RAIL.cardWidth - group) / 2);
+    const iconX = Math.round((periodWidth(card.slots) - group) / 2);
     card.icon.position.set(
       iconX,
       Math.round((RAIL.cardHeight - RAIL.icon) / 2),
@@ -331,16 +332,16 @@ export class WeatherRail extends Container {
     card.label.x = iconX + RAIL.icon + RAIL.labelGap;
   }
 
-  /** Paints one card's well from its current live glow. */
+  /**
+   * Paints one card's well. Every card is the same sunken indigo: the live
+   * period is told apart by its «СЕЙЧАС» caption, not by a raised surface, so a
+   * period that folds two fronts reads as one flat block of sky.
+   */
   private paintCard(card: Card): void {
-    // Cards are wells sunk into the panel: the same indigo, darker. The live one
-    // is the only raised surface in the row, so "now" reads without an ornament
-    // that the 16 px card has no room for.
-    const well = mixColor(UI.panel, UI.ink, 0.33);
     card.well
       .clear()
-      .rect(0, 0, RAIL.cardWidth, RAIL.cardHeight)
-      .fill(mixColor(well, UI.panelAlt, card.glow));
+      .rect(0, 0, periodWidth(card.slots), RAIL.cardHeight)
+      .fill(mixColor(UI.panel, UI.ink, 0.33));
   }
 
   /** Fits the clip to the panel's inner face. */
@@ -351,7 +352,18 @@ export class WeatherRail extends Container {
       .fill(0xffffff);
   }
 
-  /** Left edge of a card slot in rail coordinates. */
+  /** Left edge of each card, in rail coordinates. */
+  private periodXs(periods: readonly RailPeriod[]): number[] {
+    const xs: number[] = [];
+    let x = RAIL.pad;
+    for (const period of periods) {
+      xs.push(x);
+      x += periodWidth(period.slots) + RAIL.gap;
+    }
+    return xs;
+  }
+
+  /** Left edge of a card slot, for the cards that leave through the left edge. */
   private slotX(slot: number): number {
     return RAIL.pad + slot * SLOT;
   }
