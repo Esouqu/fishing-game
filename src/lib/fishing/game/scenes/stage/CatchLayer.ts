@@ -56,7 +56,7 @@ export class CatchLayer extends FxLayer {
     // round ended with the line at the edge of tearing.
     this.escapeMeter = 0;
     this.fishStamina = 1;
-    this.drawStaminaArc();
+    this.drawFloatArcs();
     this.previewG.clear();
     this.biteMark.visible = false;
     this.bobber.visible = false;

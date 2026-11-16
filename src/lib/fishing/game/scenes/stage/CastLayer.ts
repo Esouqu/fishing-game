@@ -2,7 +2,7 @@ import { C, TIMING } from "../../../config";
 import { clamp, easeOutCubic, lerp, randRange } from "../../../utils";
 import { castAway, layoutBounds, safeCastSpot } from "../../castSafety";
 import { AnglerLayer } from "./AnglerLayer";
-import { drawFishStamina } from "./staminaArc";
+import { drawFishEscape, drawFishStamina } from "./floatArcs";
 import { BITE_SINK, NIBBLE_DIP, nibbleDip } from "./setup";
 
 export abstract class CastLayer extends AnglerLayer {
@@ -12,23 +12,30 @@ export abstract class CastLayer extends AnglerLayer {
   /** Feeds the escape clock: how far the fish has torn the line out. */
   setEscapeMeter(value: number): void {
     this.escapeMeter = clamp(value);
+    this.drawFloatArcs();
   }
 
   /** Feeds the fish-stamina gauge; the float carries it during the fight. */
   setFishStamina(value: number): void {
     this.fishStamina = clamp(value);
-    this.drawStaminaArc();
+    this.drawFloatArcs();
   }
 
-  /** Repaints the endurance half-ring on the float, or hides it outside a fight. */
-  protected drawStaminaArc(): void {
-    const g = this.staminaArc;
+  /**
+   * Repaints the float's two gauges — endurance above, escape below — or hides
+   * them outside a fight. Both are redrawn together because each fight frame
+   * carries a new value for both, and one pass keeps the pair in step.
+   */
+  protected drawFloatArcs(): void {
     if (this.phase !== "fight") {
-      g.visible = false;
+      this.staminaArc.visible = false;
+      this.escapeArc.visible = false;
       return;
     }
-    g.visible = true;
-    drawFishStamina(g, this.fishStamina, this.time);
+    this.staminaArc.visible = true;
+    this.escapeArc.visible = true;
+    drawFishStamina(this.staminaArc, this.fishStamina, this.time);
+    drawFishEscape(this.escapeArc, this.escapeMeter, this.time);
   }
   playCast(power: number): void {
     this.previewG.clear();
@@ -37,7 +44,7 @@ export abstract class CastLayer extends AnglerLayer {
     // carries over onto the new float.
     this.escapeMeter = 0;
     this.fishStamina = 1;
-    this.drawStaminaArc();
+    this.drawFloatArcs();
     this.castPower = clamp(power);
     const zone = this.layout.bobber;
     const spread = zone.spreadBase + this.castPower * zone.spreadPower;
@@ -358,9 +365,10 @@ export abstract class CastLayer extends AnglerLayer {
       /** Looking down at the water: rings are circles cut by the surface. */
       const surface = 0.72;
       const pulse = (Math.sin(this.time * 2.4) + 1) / 2;
-      // Dragged by the fish the whole footprint grows, the way a float being
-      // pulled sideways opens a wider ring around itself.
-      const resting = 4.6 + pulse * 1.4 + tension * 5;
+      // Dragged by the fish the footprint grows, the way a float being pulled
+      // sideways opens a wider ring around itself. The growth stays inside the
+      // float's gauges, so the water never swallows the arcs.
+      const resting = 4.6 + pulse * 1.4 + tension * 2.5;
       this.bobberRipple.ellipse(0, 0, resting, resting * surface).stroke({
         width: 1,
         color: this.palette.ice,
