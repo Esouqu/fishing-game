@@ -2,7 +2,7 @@ import { Container, Graphics, Sprite } from "pixi.js";
 import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { Screen } from "../ui/Screen";
-import { Backdrop } from "../ui/Backdrop";
+import { Scrim } from "../ui/Scrim";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
 import { UI } from "../ui/palette";
@@ -29,8 +29,8 @@ const TEXT_W = RIGHT - TEXT_X;
 const BUTTON_Y = PANEL.y + PANEL.height - PANEL_PAD - 21;
 
 export class HelpScreen extends Screen {
+  override readonly popup = true;
   private readonly game: GameContext;
-  private readonly backdrop: Backdrop;
   private readonly focus = new FocusGroup();
   private readonly pageLayer = new Container();
   private readonly pageText: ReturnType<typeof makeText>;
@@ -48,12 +48,7 @@ export class HelpScreen extends Screen {
   constructor(game: GameContext) {
     super();
     this.game = game;
-    this.backdrop = new Backdrop(
-      game.previewFor(game.areaId),
-      game.clock,
-      game.area,
-    );
-    this.addChild(this.backdrop);
+    this.addChild(new Scrim());
 
     const panel = new Graphics();
     drawPanel(panel, PANEL.x, PANEL.y, PANEL.width, PANEL.height, {
@@ -233,10 +228,6 @@ export class HelpScreen extends Screen {
 
   override onExit(): void {
     this.focus.blur();
-  }
-
-  override update(dt: number): void {
-    this.backdrop.update(dt);
   }
 
   override handleKey(event: KeyboardEvent): boolean {

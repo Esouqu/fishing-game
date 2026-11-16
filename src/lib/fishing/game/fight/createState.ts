@@ -88,6 +88,7 @@ export function createFightState(
     directionX: 0,
     directionY: 0,
     steeringNow: false,
+    neglect: 0,
     stickyX: 0,
     stickyY: 0,
     bubbles: [],

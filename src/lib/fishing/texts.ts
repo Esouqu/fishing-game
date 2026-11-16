@@ -220,14 +220,6 @@ export const TEMPERAMENT_LABEL: Record<Temperament, string> = {
   stubborn: "УПРЯМАЯ",
 };
 
-/** What the temperament actually changes in the fight. */
-export const TEMPERAMENT_HINT: Record<Temperament, string> = {
-  calm: "реже финтит, ровно тянет, быстро отдыхает",
-  aggressive: "чаще рвётся и ускоряется",
-  skittish: "часто финтит: ложная стрелка и поздний разворот",
-  stubborn: "дольше сопротивляется и медленнее восстанавливается",
-};
-
 export interface HelpPage {
   id: HelpPageId;
   title: string;
@@ -318,9 +310,11 @@ export const TEXT = {
     biteMark: "!",
     readyToCast: "ЗАБРОС",
     castKey: "ЛКМ",
-    earlyHook: "РАНО! РЫБА УШЛА",
+    landKey: "ПКМ",
+    earlyHook: "РАНО!",
     lostFish: "СОРВАЛАСЬ…",
-    missedHook: "НЕ УСПЕЛ ПОДСЕЧЬ",
+    missedHook: "НЕ УСПЕЛ",
+    gripOut: "НЕТ СИЛ",
     newSpecies: "НОВЫЙ ВИД",
     catchFeedback: (name: string, weight: string): string =>
       `${name.toUpperCase()}\n${weight} ${KG}`,
@@ -337,15 +331,15 @@ export const TEXT = {
   },
   codex: {
     title: "СПРАВОЧНИК",
-    back: "НАЗАД",
-    close: "ЗАКРЫТЬ",
     window: "ОКНО",
     weather: "ПОГОДА",
     anytime: "КРУГЛОСУТОЧНО",
     anyWeather: "ЛЮБАЯ",
-    temperament: "ТЕМПЕРАМЕНТ",
     record: (caught: number, best: string): string =>
       `ПОЙМАНО: ${caught} · РЕКОРД: ${best} КГ`,
+    /** Roster-slot corners: the record weight left, the catch count right. */
+    slotWeight: (best: string): string => `${best} КГ`,
+    slotCount: (caught: number): string => `x${caught}`,
     /** Shown instead of the name and the notes until the first catch. */
     unknown: "???",
     locked: "ЕЩЕ НЕ ПОЙМАНА.\nЗАПИСЬ ОТКРОЕТСЯ ПОСЛЕ ПОИМКИ.",
@@ -358,6 +352,7 @@ export const TEXT = {
   },
   fight: {
     counter: "КОНТР",
+    stamina: "СИЛА",
   },
   /** Dev-only audio balance panel (`F2`) and weather picker (`F3`). */
   devtools: {

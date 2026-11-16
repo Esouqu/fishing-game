@@ -44,7 +44,7 @@ src/
     ui/
       theme.ts  Button.ts  palette.ts  tier.ts  Screen.ts  ScreenManager.ts
       mix/                      AudioMixPanel + MixRow + layout
-      codex/                    CodexView + grid + tooltip
+      codex/                    CodexView + реестр + карточка записи
       остальные HUD/панели/курсор/фон
 ```
 

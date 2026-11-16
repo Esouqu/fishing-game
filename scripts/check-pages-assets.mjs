@@ -16,6 +16,7 @@ const required = [
   join(fishingDir, "sign.png"),
   join(fishingDir, "sounds", "cast.wav"),
   join(fishingDir, "sounds", "bite.wav"),
+  join(fishingDir, "sounds", "fish-hit.wav"),
   join(fishingDir, "sounds", "amb-frost.wav"),
   join(fishingDir, "fonts", "tiny5-cyrillic.woff2"),
   join(fishingDir, "fonts", "tiny5-cyrillic-ext.woff2"),

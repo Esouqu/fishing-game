@@ -50,11 +50,11 @@ export const NIBBLE_DIP = 2.6;
 /** How far the body slides down when the fish actually takes the bait. */
 export const BITE_SINK = 12;
 /**
- * Radius of the escape half-ring, in scene pixels. It sits just outside the
- * float's footprint and the ring the surface pushes out around it, so the gauge
- * is never lost inside the water ripples.
+ * Radius of the fish-stamina half-ring, in scene pixels. It sits just outside
+ * the float's footprint and the ring the surface pushes out around it, so the
+ * gauge is never lost inside the water ripples.
  */
-export const ESCAPE_ARC_RADIUS = 9;
+export const STAMINA_ARC_RADIUS = 9;
 
 /**
  * How far under the surface the float is `nibbleTime` seconds before a nibble

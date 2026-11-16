@@ -1,10 +1,10 @@
 import { easeOutCubic, clamp } from "../../utils";
-import { FIGHT } from "../../config";
+import { keycapWidth } from "../../ui/theme";
+import { TEXT } from "../../texts";
 import { BarsView } from "./BarsView";
 import {
   FISH_SCALE,
   INTRO_DURATION,
-  LAND_MARK_LIFT,
   SILHOUETTE,
   SILHOUETTE_ALPHA,
   SILHOUETTE_WARN,
@@ -24,44 +24,15 @@ export class Minigame extends BarsView {
 
     this.fishSprite.alpha = SILHOUETTE_ALPHA;
     this.barG.alpha = 1;
-    this.gripG.alpha = 1;
     this.counterG.alpha = 1;
     this.ringG.alpha = 1;
     this.barG.y = 0;
-    this.gripG.y = 0;
+    this.staminaLabel.visible = true;
 
     this.model.update(dt);
     if (!this.model.isRunning) return;
-    this.updateLandCue(dt);
     this.draw();
     this.syncFishVisual();
-  }
-
-  /**
-   * The landing cue is a closing ring, so it needs a clock of its own: it starts
-   * the moment the fish becomes landable, runs for {@link FIGHT.landCue}
-   * seconds — the length of the `crit` chime that opens the window — and then
-   * holds at full weight for as long as the window stays open.
-   *
-   * Visibility fades on its own clock, because the window can close again at any
-   * moment (the fish shakes the hook loose or catches its breath). A ring that
-   * blinked out of existence read as a dropped frame; it now fades in over a
-   * beat and, when the chance is gone, fades out while opening up — the opposite
-   * motion of the closing ring, so "the moment is slipping away" is legible.
-   */
-  protected updateLandCue(dt: number): void {
-    const landable = this.model.canLand;
-    if (landable && !this.wasLandable) this.landCue = 0;
-    this.wasLandable = landable;
-    if (landable) {
-      this.landCue = Math.min(1, this.landCue + dt / FIGHT.landCue);
-    }
-
-    const target = landable ? 1 : 0;
-    // Fast in — the window is short — and slower out, so the eye can follow it.
-    const rate = target > this.landFade ? 11 : 6;
-    this.landFade += (target - this.landFade) * Math.min(1, dt * rate);
-    if (this.landFade < 0.002) this.landFade = 0;
   }
 
   protected syncFishVisual(): void {
@@ -80,6 +51,9 @@ export class Minigame extends BarsView {
     const grow = 0.82 + 0.18 * this.introScale;
     this.fishSprite.scale.set(face * FISH_SCALE * grow, FISH_SCALE * grow);
     this.fishSprite.tint = this.model.warn > 0 ? SILHOUETTE_WARN : SILHOUETTE;
+    // Same pass as the sprite and the same point: the chip cannot inherit any
+    // other motion from the scene.
+    this.syncLandKey();
   }
 
   // -------------------------------------------------------------------- draw
@@ -92,28 +66,22 @@ export class Minigame extends BarsView {
     this.drawCue();
     this.drawWarning();
     this.updateCounterLabel();
-    this.updateLandMark();
   }
 
   /**
-   * The "!" of the landing window, over the tired fish.
-   *
-   * It pops in at 1.25× and settles as the window opens, then breathes in
-   * place exactly like the bite mark does over the float, so the two moments
-   * of the round are one visual language.
+   * The landing cue: a "ПКМ" chip over a tired fish while the final pull is
+   * live. It is placed in the same pass as the fish sprite and from the same
+   * point, so it rides the fish exactly — no float bob, no lag of its own.
    */
-  protected updateLandMark(): void {
-    const mark = this.landMark;
-    if (this.landFade <= 0.01) {
-      mark.visible = false;
-      return;
-    }
+  private syncLandKey(): void {
+    const landable = this.model.canLand;
+    this.landKey.visible = landable;
+    if (!landable) return;
     const point = this.model.fishPoint;
-    const settle = easeOutCubic(this.landCue);
-    const bounce = Math.abs(Math.sin(this.model.time * 6)) * 3;
-    mark.visible = true;
-    mark.position.set(point.x, point.y - LAND_MARK_LIFT - bounce);
-    mark.scale.set(1.25 - 0.25 * settle);
-    mark.alpha = this.landFade * (0.88 + 0.12 * (1 - settle));
+    const width = keycapWidth(TEXT.game.landKey, 5.5);
+    this.landKey.position.set(
+      Math.round(point.x - width / 2),
+      Math.round(point.y - 23),
+    );
   }
 }

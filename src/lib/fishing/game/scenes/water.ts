@@ -2,7 +2,6 @@ import type { Graphics } from "pixi.js";
 import type { AreaPalette } from "../../areas";
 import { VIEW } from "../../config";
 import { randRange } from "../../utils";
-import { mixColor } from "../../world";
 
 /**
  * A crest dash travelling on the surface: the thing that tells the eye the
@@ -40,17 +39,6 @@ interface Pop {
   phase: number;
   period: number;
   radius: number;
-}
-
-/** A soft cloud shadow crawling over the water in overcast weather. */
-interface CloudShadow {
-  x: number;
-  y: number;
-  rx: number;
-  ry: number;
-  speed: number;
-  phase: number;
-  alpha: number;
 }
 
 export interface WaterSurfaceOptions {
@@ -94,9 +82,8 @@ function wrap(value: number): number {
  * fade. Each area tunes `flow` and `energy`, so the lake barely breathes, the
  * river hurries downstream and the bay chops.
  *
- * It also owns the cloud shadows: in overcast weather soft dark patches crawl
- * over the surface. They are clipped by the body's own water test, so a shadow
- * never smears across the snow bank.
+ * Cloud shadows do not live here: they belong to the scene, above the props, so
+ * a cloud can shade the bank, the boat and the water alike (see CloudShadows).
  */
 export class WaterSurface {
   private readonly palette: AreaPalette;
@@ -106,11 +93,8 @@ export class WaterSurface {
   private readonly chops: Chop[] = [];
   private readonly sheens: Sheen[] = [];
   private readonly pops: Pop[] = [];
-  private readonly clouds: CloudShadow[] = [];
   /** Dark half of the water, used for the trough under a crest. */
   private readonly trough: number;
-  /** Colour of a cloud shadow: the water's own dark end, pushed to dusk. */
-  private readonly shadow: number;
 
   constructor(options: WaterSurfaceOptions) {
     this.palette = options.palette;
@@ -118,7 +102,6 @@ export class WaterSurface {
     this.flow = options.flow;
     this.energy = options.energy ?? 0.5;
     this.trough = this.palette.waterFar;
-    this.shadow = mixColor(this.palette.waterFar, 0x02060c, 0.4);
 
     const energy = this.energy;
     const chopCount = options.chops ?? Math.round(26 + energy * 26);
@@ -173,19 +156,6 @@ export class WaterSurface {
         radius: randRange(4, 10),
       });
     }
-
-    // Two shadows at most: a whole sky of clouds would read as a dirty screen.
-    for (let i = 0; i < 2; i += 1) {
-      this.clouds.push({
-        x: randRange(0, VIEW.width),
-        y: randRange(40, VIEW.height - 40),
-        rx: randRange(100, 155),
-        ry: randRange(34, 58),
-        speed: randRange(6, 11),
-        phase: randRange(0, Math.PI * 2),
-        alpha: i === 0 ? 0.26 : 0.19,
-      });
-    }
   }
 
   /**
@@ -206,11 +176,8 @@ export class WaterSurface {
     return this.isWater(x, y);
   }
 
-  /**
-   * Draw one frame of surface motion. `cloudiness` is 0..1: at 0 the shadow
-   * pass costs nothing, so clear weather never pays for it.
-   */
-  draw(g: Graphics, time: number, cloudiness = 0): void {
+  /** Draw one frame of surface motion. */
+  draw(g: Graphics, time: number): void {
     // Broad sky light on the swell, under everything else.
     for (const sheen of this.sheens) {
       const x = wrap(sheen.x + time * sheen.speed);
@@ -273,62 +240,6 @@ export class WaterSurface {
           color: this.palette.snowLight,
           alpha: 0.25 * (1 - t * 2),
         });
-      }
-    }
-
-    if (cloudiness > 0.02) this.drawClouds(g, time, cloudiness);
-  }
-
-  /**
-   * Cloud shadows. A shadow is painted as a stack of contiguous rows clipped by
-   * the water test, so it darkens the lake and the river but stops dead on the
-   * snow. Rows are a few pixels tall, which keeps the pixel-art grain, and each
-   * row is offset by a sine so the patch is a ragged cloud, not an ellipse.
-   */
-  private drawClouds(g: Graphics, time: number, cloudiness: number): void {
-    for (const cloud of this.clouds) {
-      const cx = wrap(cloud.x + time * cloud.speed);
-      const cy = cloud.y + Math.sin(time * 0.07 + cloud.phase) * 5;
-      // Bands are whole pixels that abut exactly. A fractional top edge or a
-      // hair of overlap made two rows share one pixel line, and that doubled
-      // alpha printed a stripe across the lake on every band boundary.
-      const bandHeight = 2;
-      const rows = Math.ceil((cloud.ry * 2) / bandHeight);
-      const top = Math.round(cy - cloud.ry);
-
-      for (let row = 0; row < rows; row += 1) {
-        const yTop = top + row * bandHeight;
-        const centerY = yTop + bandHeight / 2;
-        const dy = (centerY - cy) / cloud.ry;
-        const half = cloud.rx * Math.sqrt(Math.max(0, 1 - dy * dy));
-        if (half <= 1) continue;
-
-        const shift = Math.sin(row * 1.7 + cloud.phase) * cloud.rx * 0.1;
-        const left = cx + shift - half;
-        const right = cx + shift + half;
-        // One smooth profile from the rim to the middle; the old hard drop on
-        // the first and last row was itself a line at the edge of the shadow.
-        const rowAlpha =
-          cloud.alpha *
-          cloudiness *
-          (0.15 + (1 - Math.abs(dy)) * 0.85) *
-          Math.min(1, (1 - Math.abs(dy)) * 3);
-
-        // Sampling is only used to find the waterline; a run between two banks
-        // is one rect, so the whole pass costs a few dozen rects per frame.
-        const step = 4;
-        let runStart: number | null = null;
-        for (let x = left; x <= right + step; x += step) {
-          const inside = x <= right && this.isWater(x, centerY);
-          if (inside && runStart === null) runStart = x;
-          if (!inside && runStart !== null) {
-            g.rect(runStart, yTop, x - runStart, bandHeight).fill({
-              color: this.shadow,
-              alpha: rowAlpha,
-            });
-            runStart = null;
-          }
-        }
       }
     }
   }

@@ -19,11 +19,10 @@ export interface SceneRenderer {
   /** Trees, rocks, dock/raft, light fixture and other z-sorted props. */
   drawScenery(props: Container): void;
   /**
-   * Per-frame water motion drawn above the static world. `cloudiness` (0..1)
-   * lets overcast weather throw drifting cloud shadows over the water; the
-   * scene smooths it, so a new front creeps in instead of popping.
+   * Per-frame water motion drawn above the static world. Cloud shadows are not
+   * part of it: they are a scene-wide layer above the props.
    */
-  drawMotion(g: Graphics, time: number, cloudiness?: number): void;
+  drawMotion(g: Graphics, time: number): void;
   /**
    * Optional per-frame animation of props the renderer owns, such as a boat
    * rocking on the swell or a trunk riding the chop. Called after

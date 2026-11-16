@@ -1,4 +1,4 @@
-﻿import type { FishSpecies } from "../../fish";
+import type { FishSpecies } from "../../fish";
 import type { Temperament } from "../../types";
 import type { Move } from "../behaviors";
 import type { Bubble, MinigameResult, WeightLoad } from "./types";
@@ -79,6 +79,11 @@ export interface FightState {
   directionX: number;
   directionY: number;
   steeringNow: boolean;
+  /**
+   * Seconds since the player last actively pulled. The fish uses it to drift
+   * out of the ring: resting is meant to be a beat, not a place to live.
+   */
+  neglect: number;
   /** Last meaningful cursor direction, kept while the cursor covers the fish. */
   stickyX: number;
   stickyY: number;

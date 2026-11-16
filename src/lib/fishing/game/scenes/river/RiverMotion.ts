@@ -5,12 +5,12 @@ import { RiverScenery } from "./RiverScenery";
 import { BOULDERS } from "./geometry";
 
 export class RiverMotion extends RiverScenery {
-  drawMotion(g: Graphics, time: number, cloudiness = 0): void {
+  drawMotion(g: Graphics, time: number): void {
     g.clear();
 
     // Surface motion sits under the ice slabs, so a floe still reads as solid
     // and the crests break against its edge instead of running across it.
-    this.water.draw(g, time, cloudiness);
+    this.water.draw(g, time);
 
     // Floating ice slabs carried downstream along the current.
     for (const drift of this.drifts) {

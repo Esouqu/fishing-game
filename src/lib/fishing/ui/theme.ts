@@ -267,30 +267,52 @@ export function drawFishGlyph(g: Graphics, color: number): void {
 }
 
 /**
+ * One colour per front. Used three ways — the medallion ring, the glyph itself
+ * and the wash behind the column — so a badge can never disagree with the sky
+ * it names.
+ */
+export const WEATHER_TINT: Record<WeatherId, number> = {
+  clear: UI.amber,
+  // Overcast is a grey lid, so its wash is the only neutral one on the rail.
+  overcast: UI.textMuted,
+  snow: UI.ice,
+  blizzard: UI.ice,
+  fog: UI.periwinkle,
+};
+
+/**
  * 12×12 pixel weather glyph. Drawn from the same 1-px grid as the rest of the
  * UI so it stays legible when the canvas is scaled up.
+ *
+ * `tint` is the front's own colour and is used for every body shape, so the
+ * glyph reads as one object with the medallion that rings it instead of a grey
+ * cloud sitting inside a coloured badge. Only the specular pixels stay neutral.
  */
-export function drawWeatherIcon(g: Graphics, weather: WeatherId): void {
+export function drawWeatherIcon(
+  g: Graphics,
+  weather: WeatherId,
+  tint: number = WEATHER_TINT[weather],
+): void {
   g.clear();
   const cloud = (top: number): void => {
-    g.rect(3, top + 3, 7, 3).fill(UI.textMuted);
-    g.rect(4, top + 1, 4, 3).fill(UI.textMuted);
-    g.rect(2, top + 5, 9, 2).fill(UI.textMuted);
-    g.rect(4, top + 2, 3, 1).fill({ color: UI.text, alpha: 0.8 });
+    g.rect(3, top + 3, 7, 3).fill(tint);
+    g.rect(4, top + 1, 4, 3).fill(tint);
+    g.rect(2, top + 5, 9, 2).fill(tint);
+    g.rect(4, top + 2, 3, 1).fill({ color: UI.text, alpha: 0.4 });
   };
 
   switch (weather) {
     case "clear":
-      g.rect(5, 0, 2, 2).fill(UI.amber);
-      g.rect(5, 10, 2, 2).fill(UI.amber);
-      g.rect(0, 5, 2, 2).fill(UI.amber);
-      g.rect(10, 5, 2, 2).fill(UI.amber);
-      g.rect(2, 2, 1, 1).fill({ color: UI.amber, alpha: 0.7 });
-      g.rect(9, 2, 1, 1).fill({ color: UI.amber, alpha: 0.7 });
-      g.rect(2, 9, 1, 1).fill({ color: UI.amber, alpha: 0.7 });
-      g.rect(9, 9, 1, 1).fill({ color: UI.amber, alpha: 0.7 });
-      g.rect(4, 3, 4, 6).fill(UI.amber);
-      g.rect(3, 4, 6, 4).fill(UI.amber);
+      g.rect(5, 0, 2, 2).fill(tint);
+      g.rect(5, 10, 2, 2).fill(tint);
+      g.rect(0, 5, 2, 2).fill(tint);
+      g.rect(10, 5, 2, 2).fill(tint);
+      g.rect(2, 2, 1, 1).fill({ color: tint, alpha: 0.7 });
+      g.rect(9, 2, 1, 1).fill({ color: tint, alpha: 0.7 });
+      g.rect(2, 9, 1, 1).fill({ color: tint, alpha: 0.7 });
+      g.rect(9, 9, 1, 1).fill({ color: tint, alpha: 0.7 });
+      g.rect(4, 3, 4, 6).fill(tint);
+      g.rect(3, 4, 6, 4).fill(tint);
       g.rect(5, 4, 2, 2).fill(UI.legendary);
       break;
     case "overcast":
@@ -305,23 +327,23 @@ export function drawWeatherIcon(g: Graphics, weather: WeatherId): void {
         [6, 10],
         [9, 9],
       ] as const) {
-        g.rect(x - 1, y, 3, 1).fill(UI.ice);
-        g.rect(x, y - 1, 1, 3).fill(UI.ice);
+        g.rect(x - 1, y, 3, 1).fill(tint);
+        g.rect(x, y - 1, 1, 3).fill(tint);
       }
       break;
     case "blizzard":
       // A blown flake: the cloud plus horizontal snow streaks, no lightning.
       cloud(0);
-      g.rect(2, 9, 4, 1).fill(UI.ice);
-      g.rect(7, 10, 3, 1).fill({ color: UI.ice, alpha: 0.8 });
-      g.rect(3, 11, 3, 1).fill({ color: UI.ice, alpha: 0.6 });
+      g.rect(2, 9, 4, 1).fill(tint);
+      g.rect(7, 10, 3, 1).fill({ color: tint, alpha: 0.8 });
+      g.rect(3, 11, 3, 1).fill({ color: tint, alpha: 0.6 });
       g.rect(8, 8, 1, 1).fill(UI.text);
       g.rect(1, 10, 1, 1).fill(UI.text);
       break;
     case "fog":
       cloud(0);
-      g.rect(1, 9, 6, 1).fill({ color: UI.textMuted, alpha: 0.85 });
-      g.rect(6, 11, 5, 1).fill({ color: UI.textMuted, alpha: 0.6 });
+      g.rect(1, 9, 6, 1).fill({ color: tint, alpha: 0.85 });
+      g.rect(6, 11, 5, 1).fill({ color: tint, alpha: 0.6 });
       break;
   }
 }

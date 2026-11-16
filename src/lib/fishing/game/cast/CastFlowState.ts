@@ -39,7 +39,9 @@ export class CastFlowState extends CastFlowInput {
       if (inside) {
         this.lastZoneInside = this.chargeTime;
         if (!this.wasInsideZone) {
-          this.game.audio.zoneTick();
+          // No cue here any more: the zone is confirmed by the completion
+          // chime when the cast actually leaves the hand. The haptic stays —
+          // it is a touch hint, not the cast's reward.
           if (typeof navigator !== "undefined" && "vibrate" in navigator) {
             navigator.vibrate(8);
           }
@@ -90,10 +92,14 @@ export class CastFlowState extends CastFlowInput {
       LUCK_BAND.width / 2;
     this.luckZoneHit =
       insideNow || this.chargeTime - this.lastZoneInside <= LUCK_RELEASE_BUFFER;
-    if (this.luckZoneHit) this.game.audio.luck();
     // The cue releases the wind-up itself: stopping it here would cut the loop
     // off before the whoosh had a chance to take it over.
     this.game.audio.cast();
+    if (this.luckZoneHit) {
+      // A cast that came out of the luck band is confirmed over the whoosh by
+      // the completion chime alone.
+      this.game.audio.objective();
+    }
     this.scene.playCast(this.chargeValue);
     this.game.clock.persist();
     this.waitTimer = randRange(TIMING.waitMin, TIMING.waitMax);

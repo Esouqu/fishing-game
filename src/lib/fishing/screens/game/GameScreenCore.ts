@@ -12,6 +12,7 @@ import { CodexOverlay } from "../../ui/CodexOverlay";
 import { FloaterLayer } from "../../ui/FloaterLayer";
 import { GameHud } from "../../ui/GameHud";
 import { PauseMenu } from "../../ui/PauseMenu";
+import type { WipePoint } from "../../ui/GridWipe";
 import { WeatherForecast } from "../../ui/WeatherForecast";
 import { Atmosphere } from "../../game/Atmosphere";
 import { CastFlow } from "../../game/CastFlow";
@@ -151,8 +152,8 @@ export abstract class GameScreenCore extends Screen {
 
     // Travel cards: the other two water bodies, reachable in one click instead
     // of a trip through the pause menu and the picker.
-    this.shortcuts = new AreaShortcuts(game, area.id, (areaId) => {
-      this.switchArea(areaId);
+    this.shortcuts = new AreaShortcuts(game, area.id, (areaId, origin) => {
+      this.switchArea(areaId, origin);
     });
     this.addChild(this.shortcuts);
 
@@ -177,5 +178,5 @@ export abstract class GameScreenCore extends Screen {
 
   protected abstract openPause(): void;
   protected abstract openCodex(): void;
-  protected abstract switchArea(areaId: AreaId): void;
+  protected abstract switchArea(areaId: AreaId, origin: WipePoint): void;
 }

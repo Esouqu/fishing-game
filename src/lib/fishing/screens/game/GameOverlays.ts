@@ -1,5 +1,4 @@
 import { CURSORS } from "../../cursors";
-import { TEXT } from "../../texts";
 import { CodexOverlay } from "../../ui/CodexOverlay";
 import { GameScreenCore } from "./GameScreenCore";
 
@@ -35,11 +34,8 @@ export abstract class GameOverlays extends GameScreenCore {
   protected openCodex(): void {
     if (!this.paused || this.codex) return;
     this.pauseMenu.blur();
-    this.codex = new CodexOverlay(
-      this.game,
-      this.area.id,
-      TEXT.codex.close,
-      () => this.closeCodex(),
+    this.codex = new CodexOverlay(this.game, this.area.id, () =>
+      this.closeCodex(),
     );
     this.addChild(this.codex);
     // The pause menu's «справочник» entry is a Button and already plays the

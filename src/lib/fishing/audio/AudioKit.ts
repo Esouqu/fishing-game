@@ -207,17 +207,14 @@ export class AudioKit extends CueBank {
       case "landReady":
         this.landReady();
         break;
-      case "landTick":
-        this.landTick();
-        break;
       case "resist":
         this.resist();
         break;
       case "gripOut":
         this.gripOut();
         break;
-      case "luck":
-        this.luck();
+      case "objective":
+        this.objective();
         break;
       case "comboBreak":
         this.comboBreak();

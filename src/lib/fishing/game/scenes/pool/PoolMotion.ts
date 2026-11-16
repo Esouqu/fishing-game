@@ -3,11 +3,11 @@ import { PoolScenery } from "./PoolScenery";
 import { CENTER } from "./geometry";
 
 export class PoolMotion extends PoolScenery {
-  drawMotion(g: Graphics, time: number, cloudiness = 0): void {
+  drawMotion(g: Graphics, time: number): void {
     g.clear();
 
     // The water first: mist and wisps drift over it, never under.
-    this.water.draw(g, time, cloudiness);
+    this.water.draw(g, time);
 
     // Drifting mist over the water.
     for (let i = 0; i < 5; i += 1) {

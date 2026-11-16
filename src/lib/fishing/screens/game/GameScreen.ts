@@ -1,13 +1,14 @@
 import type { AreaId } from "../../types";
 import type { FederatedPointerEvent } from "pixi.js";
 import { CURSORS } from "../../cursors";
+import type { WipePoint } from "../../ui/GridWipe";
 import { GameOverlays } from "./GameOverlays";
 
 export class GameScreen extends GameOverlays {
-  protected switchArea(areaId: AreaId): void {
+  protected switchArea(areaId: AreaId, origin: WipePoint): void {
     if (areaId === this.area.id) return;
     this.flow.setPaused(true);
-    this.game.startGame(areaId);
+    this.game.startGame(areaId, origin);
   }
 
   // ------------------------------------------------------------------- input
@@ -83,7 +84,13 @@ export class GameScreen extends GameOverlays {
   // ----------------------------------------------------------------- update
 
   override update(dt: number): void {
-    if (this.paused) return;
+    // The pause dialog animates in and out even though the round is frozen
+    // under it, or already running again while it drops away.
+    this.pauseMenu.update(dt);
+    if (this.paused) {
+      this.codex?.update(dt);
+      return;
+    }
 
     const clock = this.game.clock;
     const changed = clock.update(dt);
@@ -103,7 +110,7 @@ export class GameScreen extends GameOverlays {
     this.juice.update(dt);
     this.updateCastHint(dt);
     this.floaters.update(dt);
-    this.forecast.update();
+    this.forecast.update(dt);
     this.shortcuts.update(dt);
 
     this.flow.update(dt);
@@ -114,12 +121,15 @@ export class GameScreen extends GameOverlays {
         : null,
     );
 
-    // The travel cards step aside for the fight: a corner click during the
-    // landing window would drop the fish and the lake in one go.
+    // The travel cards and the weather rail step aside for the fight: a corner
+    // click during the landing window would drop the fish and the lake in one
+    // go, and the rail has no business being the brightest thing on screen
+    // while the focus darkens the lake.
     const available = this.flow.phase !== "fighting";
     if (available !== this.shortcutsAvailable) {
       this.shortcutsAvailable = available;
       this.shortcuts.setAvailable(available);
+      this.forecast.setDimmed(!available);
     }
   }
 
@@ -136,6 +146,7 @@ export class GameScreen extends GameOverlays {
    * The beds follow the visible screen, not the constructor: a screen is built
    * before the outgoing one is disposed, so starting the round's sound there
    * would be undone by the old screen's own exit.
+   */
   override onEnter(): void {
     this.game.audio.setAmbience(this.area.id);
     this.game.audio.setWeather(this.game.clock.weatherDefFor(this.area.id).id);

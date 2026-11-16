@@ -1,4 +1,4 @@
-﻿import { FIGHT, TIMING } from "../../config";
+import { FIGHT, TIMING } from "../../config";
 import { clamp, easeInOutQuad, lerp, randRange } from "../../utils";
 import { angleDelta } from "./angles";
 import { FIGHT_RADIUS, TAU } from "./constants";
@@ -108,6 +108,12 @@ export class FightMotion {
     if (!move) return;
     const t = move.dur <= 0 ? 1 : clamp(s.moveTime / move.dur);
     const kind = move.kind;
+    // A fish nobody is pulling does not keep circling the middle: the longer
+    // the player rests, the further out its target sits. `neglect` resets to 0
+    // the moment the line is held, so the drift is a consequence of passivity,
+    // not a permanent offset.
+    const drift = Math.min(1, s.neglect / FIGHT.neglectRamp);
+    const push = drift * FIGHT.neglectPush;
 
     // Dash targets sit clearly outside the ring: a fish that is not being
     // pulled must be able to leave, so passivity is a real losing strategy.
@@ -122,7 +128,7 @@ export class FightMotion {
       const eased = easeInOutQuad(t);
       const angle =
         s.moveStartAngle + angleDelta(s.moveStartAngle, s.escapeAngle) * eased;
-      const radius = lerp(s.moveStartRadius, 1, eased) * FIGHT_RADIUS;
+      const radius = lerp(s.moveStartRadius, 1 + push, eased) * FIGHT_RADIUS;
       s.targetX = Math.cos(angle) * radius;
       s.targetY = Math.sin(angle) * radius;
       return;
@@ -132,7 +138,7 @@ export class FightMotion {
       const cycles = move.cycles ?? 1;
       const amp = (move.amplitude ?? 0.3) * 2.2;
       const angle = s.moveStartAngle + Math.sin(t * TAU * cycles) * amp;
-      const radius = lerp(s.moveStartRadius, 1.05, t) * FIGHT_RADIUS;
+      const radius = lerp(s.moveStartRadius, 1.05 + push, t) * FIGHT_RADIUS;
       s.targetX = Math.cos(angle) * radius;
       s.targetY = Math.sin(angle) * radius;
       return;
@@ -143,16 +149,18 @@ export class FightMotion {
       const amp = (move.amplitude ?? 0.28) * 3;
       const slot = Math.min(count - 1, Math.floor(t * count));
       const angle = s.moveStartAngle + (slot % 2 === 0 ? amp : -amp);
-      const radius = FIGHT_RADIUS * 1.12;
+      const radius = FIGHT_RADIUS * (1.12 + push);
       s.targetX = Math.cos(angle) * radius;
       s.targetY = Math.sin(angle) * radius;
       return;
     }
 
-    // Pause: drift back toward the middle and catch a breath.
+    // Pause: with the line held the fish drifts back toward the middle to catch
+    // a breath; left alone, it heads for the edge instead.
     const angle = s.moveStartAngle;
-    s.targetX = Math.cos(angle) * FIGHT_RADIUS * 0.3;
-    s.targetY = Math.sin(angle) * FIGHT_RADIUS * 0.3;
+    const radius = lerp(0.3, 1.3, drift) * FIGHT_RADIUS;
+    s.targetX = Math.cos(angle) * radius;
+    s.targetY = Math.sin(angle) * radius;
   }
 
   steer(dt: number): void {

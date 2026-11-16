@@ -13,6 +13,7 @@ import type {
 } from "./types";
 import type { HelpPageId } from "./texts";
 import type { AreaPickOrigin } from "./screens/AreaSelectScreen";
+import type { WipePoint } from "./ui/GridWipe";
 
 /**
  * The narrow host contract screens, gameplay and UI use. Keeping it separate
@@ -37,7 +38,7 @@ export interface GameContext {
   showHelp(): void;
   showAreas(origin?: AreaPickOrigin): void;
   showCodex(returnTo?: CodexReturn): void;
-  startGame(areaId?: AreaId): void;
+  startGame(areaId?: AreaId, origin?: WipePoint): void;
   exit(): void;
 
   setMuted(muted: boolean): void;

@@ -14,5 +14,12 @@ export const SILHOUETTE_WARN = 0x1b2830;
 export const SILHOUETTE_ALPHA = 0.55;
 export const TAU = Math.PI * 2;
 export const INTRO_DURATION = 0.42;
-/** How far above the tired fish its "land it" mark hangs, in pixels. */
-export const LAND_MARK_LIFT = 17;
+/**
+ * The landing window has no mark of its own.
+ *
+ * It used to be announced by a gold "!" over the float with a shader gloss
+ * running over the glyph, and then by a blinking fish — every version was a new
+ * object competing with the ring, the two bars and the heading arrow for the
+ * same handful of pixels. The window is now announced by the cue that already
+ * exists: the landing chime and the burst of spray at the float (`onReady`).
+ */

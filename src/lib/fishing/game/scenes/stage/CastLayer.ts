@@ -2,58 +2,42 @@ import { C, TIMING } from "../../../config";
 import { clamp, easeOutCubic, lerp, randRange } from "../../../utils";
 import { castAway, layoutBounds, safeCastSpot } from "../../castSafety";
 import { AnglerLayer } from "./AnglerLayer";
-import { BITE_SINK, ESCAPE_ARC_RADIUS, NIBBLE_DIP, nibbleDip } from "./setup";
+import { drawFishStamina } from "./staminaArc";
+import { BITE_SINK, NIBBLE_DIP, nibbleDip } from "./setup";
 
 export abstract class CastLayer extends AnglerLayer {
+  /** Remaining fish endurance, 0..1; the gauge under the float. */
+  protected fishStamina = 1;
+
+  /** Feeds the escape clock: how far the fish has torn the line out. */
   setEscapeMeter(value: number): void {
     this.escapeMeter = clamp(value);
-    this.drawEscapeRing();
   }
 
-  /**
-   * The escape clock, drawn as a half-ring under the float.
-   *
-   * It used to be a full circle around the float plus a second, pulsing ring
-   * once the meter passed 70%. In a fight that already has one big ring around
-   * the zone, a circle drawn on the float read as a second boundary the player
-   * might try to keep the fish inside. A half-ring below the float is a gauge,
-   * not a boundary: it hugs the waterline the float sits on, it fills from the
-   * right to the left as the fish tears the line, and it never draws anything
-   * above the float where the bite mark lives.
-   */
-  protected drawEscapeRing(): void {
-    const g = this.escapeRing;
-    g.clear();
-    if (this.phase !== "fight" || this.escapeMeter <= 0.01) {
+  /** Feeds the fish-stamina gauge; the float carries it during the fight. */
+  setFishStamina(value: number): void {
+    this.fishStamina = clamp(value);
+    this.drawStaminaArc();
+  }
+
+  /** Repaints the endurance half-ring on the float, or hides it outside a fight. */
+  protected drawStaminaArc(): void {
+    const g = this.staminaArc;
+    if (this.phase !== "fight") {
       g.visible = false;
       return;
     }
     g.visible = true;
-    const p = clamp(this.escapeMeter);
-    const color = p < 0.5 ? C.cyan : p < 0.8 ? C.gold : C.red;
-    // Angles are in canvas space, so 0.18π..0.82π is the arc under the float.
-    const from = Math.PI * 0.18;
-    const to = Math.PI * 0.82;
-    g.arc(0, 0, ESCAPE_ARC_RADIUS, from, to).stroke({
-      width: 3,
-      color: C.ink,
-      alpha: 0.3,
-      cap: "round",
-    });
-    g.arc(0, 0, ESCAPE_ARC_RADIUS, from, from + (to - from) * p).stroke({
-      width: 1.5,
-      color,
-      alpha: 0.95,
-      cap: "round",
-    });
+    drawFishStamina(g, this.fishStamina, this.time);
   }
   playCast(power: number): void {
     this.previewG.clear();
     this.pulling = false;
-    // A fresh cast starts with an empty escape gauge: the previous round's
-    // pressure never carries over onto the new float.
+    // A fresh cast starts with a rested fish: the previous round's fatigue never
+    // carries over onto the new float.
     this.escapeMeter = 0;
-    this.drawEscapeRing();
+    this.fishStamina = 1;
+    this.drawStaminaArc();
     this.castPower = clamp(power);
     const zone = this.layout.bobber;
     const spread = zone.spreadBase + this.castPower * zone.spreadPower;
@@ -134,6 +118,11 @@ export abstract class CastLayer extends AnglerLayer {
     return spot;
   }
 
+  /** True once the float has splashed down; the strike is gated on this. */
+  get castLanded(): boolean {
+    return this.phase !== "flying";
+  }
+
   /** Small fake dip shortly before the real bite — anticipation, not a prompt. */
   showNibble(): void {
     if (this.phase !== "waiting") return;
@@ -144,10 +133,8 @@ export abstract class CastLayer extends AnglerLayer {
   showBite(): void {
     this.phase = "bite";
     this.biteMark.visible = true;
-    // Placed the moment it is shown. The per-frame pass only moves the mark
-    // while it is visible, so showing it first left one frame at the spot the
-    // mark had last been put — the very corner of the scene on the first bite —
-    // and the exclamation mark then jumped to the float.
+    // Placed before the per-frame pass can see it, or the first frame shows the
+    // mark at the corner it was left in and it jumps to the float.
     this.placeBiteMark(0);
   }
 
@@ -299,8 +286,9 @@ export abstract class CastLayer extends AnglerLayer {
         this.fightBobberY + Math.sin(this.time * 8) * 1.2 + jerk,
       );
       // Struck fish: the float pops back to the surface and only dips again as
-      // the escape meter grows.
-      this.sinkTarget = tension * 4 - jerk * 0.8;
+      // the fish tears the line away. The sink is the whole escape cue now, so
+      // it goes deeper than the old four pixels.
+      this.sinkTarget = tension * 6 - jerk * 0.8;
       this.bobberBody.rotation = Math.sin(this.time * 6) * 0.16;
       if (Math.random() < dt * 2) {
         this.spawnSplash(this.fightBobberX, this.fightBobberY, 1, 0.35);

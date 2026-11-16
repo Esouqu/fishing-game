@@ -3,6 +3,7 @@ import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";
 import { TEXT } from "../texts";
+import { easeOutCubic } from "../utils";
 import { Button } from "./Button";
 import { FocusGroup } from "./FocusGroup";
 import { UI } from "./palette";
@@ -26,6 +27,10 @@ const BUTTON_H = 21;
 const BUTTON_GAP = 6;
 const BUTTON_X = PANEL.x + PANEL_PAD;
 const BUTTON_Y = PANEL.y + PANEL_PAD + 22 + 8;
+/** How far the panel rises while it flies in, in pixels. */
+const FLY_IN = 22;
+const FLY_TIME = 0.24;
+const FLY_OUT_TIME = 0.2;
 
 /**
  * Pause overlay with the resume/areas/codex/sound/menu column and keyboard
@@ -36,6 +41,11 @@ export class PauseMenu extends Container {
   private readonly game: GameContext;
   private readonly focus = new FocusGroup();
   private readonly soundButton: Button;
+  /** The dialog itself; the dimmer behind it stays put while this flies in. */
+  private readonly panelLayer = new Container();
+  private intro = 1;
+  private closing = false;
+  private outro = 0;
 
   constructor(game: GameContext, handlers: PauseMenuHandlers) {
     super();
@@ -50,6 +60,7 @@ export class PauseMenu extends Container {
     blocker.cursor = CURSORS.default;
     blocker.hitArea = new Rectangle(0, 0, VIEW.width, VIEW.height);
     this.addChild(blocker);
+    this.addChild(this.panelLayer);
 
     const panel = new Graphics();
     drawPanel(panel, PANEL.x, PANEL.y, PANEL.width, PANEL.height, {
@@ -57,7 +68,7 @@ export class PauseMenu extends Container {
       alpha: 0.98,
       shadow: true,
     });
-    this.addChild(panel);
+    this.panelLayer.addChild(panel);
 
     const title = makeText(TEXT.common.pause, {
       size: 18,
@@ -67,7 +78,7 @@ export class PauseMenu extends Container {
       letterSpacing: 2,
     });
     title.position.set(240, PANEL.y + PANEL_PAD);
-    this.addChild(title);
+    this.panelLayer.addChild(title);
 
     const resume = new Button({
       label: TEXT.common.resume,
@@ -78,7 +89,7 @@ export class PauseMenu extends Container {
       onClick: handlers.onResume,
     });
     resume.position.set(BUTTON_X, BUTTON_Y);
-    this.addChild(resume);
+    this.panelLayer.addChild(resume);
 
     const codex = new Button({
       label: TEXT.codex.title,
@@ -88,7 +99,7 @@ export class PauseMenu extends Container {
       onClick: handlers.onCodex,
     });
     codex.position.set(BUTTON_X, BUTTON_Y + BUTTON_H + BUTTON_GAP);
-    this.addChild(codex);
+    this.panelLayer.addChild(codex);
 
     this.soundButton = new Button({
       label: this.muteLabel(),
@@ -101,7 +112,7 @@ export class PauseMenu extends Container {
       BUTTON_X,
       BUTTON_Y + (BUTTON_H + BUTTON_GAP) * 2,
     );
-    this.addChild(this.soundButton);
+    this.panelLayer.addChild(this.soundButton);
 
     const menu = new Button({
       label: TEXT.common.menu,
@@ -111,7 +122,7 @@ export class PauseMenu extends Container {
       onClick: () => this.game.showMenu(),
     });
     menu.position.set(BUTTON_X, BUTTON_Y + (BUTTON_H + BUTTON_GAP) * 3);
-    this.addChild(menu);
+    this.panelLayer.addChild(menu);
 
     this.focus.setItems([resume, codex, this.soundButton, menu]);
     this.focus.onMove = () => this.game.audio.hover();
@@ -119,13 +130,50 @@ export class PauseMenu extends Container {
 
   open(): void {
     this.visible = true;
+    this.closing = false;
+    this.outro = 0;
+    this.alpha = 1;
+    this.interactiveChildren = true;
+    // The panel rises from below the frame like a popup instead of popping in
+    // over the paused lake. The dimmer is already there, so nothing flashes.
+    this.intro = 0;
+    this.panelLayer.y = FLY_IN;
+    this.panelLayer.alpha = 0;
     // The panel opens unlit: the ring appears on the first arrow key, so no
     // button is pre-selected for a player who is about to use the mouse.
     this.focus.reset();
   }
 
+  /** Advances the fly-in or fly-out; the screen ticks this every frame. */
+  update(dt: number): void {
+    if (this.closing) {
+      this.outro = Math.min(1, this.outro + dt / FLY_OUT_TIME);
+      const eased = easeOutCubic(this.outro);
+      this.panelLayer.y = FLY_IN * eased;
+      this.alpha = 1 - eased;
+      if (this.outro >= 1) {
+        this.closing = false;
+        this.visible = false;
+        this.alpha = 1;
+        this.panelLayer.y = 0;
+        this.panelLayer.alpha = 1;
+      }
+      return;
+    }
+    if (!this.visible || this.intro >= 1) return;
+    this.intro = Math.min(1, this.intro + dt / FLY_TIME);
+    const eased = easeOutCubic(this.intro);
+    this.panelLayer.y = FLY_IN * (1 - eased);
+    this.panelLayer.alpha = Math.min(1, this.intro * 2.2);
+  }
+
   close(): void {
-    this.visible = false;
+    if (!this.visible) return;
+    // The dialog drops back down instead of blinking out; the round is already
+    // running again behind it, so the fade-out has to be quick and uninteractive.
+    this.closing = true;
+    this.outro = 0;
+    this.interactiveChildren = false;
     this.focus.blur();
   }
 

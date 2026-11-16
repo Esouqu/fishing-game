@@ -10,27 +10,31 @@ declare global {
 }
 
 const host = document.getElementById("game");
-const splash = document.getElementById("boot-splash");
 
 document.title = TEXT.page.title;
 document
   .querySelector('meta[name="description"]')
   ?.setAttribute("content", TEXT.page.description);
 
-/**
- * The splash is plain HTML painted before any script, so it is the first thing
- * on screen and does not wait for Pixi, the font or the assets. It leaves once
- * the menu exists; on failure it stays with the error state instead of a
- * forever-loading bar.
- */
-function dismissSplash(failed = false): void {
-  if (!splash) return;
-  splash.dataset.state = failed ? "error" : "done";
-  if (failed) {
-    splash.querySelector(".boot-note")?.replaceChildren("не удалось загрузить");
-    return;
-  }
-  window.setTimeout(() => splash.remove(), 280);
+/** Last-resort message when the game cannot start at all. */
+function showBootError(): void {
+  const box = document.createElement("div");
+  box.textContent = "НЕ УДАЛОСЬ ЗАГРУЗИТЬ";
+  box.setAttribute("role", "alert");
+  box.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "display:grid",
+    "place-items:center",
+    "padding:24px",
+    "background:#141d33",
+    "color:#eef2ff",
+    "z-index:10",
+    "text-align:center",
+    "letter-spacing:0.18em",
+    "font:700 clamp(18px,4vw,30px)/1.2 'Courier New', monospace",
+  ].join(";");
+  document.body.appendChild(box);
 }
 
 if (host) {
@@ -46,12 +50,11 @@ if (host) {
   })
     .then((game) => {
       window.__fishing = game;
-      dismissSplash();
     })
     .catch((error: unknown) => {
       console.error("[quiet-cove] failed to start", error);
-      dismissSplash(true);
+      showBootError();
     });
 } else {
-  dismissSplash(true);
+  showBootError();
 }

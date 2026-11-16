@@ -18,6 +18,11 @@ export interface ButtonOptions {
   /** Selected state for tabs: ice-white fill and a dark label. */
   selected?: boolean;
   /**
+   * Draw the `>…<` selection marks around the label. Off for icon-like labels
+   * such as the codex's «х», where the marks would read as a second glyph.
+   */
+  marks?: boolean;
+  /**
    * Mutes the interface cue this button would play on hover and press, for
    * controls that are auditioning a sound of their own.
    */
@@ -59,6 +64,7 @@ export class Button extends Container implements Focusable {
   private enabled = true;
   private isSelected = false;
   private readonly quiet: boolean;
+  private readonly marksEnabled: boolean;
   private onClick?: () => void;
 
   constructor(options: ButtonOptions) {
@@ -69,6 +75,7 @@ export class Button extends Container implements Focusable {
     this.onClick = options.onClick;
     this.isSelected = options.selected ?? false;
     this.quiet = options.quiet ?? false;
+    this.marksEnabled = options.marks ?? true;
 
     if (options.label !== undefined) {
       this.labelText = makeText(options.label, {
@@ -80,17 +87,19 @@ export class Button extends Container implements Focusable {
       this.labelText.anchor.set(0.5, 0.5);
       this.addChild(this.labelText);
 
-      const markStyle = {
-        size: this.fontSize,
-        weight: 600,
-        color: this.labelOnBright ? UI.textOnBright : UI.text,
-      };
-      this.markLeft = makeText(">", markStyle);
-      this.markLeft.anchor.set(1, 0.5);
-      this.markLeft.visible = false;
-      this.markRight = makeText("<", markStyle);
-      this.markRight.anchor.set(0, 0.5);
-      this.markRight.visible = false;
+      if (this.marksEnabled) {
+        const markStyle = {
+          size: this.fontSize,
+          weight: 600,
+          color: this.labelOnBright ? UI.textOnBright : UI.text,
+        };
+        this.markLeft = makeText(">", markStyle);
+        this.markLeft.anchor.set(1, 0.5);
+        this.markLeft.visible = false;
+        this.markRight = makeText("<", markStyle);
+        this.markRight.anchor.set(0, 0.5);
+        this.markRight.visible = false;
+      }
     }
 
     this.widthValue =
@@ -321,7 +330,8 @@ export class Button extends Container implements Focusable {
         ? UI.textOnBright
         : UI.text;
       const fill = this.labelOnBright ? UI.textOnBright : UI.text;
-      const shown = this.hovered || this.focused || this.isSelected;
+      const shown =
+        this.marksEnabled && (this.hovered || this.focused || this.isSelected);
       for (const mark of [this.markLeft, this.markRight]) {
         if (!mark) continue;
         mark.visible = shown;

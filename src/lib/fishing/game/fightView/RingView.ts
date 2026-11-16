@@ -1,6 +1,5 @@
 import { Graphics } from "pixi.js";
 import { FIGHT_RADIUS } from "../fight";
-import { UI } from "../../ui/palette";
 import { WINTER } from "../../world";
 import { clamp } from "../../utils";
 import { RING_SEGMENTS, ringRadiusAt } from "../fightRing";
@@ -93,21 +92,8 @@ export abstract class RingView extends MinigameCore {
     // circle is least welcome. The bolt is already announced by the orange
     // pointer, the frightened fish and the bubbles.
 
-    // Danger is local: a red arc only where the fish has broken the line,
-    // plus a slim rim around the fish itself.
-    if (this.model.isOutside) {
-      const angle = this.model.fishAngle();
-      this.strokeArc(g, FIGHT_RADIUS, 1, angle - 0.55, angle + 0.55, {
-        width: 2,
-        color: UI.rose,
-        alpha: 0.5 + pulse * 0.3,
-      });
-      const point = this.model.fishPoint;
-      g.circle(point.x, point.y, 9).stroke({
-        width: 1.2,
-        color: UI.rose,
-        alpha: 0.3 + pulse * 0.2,
-      });
-    }
+    // Leaving the zone has no mark of its own either: the float sinking under
+    // the surface is the cue, and red arcs at the rim only competed with the
+    // heading arrow for the same pixels.
   }
 }

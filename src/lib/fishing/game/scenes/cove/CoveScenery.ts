@@ -4,10 +4,18 @@ import { drawGrassTuft } from "../grass";
 import { drawBucket, drawShoreStone, drawSnowDrift } from "../props";
 import { mixColor, winterWaterAt } from "../../../world";
 import { CoveShore } from "./CoveShore";
-import { MOORED_BOAT, SHORE_X, type ScenerySpot } from "./geometry";
+import { DOCK, MOORED_BOAT, SHORE_X, type ScenerySpot } from "./geometry";
 
 export class CoveScenery extends CoveShore {
   drawScenery(props: Container): void {
+    // The pier is a prop so the water surface, the shoal and the weather rings
+    // all stay behind it. Its zIndex is the deck's top edge: everything that
+    // stands on the pier (angler, bucket, moored boat) sorts above it by y.
+    const dock = new Graphics();
+    this.drawDock(dock);
+    dock.zIndex = DOCK.y;
+    props.addChild(dock);
+
     const addMound = (item: ScenerySpot, scale: number): void => {
       drawSnowDrift(props, item.x, item.y, scale, this.palette);
     };

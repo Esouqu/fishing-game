@@ -91,6 +91,11 @@ export abstract class CastFlowInput extends CastFlowCore {
       this.luckZoneHit = false;
       this.luckBandCenterValue = randRange(LUCK_BAND.min, LUCK_BAND.max);
     } else if (this.phaseValue === "waiting") {
+      // The wait starts the moment the cast is released, but the float needs
+      // `castFlight` seconds to hit the water. A press during that arc is not a
+      // strike: before this guard it counted as an early hook and spooked a
+      // fish that had not even landed yet.
+      if (!this.scene.castLanded) return;
       this.earlyHook();
     } else if (this.phaseValue === "bite") {
       // The player just pressed on the bite prompt — hook immediately. The

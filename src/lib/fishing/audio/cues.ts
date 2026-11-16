@@ -45,8 +45,16 @@ export abstract class CueBank extends AudioCore {
     this.play("bite", this.mix.bite);
   }
 
+  /**
+   * The strike that sets the hook: the rod snaps and the line goes taut.
+   *
+   * `fishHit` is the pack's own hit cue. It is deliberately unlike the catch
+   * fanfare — a strike is an action, over in under a second, not a reward.
+   * `jingle1` used to stand in here only because this cue had not been wired
+   * into the catalog.
+   */
   hook(): void {
-    this.play("jingle", this.mix.hook);
+    this.play("fishHit", this.mix.hook);
   }
 
   nibble(): void {
@@ -116,14 +124,14 @@ export abstract class CueBank extends AudioCore {
     this.play("bite", this.mix.landReady);
   }
 
-  /** Quiet reminder while the landing window stays open. */
-  landTick(): void {
-    this.play("blip1", this.mix.landTick, 1.9);
-  }
-
-  /** Soft tick when the charge enters the luck zone. */
-  zoneTick(): void {
-    this.play("blip1", this.mix.landTick * 0.6, 1.9);
+  /**
+   * Cast released inside the luck zone: the completion chime over the throw.
+   *
+   * It plays on the same frame as the whoosh, so the zone reads as one
+   * confirmed event.
+   */
+  objective(): void {
+    this.play("objective", this.mix.objective);
   }
 
   /** Landing strike attempted too early. */
@@ -134,13 +142,6 @@ export abstract class CueBank extends AudioCore {
   /** Grip reserve burned out: the line tears loose for a moment. */
   gripOut(): void {
     this.play("escape", this.mix.gripOut);
-  }
-
-  /**
-   * Landing inside the luck zone: a short, quiet sparkle, not a coin jingle.
-   */
-  luck(): void {
-    this.play("shiny", this.mix.luck, 1.08);
   }
 
   comboBreak(): void {

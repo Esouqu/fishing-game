@@ -38,10 +38,9 @@ export type MixChannel =
   | "counter"
   | "ready"
   | "landReady"
-  | "landTick"
   | "resist"
   | "gripOut"
-  | "luck"
+  | "objective"
   | "comboBreak"
   | "newRecord"
   | "ambience"
@@ -76,11 +75,11 @@ export const MIX_CHANNELS: readonly MixChannelDef[] = [
   { id: "counter", group: "fight", label: "КОНТР" },
   { id: "ready", group: "fight", label: "ГОТОВ" },
   { id: "landReady", group: "fight", label: "ФИНАЛ" },
-  { id: "landTick", group: "fight", label: "ТИК" },
+  // The perfect cast: the chime that answers a release inside the green band.
+  { id: "objective", group: "fight", label: "ЗОНА" },
   { id: "resist", group: "fight", label: "ОТПОР" },
   { id: "gripOut", group: "fight", label: "ХВАТКА" },
 
-  { id: "luck", group: "world", label: "УДАЧА" },
   { id: "comboBreak", group: "world", label: "ОБРЫВ" },
   { id: "newRecord", group: "world", label: "РЕКОРД" },
 
@@ -109,12 +108,11 @@ export const AUDIO_MIX: AudioMix = {
   escape: 0.3,
   warn: 0.5,
   counter: 0.42,
-  ready: 0.34,
-  landReady: 0.52,
-  landTick: 0.18,
+  ready: 1,
+  landReady: 0.24,
+  objective: 1,
   resist: 0.34,
   gripOut: 0.3,
-  luck: 0.12,
   comboBreak: 0.26,
   newRecord: 0.42,
   ambience: 0.16,

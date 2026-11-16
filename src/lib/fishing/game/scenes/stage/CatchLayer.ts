@@ -51,11 +51,12 @@ export class CatchLayer extends FxLayer {
   resetCast(): void {
     this.phase = "idle";
     this.pulling = false;
-    // The escape gauge belongs to one fight, not to the session: a new cast
-    // always starts from an empty gauge, even if the previous round ended with
-    // the line at the edge of tearing.
+    // The gauges belong to one fight, not to the session: a new cast always
+    // starts from a rested fish and an empty escape clock, even if the previous
+    // round ended with the line at the edge of tearing.
     this.escapeMeter = 0;
-    this.drawEscapeRing();
+    this.fishStamina = 1;
+    this.drawStaminaArc();
     this.previewG.clear();
     this.biteMark.visible = false;
     this.bobber.visible = false;

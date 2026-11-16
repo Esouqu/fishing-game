@@ -30,9 +30,7 @@ export abstract class GameBase {
   protected readonly fallbackPreviews = new Map<AreaId, Texture>();
 
   protected bootLayer: Container | null = null;
-  protected bootMarker: Graphics | null = null;
   protected bootFill: Graphics | null = null;
-  protected bootTime = 0;
   protected cursorOverlay: CursorOverlay | null = null;
   protected cursorX = 0;
   protected cursorY = 0;
@@ -189,11 +187,6 @@ export abstract class GameBase {
     if (this.destroyed) return;
     const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.05);
     if (this.bootLayer) {
-      this.bootTime += dt;
-      if (this.bootMarker) {
-        this.bootMarker.y = 134 + Math.sin(this.bootTime * 4) * 3;
-        this.bootMarker.rotation = Math.sin(this.bootTime * 2) * 0.15;
-      }
       return;
     }
     this.screens.update(dt);

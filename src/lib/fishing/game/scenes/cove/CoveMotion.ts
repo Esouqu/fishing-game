@@ -3,10 +3,10 @@ import { CoveScenery } from "./CoveScenery";
 import { MOORED_BOAT } from "./geometry";
 
 export class CoveMotion extends CoveScenery {
-  drawMotion(g: Graphics, time: number, cloudiness = 0): void {
+  drawMotion(g: Graphics, time: number): void {
     g.clear();
 
-    this.water.draw(g, time, cloudiness);
+    this.water.draw(g, time);
 
     // Sunlight breaking on the wavelets.
     for (const glint of this.glints) {

@@ -78,18 +78,15 @@ export const FIGHT = {
   resistCooldown: 0.5,
   /** Reactions to pressure. */
   sameAimTime: 2.5,
+  /** Escaping the ring: how quickly a neglected fish aims for the edge. */
+  neglectRamp: 1.1,
+  /** Extra ring radii the fish aims for once it is fully neglected. */
+  neglectPush: 0.32,
   lowGrip: 0.25,
   lastRunThreshold: 0.3,
   lastRunChance: 0.3,
   /** Minimum gap between landing chimes. */
   readyChime: 0.9,
-  /**
-   * How long the landing cue takes to close: the orange ring around a tired
-   * fish compresses over exactly this time. It is short on purpose — the cue is
-   * meant to read as the window *opening*, so the ring arrives with the splash
-   * that announces it instead of still travelling after the sound has gone.
-   */
-  landCue: 0.3,
 } as const;
 
 export type { Temperament } from "./types";

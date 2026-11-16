@@ -39,7 +39,11 @@ export class FishingScene extends CatchLayer {
     this.updateParticles(dt);
     this.updateJumps(dt);
     this.updateHeldFish(dt);
-    this.renderer.drawMotion(this.motionG, this.time, this.cloudiness);
+    this.renderer.drawMotion(this.motionG, this.time);
+    // Cloud shade goes over the props, so it is drawn on its own layer after
+    // them rather than inside the water motion.
+    this.clouds.clear();
+    this.cloudShadows.draw(this.clouds, this.time, this.cloudiness);
     this.renderer.animate?.(this.time);
   }
 }

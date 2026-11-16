@@ -1,8 +1,12 @@
 import type { Container } from "pixi.js";
 import type { GameContext } from "../GameContext";
 import type { FishSpecies } from "../config";
+import { TEXT } from "../texts";
+import type { FloaterLayer } from "../ui/FloaterLayer";
+import { UI } from "../ui/palette";
 import type { FishingScene } from "./scenes/FishingScene";
 import type { JuiceFx } from "./JuiceFx";
+import { FIGHT_RADIUS } from "./fight";
 import { Minigame, type MinigameResult } from "./Minigame";
 
 import type { FightFocus } from "./FightFocus";
@@ -20,6 +24,8 @@ export interface FightStageDeps {
    * stay readable in fog while the ring and the fish are dimmed with the water.
    */
   barsLayer: Container;
+  /** Short captions over the ring ("нет сил", "сорвалась"). */
+  floaters: FloaterLayer;
   focus: FightFocus;
 }
 
@@ -33,9 +39,6 @@ export interface FightInput {
   held: boolean;
 }
 
-/** Repeat period of the quiet "still landable" reminder, in seconds. */
-const LAND_TICK = 1.15;
-
 /**
  * The live fight: owns the {@link Minigame} view for one hooked fish and keeps
  * the scene, float, vignette and reel sound in sync with it. The round flow
@@ -48,10 +51,10 @@ export class FightStage {
   private readonly fightLayer: Container;
   private readonly bobberLayer: Container;
   private readonly barsLayer: Container;
+  private readonly floaters: FloaterLayer;
   private readonly focus: FightFocus;
 
   private minigame: Minigame | null = null;
-  private landTickTimer = LAND_TICK;
 
   onFinish?: (result: MinigameResult) => void;
 
@@ -62,6 +65,7 @@ export class FightStage {
     this.fightLayer = deps.fightLayer;
     this.bobberLayer = deps.bobberLayer;
     this.barsLayer = deps.barsLayer;
+    this.floaters = deps.floaters;
     this.focus = deps.focus;
   }
 
@@ -109,13 +113,30 @@ export class FightStage {
         this.juice.trigger("ready", point.x, point.y);
       },
       onResist: () => this.game.audio.resist(),
-      onGripOut: () => this.game.audio.gripOut(),
+      onGripOut: () => {
+        this.game.audio.gripOut();
+        // The bars empty in silence: a short caption over the ring says why the
+        // line went slack for a beat. The ring is anchored on the cast point.
+        this.floaters.add(
+          TEXT.game.gripOut,
+          castPoint.x,
+          castPoint.y - FIGHT_RADIUS - 6,
+          UI.amber,
+          9,
+          1.1,
+          -14,
+        );
+      },
     });
 
     this.fightLayer.addChild(minigame);
     // The stamina stack lives above the weather, not inside the fight layer.
     this.barsLayer.addChild(minigame.bars);
     this.bobberLayer.addChild(this.scene.bobberView);
+    // Direction cues ride on the float's layer, after the float: the fish's
+    // stamina arc is drawn on the float, and the "ПКМ"/heading pointers must
+    // never sink under it.
+    this.bobberLayer.addChild(minigame.pointers);
     const ring = minigame.ringCenter;
     this.focus.focusAt(ring.x, ring.y);
     minigame.onFinish = (result) => this.onFinish?.(result);
@@ -128,8 +149,8 @@ export class FightStage {
       minigame.fishVelocity.y,
     );
     this.scene.setEscapeMeter(0);
+    this.scene.setFishStamina(1);
     this.minigame = minigame;
-    this.landTickTimer = LAND_TICK;
   }
 
   update(dt: number, input: FightInput): void {
@@ -152,23 +173,16 @@ export class FightStage {
       minigame.isSteering,
     );
     this.scene.setEscapeMeter(minigame.escapeMeter);
+    this.scene.setFishStamina(minigame.endurance);
 
     // The reel is a sustain: it loops for as long as the player holds the
-    // line, and fades out the moment they let go.
-    if (minigame.isSteering) this.game.audio.startReel();
+    // line, and fades out the moment they let go. It also has to go quiet the
+    // frame the fight is decided — `settle()` has already released it by then
+    // (the catch can be won right here, inside `minigame.update`), so asking a
+    // finished fight to start it again would leave the crank running under the
+    // whole catch display.
+    if (minigame.isRunning && minigame.isSteering) this.game.audio.startReel();
     else this.game.audio.stopReel();
-
-    // While the fish stays landable the cue gets a quiet tick, so a player who
-    // missed the opening chime still hears that RMB/F keeps working.
-    if (minigame.canLand) {
-      this.landTickTimer -= dt;
-      if (this.landTickTimer <= 0) {
-        this.landTickTimer = LAND_TICK;
-        this.game.audio.landTick();
-      }
-    } else {
-      this.landTickTimer = LAND_TICK;
-    }
   }
 
   /** Final pull: RMB/F, or a tap on the fish on touch. */
@@ -187,6 +201,7 @@ export class FightStage {
     this.game.audio.stopReel();
     this.minigame.visible = false;
     this.minigame.bars.visible = false;
+    this.minigame.pointers.visible = false;
     this.minigame.setHold(false);
   }
 
@@ -195,10 +210,12 @@ export class FightStage {
     this.game.audio.stopReel();
     if (!this.minigame) return;
     this.fightLayer.removeChild(this.minigame);
-    // The bars are parented outside the minigame, so they are torn down here
-    // rather than by the minigame's own `destroy`.
+    // The bars and the pointer cues are parented outside the minigame, so they
+    // are torn down here rather than by the minigame's own `destroy`.
     this.barsLayer.removeChild(this.minigame.bars);
     this.minigame.bars.destroy({ children: true });
+    this.bobberLayer.removeChild(this.minigame.pointers);
+    this.minigame.pointers.destroy({ children: true });
     this.minigame.destroy({ children: true });
     this.minigame = null;
   }

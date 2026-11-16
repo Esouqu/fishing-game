@@ -1,12 +1,13 @@
-import { Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
+import { Container, Graphics, Rectangle, Sprite } from "pixi.js";
 import type { GameContext } from "../GameContext";
-import { AREAS } from "../areas";
+import { AREAS, type AreaDef } from "../areas";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";
-import type { AreaId } from "../types";
+import type { AreaId, WeatherId } from "../types";
+import type { WipePoint } from "./GridWipe";
 import { easeOutCubic, lerp } from "../utils";
 import { UI } from "./palette";
-import { drawPanel, makeText } from "./theme";
+import { drawPanel, drawWeatherIcon, makeText } from "./theme";
 
 /** One travel card in the bottom corner. */
 const CARD = { width: 68, height: 40 } as const;
@@ -16,6 +17,8 @@ const MARGIN = 8;
 const FOOTER = 11;
 /** Inner gutter of the thumbnail against the frame. */
 const THUMB_PAD = 2;
+/** Side of the weather badge in the thumbnail's top-right corner. */
+const WEATHER_BADGE = 14;
 /** Distance a card travels while sliding into its corner, in pixels. */
 const SLIDE = 26;
 /** How long that slide takes, in seconds. */
@@ -47,7 +50,7 @@ export class AreaShortcuts extends Container {
   constructor(
     game: GameContext,
     current: AreaId,
-    onPick: (areaId: AreaId) => void,
+    onPick: (areaId: AreaId, origin: WipePoint) => void,
   ) {
     super();
     const count = AREAS.length;
@@ -61,11 +64,13 @@ export class AreaShortcuts extends Container {
       AREAS[(index + 1) % count],
     ];
     neighbours.forEach((area, side) => {
-      const card = new ShortcutCard(
-        game,
-        game.previewFor(area.id),
-        area.name,
-        () => onPick(area.id),
+      const card = new ShortcutCard(game, area, () =>
+        // The wipe starts where the click landed: the card's own centre, so the
+        // grid opens from that corner instead of as a wall from the frame edge.
+        onPick(area.id, {
+          x: card.x + CARD.width / 2,
+          y: card.y + CARD.height / 2,
+        }),
       );
       // First neighbour on the left, second on the right: the ring order is
       // fixed by `AREAS`, so the corners never swap under the player's hand.
@@ -85,6 +90,7 @@ export class AreaShortcuts extends Container {
    * swapped behind a fade.
    */
   update(dt: number): void {
+    for (const card of this.cards) card.update();
     if (this.elapsed >= SLIDE_TIME) return;
     this.elapsed = Math.min(SLIDE_TIME, this.elapsed + dt);
     const t = this.elapsed / SLIDE_TIME;
@@ -113,17 +119,19 @@ export class AreaShortcuts extends Container {
 /** A single travel card: a still of the water body with its name on a strip. */
 class ShortcutCard extends Container {
   private readonly game: GameContext;
+  private readonly areaId: AreaId;
   private readonly hoverLayer = new Graphics();
+  private readonly weatherPlate = new Graphics();
+  private readonly weatherArt = new Graphics();
+  private weather: WeatherId | null = null;
   private available = true;
 
-  constructor(
-    game: GameContext,
-    texture: Texture,
-    label: string,
-    onClick: () => void,
-  ) {
+  constructor(game: GameContext, area: AreaDef, onClick: () => void) {
     super();
     this.game = game;
+    this.areaId = area.id;
+    const texture = game.previewFor(area.id);
+    const label = area.name;
 
     const frame = new Graphics();
     drawPanel(frame, 0, 0, CARD.width, CARD.height, {
@@ -154,6 +162,18 @@ class ShortcutCard extends Container {
     mask.rect(THUMB_PAD, THUMB_PAD, viewWidth, viewHeight).fill(0xffffff);
     this.addChild(mask);
     thumb.mask = mask;
+
+    // Weather badge in the top-right corner: one square of the front's own
+    // colour with the dark glyph inside, the same frame size for every front.
+    // The old full-width band hid a third of the still and its label had to be
+    // read; a corner badge says the same thing without covering the picture.
+    const badgeX = CARD.width - THUMB_PAD - WEATHER_BADGE - 2;
+    const badgeY = THUMB_PAD + 2;
+    this.weatherPlate.position.set(badgeX, badgeY);
+    this.addChild(this.weatherPlate);
+    this.weatherArt.position.set(badgeX + 2, badgeY + 2);
+    this.weatherArt.scale.set(0.83);
+    this.addChild(this.weatherArt);
 
     // Name strip: the label has to stay readable over bright snow, so it gets
     // its own dark band instead of sitting straight on the still.
@@ -191,6 +211,26 @@ class ShortcutCard extends Container {
       this.game.audio.click();
       onClick();
     });
+    this.update();
+  }
+
+  /** Keeps the weather badge in step with the sky over that water body. */
+  update(): void {
+    const weather = this.game.clock.weatherFor(this.areaId);
+    if (weather === this.weather) return;
+    this.weather = weather;
+    this.weatherPlate.clear();
+    this.weatherPlate
+      .rect(0, 0, WEATHER_BADGE, WEATHER_BADGE)
+      .fill({ color: UI.ink, alpha: 0.85 });
+    this.weatherPlate
+      .rect(0, 0, WEATHER_BADGE, WEATHER_BADGE)
+      .stroke({ width: 1, color: UI.panel, alpha: 0.9 });
+    // The glyph keeps the front's colour, exactly like the picker's weather
+    // row: a dark plate behind it is what makes that colour readable over the
+    // bright snow of the still.
+    this.weatherArt.clear();
+    drawWeatherIcon(this.weatherArt, weather);
   }
 
   hitTest(x: number, y: number): boolean {

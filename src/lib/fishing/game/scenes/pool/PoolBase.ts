@@ -207,8 +207,11 @@ export class PoolBase {
     const ny = (y - CENTER.y) / RADIUS.y;
     const radius = Math.hypot(nx, ny);
     if (radius > this.shoreScale(Math.atan2(ny, nx))) return false;
+    // The angler and the whole skiff are dry: the hull is wider and longer than
+    // the old box around the angler, so ripples used to lap over the bow and
+    // stern. The box now covers the hull with a little air around it.
     const { x: ax, y: ay } = this.layout.angler;
-    if (x >= ax - 21 && x <= ax + 21 && y >= ay - 16 && y <= ay + 6) {
+    if (x >= ax - 26 && x <= ax + 26 && y >= ay - 24 && y <= ay + 16) {
       return false;
     }
     return true;

@@ -72,6 +72,7 @@ export abstract class CastFlowCore {
       fightLayer: deps.fightLayer,
       bobberLayer: deps.bobberLayer,
       barsLayer: deps.barsLayer,
+      floaters: deps.floaters,
       focus: deps.focus,
     });
     this.fight.onFinish = (result) => this.resolveFight(result);

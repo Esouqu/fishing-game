@@ -3,7 +3,7 @@ import type { FishSpecies } from "../../config";
 import { TEXT } from "../../texts";
 import { FIGHT_RADIUS } from "../fight";
 import { UI } from "../../ui/palette";
-import { makeText } from "../../ui/theme";
+import { makeKeycap, makeText } from "../../ui/theme";
 import {
   FightModel,
   type MinigameOptions,
@@ -11,27 +11,31 @@ import {
 } from "../fight";
 import { FISH_SCALE, SILHOUETTE } from "./setup";
 
+/** Height of the "ПКМ" chip shown over a landable fish. */
+const LAND_KEY_HEIGHT = 9;
+
 export abstract class MinigameCore extends Container {
   protected readonly model: FightModel;
   protected readonly fishSprite: Sprite;
   protected readonly ringG = new Graphics();
   protected readonly counterG = new Graphics();
+  /**
+   * Direction cues — the small velocity arrow and the dash telegraph.
+   *
+   * They live in a container of their own so the float layer can put them above
+   * the float: the fish-stamina arc is drawn on the float, and a pointer that
+   * slides under that gauge disappeared exactly when the fish was closest to it.
+   */
+  readonly pointers = new Container();
+  /** The open landing window: a "ПКМ" keycap over the fish. */
+  protected readonly landKey: Container;
   protected readonly directionG = new Graphics();
   protected readonly cueG = new Graphics();
   protected readonly barG = new Graphics();
-  protected readonly gripG = new Graphics();
   protected readonly warnG = new Graphics();
   protected readonly counterLabel: Text;
-  /**
-   * The landing-window mark: the same "!" the bite raises over the float.
-   *
-   * The landing cue used to be a closing ring around the fish. In a fight that
-   * already draws a ring, two stamina bars and a heading arrow, one more circle
-   * was the least legible way to say "act now" — and it arrived as a pulse
-   * rather than as a point. The exclamation is the one symbol the round already
-   * teaches the player (it is the bite), so the landing window reuses it.
-   */
-  protected readonly landMark: Text;
+  /** Caption over the player's stamina bar. */
+  protected readonly staminaLabel: Text;
   /**
    * The stamina stack, in a container of its own.
    *
@@ -43,11 +47,6 @@ export abstract class MinigameCore extends Container {
   readonly bars = new Container();
   protected intro = 0;
   protected introScale = 0;
-  /** 0..1 progress of the closing landing ring; 0 while it is not landable. */
-  protected landCue = 0;
-  /** 0..1 opacity of the landing cue, so it can fade in and out on its own. */
-  protected landFade = 0;
-  protected wasLandable = false;
 
   onFinish?: (result: MinigameResult) => void;
 
@@ -77,32 +76,40 @@ export abstract class MinigameCore extends Container {
     this.counterLabel.visible = false;
     this.addChild(this.counterLabel);
 
-    // Mint, not the bite's gold: the bite means "a fish is on", this one means
-    // "it is spent, take it", and the mint is already the colour of the fish's
-    // stamina running out on the bar above.
-    this.landMark = makeText(TEXT.game.biteMark, {
-      size: 22,
-      color: UI.mint,
-      weight: 800,
+    this.bars.addChild(this.barG);
+    this.staminaLabel = makeText(TEXT.fight.stamina, {
+      size: 5,
+      color: UI.textMuted,
+      weight: 700,
       align: "center",
     });
-    this.landMark.anchor.set(0.5, 1);
-    this.landMark.style.stroke = { color: UI.ink, width: 3 };
-    this.landMark.visible = false;
-    this.addChild(this.landMark);
-
-    this.bars.addChild(this.barG);
-    this.bars.addChild(this.gripG);
+    this.staminaLabel.anchor.set(0.5, 1);
+    this.staminaLabel.style.stroke = { color: UI.ink, width: 2 };
+    this.bars.addChild(this.staminaLabel);
     this.bars.eventMode = "none";
-    this.addChild(this.directionG);
+
+    // The landing cue: a "ПКМ" keycap over the fish while the final pull is
+    // live. It lives with the pointers so it sits above the float's stamina arc.
+    this.landKey = makeKeycap(TEXT.game.landKey, LAND_KEY_HEIGHT, 5.5, true);
+    this.landKey.eventMode = "none";
+    this.landKey.visible = false;
+
+    this.pointers.addChild(this.directionG);
+    this.pointers.addChild(this.warnG);
+    this.pointers.addChild(this.landKey);
+    this.pointers.eventMode = "none";
     this.addChild(this.cueG);
-    this.addChild(this.warnG);
     this.model.onFinish = (result) => this.onFinish?.(result);
     this.update(0);
   }
 
   get isSteering(): boolean {
     return this.model.isSteering;
+  }
+
+  /** False once the fight has been decided, whatever the pointer is doing. */
+  get isRunning(): boolean {
+    return this.model.isRunning;
   }
 
   /** Screen position of the fish silhouette, used by the trailing float. */
@@ -128,6 +135,11 @@ export abstract class MinigameCore extends Container {
   /** 0..1 escape pressure; shown by the sinking float and taut line. */
   get escapeMeter(): number {
     return this.model.escapeMeter;
+  }
+
+  /** 0..1 fish endurance; shown by the half-ring under the float. */
+  get endurance(): number {
+    return this.model.enduranceValue;
   }
 
   /** Top of the two-row stamina stack, just above the ring. */
@@ -164,7 +176,5 @@ export abstract class MinigameCore extends Container {
 
   public abstract update(dt: number): void;
   protected abstract draw(): void;
-  protected abstract updateLandCue(dt: number): void;
   protected abstract syncFishVisual(): void;
-  protected abstract updateLandMark(): void;
 }

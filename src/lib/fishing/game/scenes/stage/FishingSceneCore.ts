@@ -4,6 +4,7 @@ import type { AreaDef, AreaPalette, SceneLayout } from "../../../areas";
 import { C } from "../../../config";
 import { TEXT } from "../../../texts";
 import { makeText } from "../../../ui/theme";
+import { CloudShadows } from "../cloudShadow";
 import type { SceneRenderer } from "../types";
 import {
   ANGLER_POSES,
@@ -30,8 +31,11 @@ export abstract class FishingSceneCore extends Container {
   protected readonly bobberWash = new Graphics();
   protected readonly bobberRipple = new Graphics();
   protected readonly bobberClip = new Graphics();
-  protected readonly escapeRing = new Graphics();
+  protected readonly staminaArc = new Graphics();
   protected readonly motionG = new Graphics();
+  /** Cloud shade, above the props: a cloud is over the bank, the boat and the water. */
+  protected readonly clouds = new Graphics();
+  protected readonly cloudShadows: CloudShadows;
   protected readonly particlesG = new Graphics();
   protected readonly ringsG = new Graphics();
   protected readonly props = new Container();
@@ -99,6 +103,7 @@ export abstract class FishingSceneCore extends Container {
     this.renderer = renderer;
     this.layout = area.layout;
     this.palette = area.palette;
+    this.cloudShadows = new CloudShadows(this.palette);
 
     const { anglerX, anglerY } = {
       anglerX: this.layout.angler.x,
@@ -135,6 +140,9 @@ export abstract class FishingSceneCore extends Container {
     this.addAnglerShadow();
     this.addLightLayers();
     this.addChild(this.props);
+    // Above the scenery and the angler: cloud shade falls on everything on the
+    // land and the water, so it must not be cut by the props' silhouettes.
+    this.addChild(this.clouds);
 
     this.setAngler(this.frames.idle, 8);
     this.angler.anchor.set(0.5, 1);
@@ -163,11 +171,14 @@ export abstract class FishingSceneCore extends Container {
     this.bobberBody.rect(0, -6, 1, 2).fill(C.ink);
     this.bobber.addChild(this.bobberBody);
     this.bobberBody.mask = this.bobberClip;
-    this.escapeRing.visible = false;
-    this.bobber.addChild(this.escapeRing);
+    this.staminaArc.visible = false;
+    this.bobber.addChild(this.staminaArc);
 
     this.bobber.visible = false;
-    this.addChild(this.line, this.bobber);
+    // Float first, line second: the line is the thing tying the rod to the
+    // float, so it has to reach the top of the float instead of vanishing under
+    // its body at the waterline.
+    this.addChild(this.bobber, this.line);
 
     this.biteMark = makeText(TEXT.game.biteMark, {
       size: 22,

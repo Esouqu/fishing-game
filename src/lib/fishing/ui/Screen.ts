@@ -1,6 +1,17 @@
 import { Container } from "pixi.js";
 
 export abstract class Screen extends Container {
+  /**
+   * True for full-screen panels that open *over* another screen (picker, codex,
+   * help): they fly in from the bottom instead of fading the whole frame.
+   */
+  readonly popup: boolean = false;
+  /**
+   * A popup that animates its own chrome (a static dimmer plus a panel that
+   * flies in). The screen manager then leaves the screen itself in place instead
+   * of sliding the dimming along with the panel.
+   */
+  readonly selfFlown: boolean = false;
   onEnter(): void {}
   onExit(): void {}
   update(_dt: number): void {}

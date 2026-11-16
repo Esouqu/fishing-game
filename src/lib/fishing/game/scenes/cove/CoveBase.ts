@@ -6,6 +6,7 @@ import { randRange } from "../../../utils";
 import { WaterSurface } from "../water";
 import {
   DOCK,
+  MOORED_BOAT,
   SHORE_X,
   type Glint,
   type Ripple,
@@ -122,11 +123,23 @@ export class CoveBase {
   }
   isWater(x: number, y: number): boolean {
     if (x <= this.shoreEdgeAt(y)) return false;
+    // The deck plus its posts and snow caps: a ripple that clipped the pier's
+    // top edge read as a wave running over the planks.
     if (
-      x >= DOCK.x &&
-      x <= DOCK.x + DOCK.width &&
-      y >= DOCK.y &&
-      y <= DOCK.bottom
+      x >= DOCK.x - 4 &&
+      x <= DOCK.x + DOCK.width + 4 &&
+      y >= DOCK.y - 6 &&
+      y <= DOCK.bottom + 2
+    ) {
+      return false;
+    }
+    // The moored rowboat is solid too: waves and shoals have to go around it,
+    // not over the hull.
+    if (
+      x >= MOORED_BOAT.x - 26 &&
+      x <= MOORED_BOAT.x + 26 &&
+      y >= MOORED_BOAT.y - 22 &&
+      y <= MOORED_BOAT.y + 18
     ) {
       return false;
     }

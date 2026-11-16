@@ -4,7 +4,7 @@ import { VIEW } from "../config";
 import { AREAS, type AreaDef } from "../areas";
 import { TEXT, WEATHER_LABEL } from "../texts";
 import { Screen } from "../ui/Screen";
-import { Backdrop } from "../ui/Backdrop";
+import { Scrim } from "../ui/Scrim";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
 import { UI } from "../ui/palette";
@@ -64,9 +64,9 @@ export type AreaPickOrigin = "menu" | "game";
  * lake, and the selection has a visible state to confirm what will start.
  */
 export class AreaSelectScreen extends Screen {
+  override readonly popup = true;
   private readonly game: GameContext;
   private readonly pickOrigin: AreaPickOrigin;
-  private backdrop: Backdrop;
   private readonly focus = new FocusGroup();
   private readonly buttons: Button[] = [];
   private readonly cards: Button[] = [];
@@ -91,8 +91,8 @@ export class AreaSelectScreen extends Screen {
     this.selectedIndex = startIndex;
     const startArea = AREAS[startIndex];
 
-    this.backdrop = this.makeBackdrop(startArea);
-    this.addChild(this.backdrop);
+    // A dialog dims what is already on screen; it does not bring scenery.
+    this.addChild(new Scrim());
     game.audio.setAmbience(startArea.id);
 
     const panel = new Graphics();
@@ -145,6 +145,7 @@ export class AreaSelectScreen extends Screen {
       frame.eventMode = "none";
       card.addChild(frame);
 
+      const nameY = 77;
       const name = makeText(area.name, {
         size: 11,
         weight: 800,
@@ -152,19 +153,19 @@ export class AreaSelectScreen extends Screen {
         align: "center",
         letterSpacing: 0.3,
       });
-      name.position.set(CARD_W / 2, 77);
+      name.position.set(CARD_W / 2, nameY);
       name.eventMode = "none";
       card.addChild(name);
 
       // The marks are centred on the caption's box, not on its top edge: the
-      // caption is anchored by its top (y = 77), so anchoring the marks by their
-      // own middle at the same y put them half a line too high.
+      // caption is anchored by its top (y = nameY), so anchoring the marks by
+      // their own middle at the same y put them half a line too high.
       const markStyle = {
         size: 11,
         weight: 800,
         color: UI.text,
       };
-      const markY = 77 + name.height / 2;
+      const markY = nameY + name.height / 2;
       const left = makeText(">", markStyle);
       left.anchor.set(1, 0.5);
       left.position.set(CARD_W / 2 - Math.ceil(name.width / 2) - 1, markY);
@@ -271,11 +272,7 @@ export class AreaSelectScreen extends Screen {
     return AREAS[this.selectedIndex] ?? AREAS[0];
   }
 
-  private makeBackdrop(area: AreaDef): Backdrop {
-    return new Backdrop(this.game.previewFor(area.id), this.game.clock, area);
-  }
-
-  /** Highlights one card and re-dresses the backdrop for that water body. */
+  /** Highlights one card and previews that water body's ambience. */
   private select(index: number): void {
     const next = Math.max(0, Math.min(AREAS.length - 1, index));
     const changed = next !== this.selectedIndex;
@@ -283,12 +280,8 @@ export class AreaSelectScreen extends Screen {
     const area = this.selectedArea;
 
     if (changed) {
-      // The menu backdrop and the ambience follow the selection, so the picker
-      // previews the water body (sound and sky) before the round starts.
-      this.removeChild(this.backdrop);
-      this.backdrop.destroy({ children: true });
-      this.backdrop = this.makeBackdrop(area);
-      this.addChildAt(this.backdrop, 0);
+      // The ambience follows the selection, so the picker previews the water
+      // body by ear before the round starts.
       this.game.audio.setAmbience(area.id);
     }
 
@@ -375,10 +368,6 @@ export class AreaSelectScreen extends Screen {
 
   override onExit(): void {
     this.focus.blur();
-  }
-
-  override update(dt: number): void {
-    this.backdrop.update(dt);
   }
 
   override handleKey(event: KeyboardEvent): boolean {

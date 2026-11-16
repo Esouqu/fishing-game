@@ -1,3 +1,3 @@
-import { CodexTooltip } from "./CodexTooltip";
+import { CodexDetails } from "./CodexDetails";
 
-export class CodexView extends CodexTooltip {}
+export class CodexView extends CodexDetails {}

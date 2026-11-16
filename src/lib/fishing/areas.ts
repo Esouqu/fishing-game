@@ -97,7 +97,7 @@ export const AREAS: readonly AreaDef[] = [
     // Historical id: this is the lake now, so saved progress keeps working.
     id: "deep",
     water: "lake",
-    name: "ТЕМНОЕ ОЗЕРО",
+    name: "ЧЁРНЫЙ ОМУТ",
     layout: {
       // The mooring sits a little higher than the old 214: the sky rail owns the
       // bottom of the frame now, and a boat whose stern ran under it read as if
@@ -158,7 +158,7 @@ export const AREAS: readonly AreaDef[] = [
     // it lets saved progress and the ambience map stay valid.
     id: "rapids",
     water: "river",
-    name: "ТИХАЯ РЕЧКА",
+    name: "СТУДЁНЫЙ ПЛЁС",
     layout: {
       angler: { x: 96, y: 206 },
       bobber: {
@@ -214,7 +214,7 @@ export const AREAS: readonly AreaDef[] = [
     // and the lantern read as a sheltered northern bay.
     id: "cove",
     water: "sea",
-    name: "СЕВЕРНАЯ БУХТА",
+    name: "СОСНОВАЯ БУХТА",
     layout: {
       angler: { x: 156, y: 144 },
       bobber: {

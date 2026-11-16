@@ -235,6 +235,9 @@ export class FightModel {
     const canPull = s.gripLock <= 0;
     const pull = s.hold && canPull ? pullVector(s) : null;
     s.steeringNow = pull !== null;
+    // An un-pulled fish is not content to circle the middle of the ring: the
+    // longer the player leaves it alone, the further out it aims.
+    s.neglect = pull ? 0 : s.neglect + step;
     if (pull) {
       const angle = Math.atan2(pull.y, pull.x);
       s.lastSteerAngle = angle;
@@ -361,6 +364,12 @@ export class FightModel {
     const s = this.state;
     if (!s.running) return;
     s.running = false;
+    // The fight is over, so the player is no longer steering, even if the
+    // button is still down: `isSteering` drives the reel loop, and a stale
+    // `true` here restarted the loop in the same frame the catch was settled
+    // (it then kept playing under the whole catch display).
+    s.steeringNow = false;
+    s.hold = false;
     s.finishResult = { won, perfect: won && s.perfect };
     s.onFinish?.(s.finishResult);
   }

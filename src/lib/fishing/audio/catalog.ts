@@ -13,11 +13,11 @@ export const SOUND_FILES = {
   button: "button.wav",
   cancel: "cancel.wav",
   blip1: "blip1.wav",
-  blip3: "blip3.wav",
   cast: "cast.wav",
   waterScoop: "water-scoop.wav",
   bob: "bob.wav",
   bite: "bite.wav",
+  fishHit: "fish-hit.wav",
   escape: "escape.wav",
   reel: "reel.wav",
   waterLap: "water-lap.wav",
@@ -27,6 +27,7 @@ export const SOUND_FILES = {
   shiny: "shiny.wav",
   crit: "crit.wav",
   jingle: "jingle1.wav",
+  objective: "objective-complete.wav",
   thud: "thud.wav",
   newRecord: "new-record.wav",
   ambBrook: "amb-brook.wav",
@@ -48,7 +49,6 @@ export const UI_CUES: readonly SoundName[] = [
   "button",
   "cancel",
   "blip1",
-  "blip3",
 ];
 
 /** Everything the cast/fight flow can trigger; fetched when a round starts. */
@@ -57,6 +57,7 @@ export const ROUND_CUES: readonly SoundName[] = [
   "waterScoop",
   "bob",
   "bite",
+  "fishHit",
   "escape",
   "reel",
   "waterLap",
@@ -66,6 +67,7 @@ export const ROUND_CUES: readonly SoundName[] = [
   "shiny",
   "crit",
   "jingle",
+  "objective",
   "thud",
   "newRecord",
 ];

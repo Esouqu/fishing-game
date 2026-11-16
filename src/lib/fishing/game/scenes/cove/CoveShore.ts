@@ -50,7 +50,9 @@ export class CoveShore extends CoveWater {
     }
 
     this.drawShore(g);
-    this.drawDock(g);
+    // The pier is scenery, not background: drawing it into the world layer put
+    // it *under* the water surface, so ripples, glints and the shoal ran across
+    // the planks. It is built in `drawScenery` with the other props instead.
   }
   protected drawShore(g: Graphics): void {
     const height = VIEW.height;
