@@ -15,11 +15,17 @@ export const SILHOUETTE_ALPHA = 0.55;
 export const TAU = Math.PI * 2;
 export const INTRO_DURATION = 0.42;
 /**
- * The landing window has no mark of its own.
+ * The landing window is announced by a ring that closes onto the tired fish.
  *
- * It used to be announced by a gold "!" over the float with a shader gloss
- * running over the glyph, and then by a blinking fish — every version was a new
- * object competing with the ring, the two bars and the heading arrow for the
- * same handful of pixels. The window is now announced by the cue that already
- * exists: the landing chime and the burst of spray at the float (`onReady`).
+ * It used to be a gold "!" over the float, then a blinking fish, then nothing
+ * at all — the chime and the spray alone were too easy to miss in a fight with
+ * a heading arrow and two gauges on screen. The ring reuses the language the
+ * player already knows from the fight circle and needs no new object: it
+ * shrinks onto the fish over {@link LAND_RING_CLOSE} seconds, holds while the
+ * window stays open, and opens back up when the chance is gone.
  */
+export const LAND_RING_CLOSE = 0.35;
+/** Radius the ring starts from, in scene pixels. */
+export const LAND_RING_OUTER = 21;
+/** Radius it closes to: tight around the fish itself. */
+export const LAND_RING_INNER = 9;

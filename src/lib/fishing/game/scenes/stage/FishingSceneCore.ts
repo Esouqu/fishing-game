@@ -32,7 +32,6 @@ export abstract class FishingSceneCore extends Container {
   protected readonly bobberRipple = new Graphics();
   protected readonly bobberClip = new Graphics();
   protected readonly staminaArc = new Graphics();
-  protected readonly escapeArc = new Graphics();
   protected readonly motionG = new Graphics();
   /** Cloud shade, above the props: a cloud is over the bank, the boat and the water. */
   protected readonly clouds = new Graphics();
@@ -173,8 +172,7 @@ export abstract class FishingSceneCore extends Container {
     this.bobber.addChild(this.bobberBody);
     this.bobberBody.mask = this.bobberClip;
     this.staminaArc.visible = false;
-    this.escapeArc.visible = false;
-    this.bobber.addChild(this.staminaArc, this.escapeArc);
+    this.bobber.addChild(this.staminaArc);
 
     this.bobber.visible = false;
     // Float first, line second: the line is the thing tying the rod to the

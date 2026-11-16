@@ -170,15 +170,6 @@ export abstract class WarningView extends RingView {
     }
   }
 
-  protected updateCounterLabel(): void {
-    const flash = this.model.counterFlashValue;
-    this.counterLabel.visible = flash > 0;
-    if (flash <= 0) return;
-    const point = this.model.fishPoint;
-    this.counterLabel.position.set(point.x, point.y - 12);
-    this.counterLabel.alpha = Math.min(1, flash * 2);
-  }
-
   /** Small arrow orbiting the fish and pointing along its velocity. */
   protected drawDirection(): void {
     const g = this.directionG;

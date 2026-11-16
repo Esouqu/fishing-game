@@ -310,7 +310,6 @@ export const TEXT = {
     biteMark: "!",
     readyToCast: "ЗАБРОС",
     castKey: "ЛКМ",
-    landKey: "ПКМ",
     earlyHook: "РАНО!",
     lostFish: "СОРВАЛАСЬ…",
     missedHook: "НЕ УСПЕЛ",
@@ -351,7 +350,6 @@ export const TEXT = {
     page: (index: number, total: number): string => `${index} / ${total}`,
   },
   fight: {
-    counter: "КОНТР",
     stamina: "СИЛА",
   },
   /** Dev-only audio balance panel (`F2`) and weather picker (`F3`). */

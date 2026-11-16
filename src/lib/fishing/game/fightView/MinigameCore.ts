@@ -3,16 +3,13 @@ import type { FishSpecies } from "../../config";
 import { TEXT } from "../../texts";
 import { FIGHT_RADIUS } from "../fight";
 import { UI } from "../../ui/palette";
-import { makeKeycap, makeText } from "../../ui/theme";
+import { makeText } from "../../ui/theme";
 import {
   FightModel,
   type MinigameOptions,
   type MinigameResult,
 } from "../fight";
 import { FISH_SCALE, SILHOUETTE } from "./setup";
-
-/** Height of the "ПКМ" chip shown over a landable fish. */
-const LAND_KEY_HEIGHT = 9;
 
 export abstract class MinigameCore extends Container {
   protected readonly model: FightModel;
@@ -25,15 +22,20 @@ export abstract class MinigameCore extends Container {
    * They live in a container of their own so the float layer can put them above
    * the float: the fish-stamina arc is drawn on the float, and a pointer that
    * slides under that gauge disappeared exactly when the fish was closest to it.
+   * The landing ring rides here too, for the same reason.
    */
   readonly pointers = new Container();
-  /** The open landing window: a "ПКМ" keycap over the fish. */
-  protected readonly landKey: Container;
+  /** The closing landing-window ring around the tired fish. */
+  protected readonly landRing = new Graphics();
   protected readonly directionG = new Graphics();
   protected readonly cueG = new Graphics();
   protected readonly barG = new Graphics();
   protected readonly warnG = new Graphics();
-  protected readonly counterLabel: Text;
+  /** 0..1 progress of the closing landing ring; 0 while it is not landable. */
+  protected landCue = 0;
+  /** 0..1 opacity of the landing ring, so it can fade in and out on its own. */
+  protected landFade = 0;
+  protected wasLandable = false;
   /** Caption over the player's stamina bar. */
   protected readonly staminaLabel: Text;
   /**
@@ -65,17 +67,6 @@ export abstract class MinigameCore extends Container {
     this.addChild(this.fishSprite);
     this.addChild(this.counterG);
 
-    this.counterLabel = makeText(TEXT.fight.counter, {
-      size: 8,
-      color: UI.ice,
-      weight: 800,
-      align: "center",
-    });
-    this.counterLabel.anchor.set(0.5, 1);
-    this.counterLabel.style.stroke = { color: UI.ink, width: 2 };
-    this.counterLabel.visible = false;
-    this.addChild(this.counterLabel);
-
     this.bars.addChild(this.barG);
     this.staminaLabel = makeText(TEXT.fight.stamina, {
       size: 5,
@@ -88,15 +79,13 @@ export abstract class MinigameCore extends Container {
     this.bars.addChild(this.staminaLabel);
     this.bars.eventMode = "none";
 
-    // The landing cue: a "ПКМ" keycap over the fish while the final pull is
-    // live. It lives with the pointers so it sits above the float's stamina arc.
-    this.landKey = makeKeycap(TEXT.game.landKey, LAND_KEY_HEIGHT, 5.5, true);
-    this.landKey.eventMode = "none";
-    this.landKey.visible = false;
+    // The landing ring rides above the float with the pointers, so neither the
+    // float's gauge nor the fish can hide the one cue that opens the catch.
+    this.landRing.eventMode = "none";
 
+    this.pointers.addChild(this.landRing);
     this.pointers.addChild(this.directionG);
     this.pointers.addChild(this.warnG);
-    this.pointers.addChild(this.landKey);
     this.pointers.eventMode = "none";
     this.addChild(this.cueG);
     this.model.onFinish = (result) => this.onFinish?.(result);

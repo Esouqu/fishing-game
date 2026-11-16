@@ -2,7 +2,7 @@ import { C, TIMING } from "../../../config";
 import { clamp, easeOutCubic, lerp, randRange } from "../../../utils";
 import { castAway, layoutBounds, safeCastSpot } from "../../castSafety";
 import { AnglerLayer } from "./AnglerLayer";
-import { drawFishEscape, drawFishStamina } from "./floatArcs";
+import { drawFishStamina } from "./staminaArc";
 import { BITE_SINK, NIBBLE_DIP, nibbleDip } from "./setup";
 
 export abstract class CastLayer extends AnglerLayer {
@@ -12,30 +12,23 @@ export abstract class CastLayer extends AnglerLayer {
   /** Feeds the escape clock: how far the fish has torn the line out. */
   setEscapeMeter(value: number): void {
     this.escapeMeter = clamp(value);
-    this.drawFloatArcs();
   }
 
   /** Feeds the fish-stamina gauge; the float carries it during the fight. */
   setFishStamina(value: number): void {
     this.fishStamina = clamp(value);
-    this.drawFloatArcs();
+    this.drawStaminaArc();
   }
 
-  /**
-   * Repaints the float's two gauges — endurance above, escape below — or hides
-   * them outside a fight. Both are redrawn together because each fight frame
-   * carries a new value for both, and one pass keeps the pair in step.
-   */
-  protected drawFloatArcs(): void {
+  /** Repaints the endurance stub on the float, or hides it outside a fight. */
+  protected drawStaminaArc(): void {
+    const g = this.staminaArc;
     if (this.phase !== "fight") {
-      this.staminaArc.visible = false;
-      this.escapeArc.visible = false;
+      g.visible = false;
       return;
     }
-    this.staminaArc.visible = true;
-    this.escapeArc.visible = true;
-    drawFishStamina(this.staminaArc, this.fishStamina, this.time);
-    drawFishEscape(this.escapeArc, this.escapeMeter, this.time);
+    g.visible = true;
+    drawFishStamina(g, this.fishStamina, this.time);
   }
   playCast(power: number): void {
     this.previewG.clear();
@@ -44,7 +37,7 @@ export abstract class CastLayer extends AnglerLayer {
     // carries over onto the new float.
     this.escapeMeter = 0;
     this.fishStamina = 1;
-    this.drawFloatArcs();
+    this.drawStaminaArc();
     this.castPower = clamp(power);
     const zone = this.layout.bobber;
     const spread = zone.spreadBase + this.castPower * zone.spreadPower;
