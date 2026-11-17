@@ -30,19 +30,10 @@ export class RiverBanks extends RiverWater {
     snow.push(VIEW.width, 0);
     g.poly(snow).fill(this.palette.snow);
 
-    // Drifts on the upper bank, so the snowfield has some relief.
-    for (let i = 0; i < 7; i += 1) {
-      const x = 20 + i * 68 + noise(i, 11) * 22;
-      const y = 8 + noise(i, 12) * 22;
-      g.ellipse(x, y, 20 + noise(i, 13) * 14, 4).fill({
-        color: this.palette.snowShade,
-        alpha: 0.5,
-      });
-      g.ellipse(x + 2, y - 1.5, 15 + noise(i, 14) * 10, 2.6).fill({
-        color: this.palette.snowLight,
-        alpha: 0.7,
-      });
-    }
+    // The upper bank used to be dotted with pairs of pale ellipses, meant as
+    // wind drifts. They read as grey ovals lying on the snow — shadows of
+    // nothing — so the relief is left to the trees, each of which casts its own
+    // contact shadow where its trunk meets the snow.
 
     // Snow that slid over the edge since the last thaw. It stays clear of the
     // waterline: the drifts used to hang over the ice rim and float on water.
@@ -77,20 +68,8 @@ export class RiverBanks extends RiverWater {
     snow.push(VIEW.width, VIEW.height);
     g.poly(snow).fill(this.palette.snow);
 
-    // Wind drifts across the bank.
-    for (let i = 0; i < 14; i += 1) {
-      const x = 12 + i * 34 + ((i * 13) % 17);
-      const y = this.nearAt(x) + 14 + ((i * 11) % 22);
-      if (y > VIEW.height - 4) continue;
-      g.ellipse(x, y, 13 + (i % 4) * 5, 3.2).fill({
-        color: this.palette.snowShade,
-        alpha: 0.45,
-      });
-      g.ellipse(x + 1, y - 1, 9 + (i % 3) * 4, 2.2).fill({
-        color: this.palette.snowLight,
-        alpha: 0.6,
-      });
-    }
+    // Wind drifts across the bank used to be a field of pale ellipses too; the
+    // bank keeps the boot prints, the grounded floes and the props' shadows.
 
     // A trail of boot prints leading to the angler's spit.
     for (let i = 0; i < 9; i += 1) {

@@ -4,8 +4,6 @@ export interface WorldPalette {
   /** Colour of the light wash drawn over the scene. */
   overlay: number;
   overlayAlpha: number;
-  /** 0..1 star and moon visibility. */
-  stars: number;
   /** 0..1 lantern / firefly glow. */
   lantern: number;
   /** Water colours for the minigame column. */
@@ -51,7 +49,6 @@ const DAY: WorldPalette = {
   tint: 0xf3f9ff,
   overlay: 0xffffff,
   overlayAlpha: 0,
-  stars: 0,
   lantern: 0,
   water: WINTER.waterDeep,
   deep: WINTER.waterFar,
@@ -61,7 +58,6 @@ const NIGHT: WorldPalette = {
   tint: 0x8fa2d6,
   overlay: 0x0a1230,
   overlayAlpha: 0.34,
-  stars: 1,
   lantern: 0.9,
   water: 0x143a5c,
   deep: 0x0c2745,
@@ -71,7 +67,6 @@ const DAWN: WorldPalette = {
   tint: 0xe6e6ea,
   overlay: 0xff8a4a,
   overlayAlpha: 0.12,
-  stars: 0.14,
   lantern: 0.34,
   water: 0x21567a,
   deep: 0x174363,
@@ -81,7 +76,6 @@ const DUSK: WorldPalette = {
   tint: 0xe0d6da,
   overlay: 0xff5f3a,
   overlayAlpha: 0.14,
-  stars: 0.36,
   lantern: 0.5,
   water: 0x1d4a6c,
   deep: 0x153a58,
@@ -138,7 +132,6 @@ function lerpPalette(
     tint: mixColor(a.tint, b.tint, t),
     overlay: mixColor(a.overlay, b.overlay, t),
     overlayAlpha: a.overlayAlpha + (b.overlayAlpha - a.overlayAlpha) * t,
-    stars: a.stars + (b.stars - a.stars) * t,
     lantern: a.lantern + (b.lantern - a.lantern) * t,
     water: mixColor(a.water, b.water, t),
     deep: mixColor(a.deep, b.deep, t),

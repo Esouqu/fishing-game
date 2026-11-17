@@ -29,13 +29,37 @@ interface ProgressSnapshot {
 Готовые адаптеры: `LocalProgressRepository`, `MemoryProgressRepository`,
 `createHttpProgressRepository`. Публичный API — `src/lib/fishing/index.ts`.
 
+## Расписание погоды
+
+`WorldStore` (`<prefix>:world:v1`) хранит `WorldData`:
+
+```ts
+interface WorldData {
+  weather?: Record<string, string> | string; // legacy: id фронтов по водоёмам
+  areas?: Record<string, SavedArea>;         // расписание
+}
+interface SavedArea {
+  current: SavedFront;
+  queue: SavedFront[]; // очередь, которую рисует полоса прогноза
+}
+interface SavedFront {
+  id: string;
+  endsAt: number; // epoch-секунды, когда фронт заканчивается
+  length: number; // полная длительность, секунды
+}
+```
+
+`WorldClock` восстанавливает очередь по `length`, при загрузке догоняет истёкшие
+фронты и пишет обе формы: `areas` для этого билда, `weather` — чтобы сборка без
+расписания прочитала то же небо.
+
 ## Ключи localStorage
 
 | Ключ | Что |
 | --- | --- |
 | `<prefix>:progress:v1` | прогресс справочника и выбранный водоём |
 | `<prefix>:settings:v1` | mute, dev-оверрайды микса |
-| `<prefix>:world:v1` | погодные фронты по водоёмам |
+| `<prefix>:world:v1` | расписание погоды: текущий фронт (`endsAt`, `length`) и очередь прогноза по водоёмам |
 
 `prefix` по умолчанию `quiet-cove`, переопределяется опцией `storagePrefix`.
 
@@ -45,6 +69,9 @@ interface ProgressSnapshot {
   не переименовывать.
 - старые погодные id `rain`/`storm` переводятся в `snow`/`blizzard` в
   `world/WorldClock.ts`.
+- старый `world:v1` (строка или карта id) читается как fallback: фронт после
+  обновления начнётся заново, потому что времён в нём не было; начиная с первого
+  сохранения прогноз уже переживает перезагрузку.
 - `parseProgress` чистит неизвестные поля и битые записи; версия схемы — 2.
 
 При изменении схемы добавляйте миграцию в `progress.ts` и обновляйте этот документ.

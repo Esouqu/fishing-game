@@ -297,11 +297,17 @@ export const WEATHER_TINT: Record<WeatherId, number> = {
  * `tint` is the front's own colour and is used for every body shape, so the
  * glyph reads as one object with the medallion that rings it instead of a grey
  * cloud sitting inside a coloured badge. Only the specular pixels stay neutral.
+ *
+ * `compact` shrinks the sun by one pixel on every edge. The rail's cards carry
+ * two lines of captions beside the glyph, and the full-size sun was the only
+ * icon that filled its card from top to bottom; the cloud glyphs already sit
+ * inside a 12 px box with air around them.
  */
 export function drawWeatherIcon(
   g: Graphics,
   weather: WeatherId,
   tint: number = WEATHER_TINT[weather],
+  compact = false,
 ): void {
   g.clear();
   const cloud = (top: number): void => {
@@ -313,6 +319,23 @@ export function drawWeatherIcon(
 
   switch (weather) {
     case "clear":
+      if (compact) {
+        g.rect(5, 1, 2, 2).fill(tint);
+        g.rect(5, 9, 2, 2).fill(tint);
+        g.rect(1, 5, 2, 2).fill(tint);
+        g.rect(9, 5, 2, 2).fill(tint);
+        g.rect(2, 2, 1, 1).fill({ color: tint, alpha: 0.7 });
+        g.rect(9, 2, 1, 1).fill({ color: tint, alpha: 0.7 });
+        g.rect(2, 9, 1, 1).fill({ color: tint, alpha: 0.7 });
+        g.rect(9, 9, 1, 1).fill({ color: tint, alpha: 0.7 });
+        // Disc: a 4×4 body with one pixel of crown and shoulder, so it still
+        // reads round at this size instead of as a square.
+        g.rect(4, 4, 4, 4).fill(tint);
+        g.rect(5, 3, 2, 1).fill(tint);
+        g.rect(3, 5, 1, 2).fill(tint);
+        g.rect(5, 5, 2, 2).fill(UI.legendary);
+        break;
+      }
       g.rect(5, 0, 2, 2).fill(tint);
       g.rect(5, 10, 2, 2).fill(tint);
       g.rect(0, 5, 2, 2).fill(tint);

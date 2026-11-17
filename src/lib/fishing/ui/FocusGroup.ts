@@ -18,14 +18,25 @@ export class FocusGroup {
   private index = -1;
   /** True once the keyboard has been used in this group. */
   private keyboard = false;
+  /**
+   * Which slots may take the ring. A picker with a closed location hands a
+   * predicate over its cards so the arrow keys step over them instead of
+   * parking the highlight on a choice that cannot be made.
+   */
+  private canFocus: (index: number) => boolean = () => true;
 
   onMove?: () => void;
 
-  setItems(items: Focusable[], columns = 1): void {
+  setItems(
+    items: Focusable[],
+    columns = 1,
+    canFocus?: (index: number) => boolean,
+  ): void {
     this.blur();
     this.items = items;
     this.columns = Math.max(1, columns);
     this.index = -1;
+    this.canFocus = canFocus ?? (() => true);
   }
 
   get current(): Focusable | null {
@@ -48,11 +59,30 @@ export class FocusGroup {
    */
   select(index = 0): void {
     if (this.items.length === 0) return;
-    const next = Math.max(0, Math.min(this.items.length - 1, index));
+    const wanted = Math.max(0, Math.min(this.items.length - 1, index));
+    const next = this.canFocus(wanted) ? wanted : this.nearestFrom(wanted);
+    if (next < 0) return;
     if (this.index >= 0 && this.index !== next) {
       this.items[this.index]?.setFocused(false);
     }
     this.index = next;
+  }
+
+  /**
+   * Closest slot that accepts the ring: the wanted one, else the nearest one
+   * before it, else the nearest one after it.
+   */
+  private nearestFrom(index: number): number {
+    const before = this.nearest(index, -1);
+    return before >= 0 ? before : this.nearest(index, 1);
+  }
+
+  /** First slot at or after `from` that accepts the ring, walking by `step`. */
+  private nearest(from: number, step: number): number {
+    for (let i = from; i >= 0 && i < this.items.length; i += step) {
+      if (this.canFocus(i)) return i;
+    }
+    return -1;
   }
 
   /** Points at an item and lights it: a key press asked for the ring. */
@@ -105,6 +135,20 @@ export class FocusGroup {
       }
     }
     next = Math.max(0, Math.min(this.items.length - 1, next));
+    if (!this.canFocus(next)) {
+      // Step over the slots that refuse the ring, in the direction of travel;
+      // when nothing is open that way the highlight stays where it is.
+      const step =
+        this.columns <= 1
+          ? dx < 0 || dy < 0
+            ? -1
+            : 1
+          : dx !== 0
+            ? Math.sign(dx)
+            : Math.sign(dy) * this.columns;
+      next = this.nearest(next + step, step);
+      if (next < 0) return;
+    }
     if (next !== this.index) {
       this.items[this.index]?.setFocused(false);
       this.index = next;

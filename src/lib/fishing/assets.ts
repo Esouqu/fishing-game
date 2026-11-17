@@ -3,11 +3,12 @@ import { FISH } from "./config";
 import { FONT_OPTIONS, currentFont } from "./fonts";
 import { HELP_PAGES, TEXT } from "./texts";
 import type { HelpPageId } from "./texts";
-import { loadCursorTextures, type CursorTextures } from "./cursors";
+import type { CursorTextures } from "./cursors";
 import treeAUrl from "../../assets/fishing/tree-a.png";
 import treeBUrl from "../../assets/fishing/tree-b.png";
 import treeCUrl from "../../assets/fishing/tree-c.png";
 import bushAUrl from "../../assets/fishing/bush-a.png";
+import mouseLmbUrl from "../../assets/fishing/mouse-lmb.png";
 import helpCastUrl from "../../assets/help/cast.webp";
 import helpFightUrl from "../../assets/help/fight.webp";
 import helpCounterUrl from "../../assets/help/counter.webp";
@@ -21,6 +22,8 @@ export interface AssetBag {
   sign: Texture;
   /** 8×4 sheet of 64px rowboat variants. */
   boat: Texture[];
+  /** Mouse with a pressed left button, for the cast prompt. */
+  mouse: Texture;
   fish: Record<string, Texture>;
   cursors: CursorTextures;
 }
@@ -146,9 +149,18 @@ function fallbackTexture(
   return texture;
 }
 
+/**
+ * Loads the boot art.
+ *
+ * `cursors` is passed in instead of being requested here: the page hides the
+ * system pointer over the canvas, so the game has to paint its own from the
+ * first frames. The caller starts that request before this one and mounts the
+ * overlay as soon as it lands, while the rest of the art is still arriving.
+ */
 export async function loadGameAssets(
   base: string,
   onProgress: (progress: number, label: string) => void,
+  cursors: Promise<CursorTextures>,
 ): Promise<AssetBag> {
   onProgress(0.02, TEXT.boot.font);
 
@@ -187,6 +199,12 @@ export async function loadGameAssets(
       key: "bush-a",
       url: bushAUrl,
       fallback: () => fallbackTexture(0x3b7d4f, 16, "plant"),
+    },
+    {
+      // CC0 art from Kenney's «Input Prompts Pixel»; see CREDITS.md.
+      key: "mouse",
+      url: mouseLmbUrl,
+      fallback: () => Texture.WHITE,
     },
     {
       key: "sign",
@@ -229,7 +247,12 @@ export async function loadGameAssets(
       loaded.set(entry.key, entry.fallback());
     }
     done += 1;
-    onProgress(0.05 + (done / textureEntries.length) * 0.95, TEXT.boot.loading);
+    // The boot line prints what is being fetched, the way a loader names the
+    // file it is on. The progress bar alone says nothing when it stalls.
+    onProgress(
+      0.05 + (done / textureEntries.length) * 0.95,
+      fileName(entry.url),
+    );
   });
 
   await fontPromise;
@@ -263,8 +286,10 @@ export async function loadGameAssets(
     boat.push(boatSheet);
   }
 
-  const cursors = await loadCursorTextures();
-  onProgress(1, TEXT.boot.loading);
+  const cursorTextures = await cursors;
+  // Done: the asset line empties, so the finished rail is not still naming a
+  // file the loader is no longer working on.
+  onProgress(1, "");
 
   return {
     angler,
@@ -276,9 +301,16 @@ export async function loadGameAssets(
     bushes: [loaded.get("bush-a") ?? Texture.WHITE],
     sign: loaded.get("sign") ?? Texture.WHITE,
     boat,
+    mouse: loaded.get("mouse") ?? Texture.WHITE,
     fish,
-    cursors,
+    cursors: cursorTextures,
   };
+}
+
+/** Last path segment of an asset URL, for the boot line. */
+function fileName(url: string): string {
+  const clean = url.split(/[?#]/)[0];
+  return clean.slice(clean.lastIndexOf("/") + 1);
 }
 
 /** How many textures the loader keeps in flight at once. */

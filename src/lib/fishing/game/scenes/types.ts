@@ -24,6 +24,15 @@ export interface SceneRenderer {
    */
   drawMotion(g: Graphics, time: number): void;
   /**
+   * Textured water. The scene hands the renderer a layer of its own between the
+   * painted world and {@link drawMotion}, so tiled caustics can live under the
+   * crests without being repainted with them. Optional: a renderer that paints
+   * its water flat simply does not implement it, and the layer stays empty.
+   */
+  attachWater?(layer: Container): void;
+  /** Per-frame tick for whatever {@link attachWater} put on that layer. */
+  updateWater?(time: number): void;
+  /**
    * Optional per-frame animation of props the renderer owns, such as a boat
    * rocking on the swell or a trunk riding the chop. Called after
    * {@link drawMotion}.

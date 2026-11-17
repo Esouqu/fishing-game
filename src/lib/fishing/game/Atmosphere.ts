@@ -67,7 +67,6 @@ export class Atmosphere extends AtmosphereSnow {
     this.time += dt;
     this.smoothWeather(dt);
     this.drawWash();
-    this.drawSky();
     this.drawGlow();
     this.updateFog(dt);
     this.drawSnow(dt);

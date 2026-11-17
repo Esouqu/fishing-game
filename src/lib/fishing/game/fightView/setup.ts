@@ -10,10 +10,22 @@ export const FISH_SCALE = 1;
 export const SILHOUETTE = 0x05080b;
 /** The warning only lifts the shadow to a cold slate; the arrow carries the cue. */
 export const SILHOUETTE_WARN = 0x1b2830;
+/**
+ * The countered fish: the same shadow, lifted towards the ice of the lock that
+ * sits on it. The whole "this jerk is cancelled" marker is the fish plus the
+ * padlock, so the fish takes the cue's colour instead of wearing a ring.
+ */
+export const SILHOUETTE_COUNTER = 0x5d7f92;
 /** Opacity of that shadow; low enough that the water reads through the fish. */
 export const SILHOUETTE_ALPHA = 0.55;
 export const TAU = Math.PI * 2;
 export const INTRO_DURATION = 0.42;
+/**
+ * Geometry of the grip gauge, in scene pixels. It lives here because two views
+ * need it: the bar draws itself from it, and the stage places the captions that
+ * belong to the scale (the «нет сил» caption rises out of its centre).
+ */
+export const GAUGE = { width: 74, height: 9 } as const;
 /**
  * The landing window is announced by a ring that closes onto the tired fish.
  *
@@ -25,7 +37,11 @@ export const INTRO_DURATION = 0.42;
  * window stays open, and opens back up when the chance is gone.
  */
 export const LAND_RING_CLOSE = 0.35;
-/** Radius the ring starts from, in scene pixels. */
-export const LAND_RING_OUTER = 21;
-/** Radius it closes to: tight around the fish itself. */
-export const LAND_RING_INNER = 9;
+/**
+ * The closing ring around the float. It opens wider than the float's waterline
+ * and the direction pointer (which orbits at 12 px), so it frames them on the
+ * way in, and closes all the way down to the float itself — the ring ends up
+ * hugging the float's own 5×8 body.
+ */
+export const LAND_RING_OUTER = 22;
+export const LAND_RING_INNER = 5;

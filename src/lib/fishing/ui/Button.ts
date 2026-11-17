@@ -28,6 +28,13 @@ export interface ButtonOptions {
    * controls that are auditioning a sound of their own.
    */
   quiet?: boolean;
+  /**
+   * Drops every piece of chrome — fill, frame, bevel and the focus ring — and
+   * keeps only the hit area. For input surfaces that are painted by the
+   * container around them, such as the codex roster, where the grid draws its
+   * own hairlines and one outline slides over the cells.
+   */
+  bare?: boolean;
 }
 
 type SoundKind = "hover" | "click";
@@ -66,6 +73,7 @@ export class Button extends Container implements Focusable {
   private isSelected = false;
   private readonly quiet: boolean;
   private readonly marksEnabled: boolean;
+  private readonly bare: boolean;
   private onClick?: () => void;
 
   constructor(options: ButtonOptions) {
@@ -77,6 +85,7 @@ export class Button extends Container implements Focusable {
     this.isSelected = options.selected ?? false;
     this.quiet = options.quiet ?? false;
     this.marksEnabled = options.marks ?? true;
+    this.bare = options.bare ?? false;
 
     if (options.label !== undefined) {
       this.labelText = makeText(options.label, {
@@ -229,6 +238,9 @@ export class Button extends Container implements Focusable {
     const height = this.heightValue;
     const active = this.hovered || this.focused;
     g.clear();
+    // A bare button is only a hit area: everything it stands for is drawn by the
+    // container that owns it, so hover and focus must not paint over it.
+    if (this.bare) return;
 
     let fill: number;
     let fillActive: number;
@@ -292,16 +304,31 @@ export class Button extends Container implements Focusable {
       const alpha = this.variant === "ghost" ? (active ? 0.55 : 0) : 1;
       if (alpha > 0) {
         g.rect(0, 0, width, height).fill({ color, alpha });
-        g.rect(0, height - 2, width, 2).fill({
-          color: UI.ink,
-          alpha: 0.35,
-        });
+        if (this.variant === "ghost") {
+          // The ghost cells are sockets, not chips: the shade hangs off the
+          // top-left lip and the bottom lip catches the light. Drawn the other
+          // way round, the hover read as a raised button sitting in the well.
+          g.rect(0, 0, width, 2).fill({ color: UI.ink, alpha: 0.28 });
+          g.rect(0, 0, 1, height).fill({ color: UI.ink, alpha: 0.16 });
+        } else {
+          g.rect(0, height - 2, width, 2).fill({
+            color: UI.ink,
+            alpha: 0.35,
+          });
+        }
         g.rect(0, 0, width, height).stroke({
           width: 1,
           color: border,
           alignment: 0,
         });
-        g.rect(1, 1, width - 2, 1).fill({ color: topLine, alpha: 0.5 });
+        if (this.variant === "ghost") {
+          g.rect(1, height - 1, width - 2, 1).fill({
+            color: UI.periwinklePale,
+            alpha: 0.22,
+          });
+        } else {
+          g.rect(1, 1, width - 2, 1).fill({ color: topLine, alpha: 0.5 });
+        }
       }
     }
 

@@ -1,8 +1,17 @@
 import type { AreaId, WaterKind } from "./types";
 
 export interface AreaLight {
+  /** Foot of the fixture: the row that touches the ground, snow or deck. */
   x: number;
   y: number;
+  /**
+   * The flame itself, in the same virtual pixels. The lantern painters centre
+   * their glass on this row and the two glow layers (the scene one and the
+   * atmosphere wash) light it, so a fixture and its light cannot drift apart:
+   * the halo used to be pinned seven pixels under the foot, which put the
+   * brightest part of the lamp on the post instead of on the flame.
+   */
+  glowY: number;
   color: number;
   radius: number;
   kind: "lamp" | "fire" | "wisp";
@@ -26,18 +35,17 @@ export interface SceneLayout {
     maxX: number;
     minY: number;
     maxY: number;
-    spreadBase: number;
-    spreadPower: number;
     /**
-     * Axis the cast power pushes the float along: `x` casts sideways across
-     * the frame (the default), `y` casts away from the angler toward the top
-     * of the frame.
+     * Direction the float travels when the cast has no usable aim (a pointer
+     * resting on the rod tip). The cast itself follows the cursor; this is the
+     * fallback: `x` casts sideways across the frame, `y` casts away from the
+     * angler toward the top of the frame.
      */
     axis?: "x" | "y";
     /**
      * Distance of the landing band from the angler along `y`. Without it the
-     * sideways cast lands level with the angler, which on a wide channel puts
-     * every cast on the near shelf; with it the band can sit mid-channel.
+     * band sits level with the angler, which on a wide channel puts every cast
+     * on the near shelf; with it the band can sit mid-channel.
      */
     centerY?: number;
   };
@@ -114,8 +122,6 @@ export const AREAS: readonly AreaDef[] = [
         maxX: 274,
         minY: 106,
         maxY: 138,
-        spreadBase: 12,
-        spreadPower: 18,
         axis: "y",
       },
       // The prompt sits just above the angler's head, over his back, so it
@@ -125,8 +131,16 @@ export const AREAS: readonly AreaDef[] = [
       // belonged to a different character on that one water body.
       hint: { x: 240, y: 166 },
       // The lantern hangs on the stern rail, off the angler's casting arm, so it
-      // lights the boat and the water behind him instead of his rod.
-      light: { x: 247, y: 210, color: 0xffd166, radius: 40, kind: "lamp" },
+      // lights the boat and the water behind him instead of his rod. The glass
+      // hangs 10.5 px above the rail it is tied to: that is where the light is.
+      light: {
+        x: 247,
+        y: 210,
+        glowY: 199.5,
+        color: 0xffd166,
+        radius: 40,
+        kind: "lamp",
+      },
     },
     mood: {
       dark: 0.12,
@@ -168,9 +182,8 @@ export const AREAS: readonly AreaDef[] = [
         // wide open water in front of the angler rather than downstream past
         // him.
         //
-        // The band stays inside the ring-clearance rules at every power:
-        // the closest reachable spot (minX with the full sideways spread) is
-        // 64 px from the angler's art, just over the 61 px the ring needs, and
+        // The band stays inside the ring-clearance rules at every aim: its
+        // nearest corner is far enough from the angler for the whole ring, and
         // the rim never reaches either bank (near shelf at 214-218 down this
         // stretch, far ice rim at 32-52).
         minX: 152,
@@ -178,11 +191,20 @@ export const AREAS: readonly AreaDef[] = [
         minY: 108,
         maxY: 168,
         centerY: 132,
-        spreadBase: 8,
-        spreadPower: 14,
       },
       hint: { x: 96, y: 174 },
-      light: { x: 50, y: 206, color: 0xffc46b, radius: 46, kind: "lamp" },
+      // The lantern stands a little further along the bank: at 50 it crowded the
+      // near-corner fir and its post sat on the edge of the drift, so the whole
+      // fixture — post, glass and the light it throws — moved right as one. The
+      // glass is 9 px above the foot of the post.
+      light: {
+        x: 54,
+        y: 206,
+        glowY: 197,
+        color: 0xffc46b,
+        radius: 46,
+        kind: "lamp",
+      },
     },
     mood: {
       dark: 0,
@@ -226,11 +248,18 @@ export const AREAS: readonly AreaDef[] = [
         maxX: 300,
         minY: 44,
         maxY: 242,
-        spreadBase: 18,
-        spreadPower: 22,
       },
       hint: { x: 156, y: 112 },
-      light: { x: 168, y: 124, color: 0xffc46b, radius: 44, kind: "lamp" },
+      // The pier lamp is the shortest of the three: its glass sits 6.5 px over
+      // the deck it stands on.
+      light: {
+        x: 168,
+        y: 124,
+        glowY: 117.5,
+        color: 0xffc46b,
+        radius: 44,
+        kind: "lamp",
+      },
     },
     mood: {
       dark: 0,

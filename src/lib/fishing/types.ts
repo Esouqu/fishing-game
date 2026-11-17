@@ -80,10 +80,15 @@ export interface ProgressRepository {
   save(snapshot: ProgressSnapshot): Promise<void>;
 }
 
-export type StartScreen = "menu" | "game";
+/**
+ * Availability of the water bodies, keyed by area id. A `false` blocks that
+ * location: the picker shows the card closed and the round cannot travel
+ * there. Everything that is not listed stays open, so the host only has to
+ * name what it wants to keep shut.
+ */
+export type AreaLocations = Partial<Record<AreaId, boolean>>;
 
-/** Where the codex returns when it closes. */
-export type CodexReturn = "menu" | "areas";
+export type StartScreen = "menu" | "game";
 
 export interface FishingGameOptions {
   /** Element the canvas is appended to. Required. */
@@ -106,6 +111,12 @@ export interface FishingGameOptions {
   onReady?: () => void;
   /** Optional DB/HTTP-backed progress storage. Default: localStorage. */
   progress?: ProgressRepository;
+  /**
+   * Water bodies the host keeps closed. `{ rapids: false }` locks the river;
+   * every id that is left out stays open. The game can change the set later
+   * through {@link FishingGameInstance.setLocations}.
+   */
+  locations?: AreaLocations;
 }
 
 export interface FishingGameInstance {
@@ -117,6 +128,8 @@ export interface FishingGameInstance {
   restart(): void;
   showMenu(): void;
   setMuted(muted: boolean): void;
+  /** Opens or closes water bodies; passing `true` unlocks a location again. */
+  setLocations(locations: AreaLocations): void;
   /** Forces a progress save and resolves when the repository accepted it. */
   flushProgress(): Promise<void>;
 }
@@ -132,4 +145,6 @@ export interface NormalizedOptions {
   onProgress?: (snapshot: ProgressSnapshot) => void;
   onReady?: () => void;
   progress?: ProgressRepository;
+  /** Every water body's availability after the option pass; `true` is open. */
+  locations: Record<AreaId, boolean>;
 }

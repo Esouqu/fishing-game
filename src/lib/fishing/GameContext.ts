@@ -4,15 +4,8 @@ import type { AssetBag } from "./assets";
 import type { AudioKit } from "./audio";
 import type { ProgressTracker } from "./progress";
 import type { WorldClock } from "./world";
-import type {
-  AreaId,
-  CatchEvent,
-  CodexReturn,
-  NormalizedOptions,
-  WeatherId,
-} from "./types";
+import type { AreaId, CatchEvent, NormalizedOptions, WeatherId } from "./types";
 import type { HelpPageId } from "./texts";
-import type { AreaPickOrigin } from "./screens/AreaSelectScreen";
 import type { WipePoint } from "./ui/GridWipe";
 
 /**
@@ -34,10 +27,12 @@ export interface GameContext {
   previewFor(areaId: AreaId): Texture;
   helpTexture(page: HelpPageId): Promise<Texture>;
 
+  /** True while the host keeps this water body closed. */
+  isAreaLocked(areaId: AreaId): boolean;
+
   showMenu(): void;
   showHelp(): void;
-  showAreas(origin?: AreaPickOrigin): void;
-  showCodex(returnTo?: CodexReturn): void;
+  showCodex(): void;
   startGame(areaId?: AreaId, origin?: WipePoint): void;
   exit(): void;
 

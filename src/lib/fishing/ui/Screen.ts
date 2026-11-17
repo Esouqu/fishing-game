@@ -15,6 +15,13 @@ export abstract class Screen extends Container {
   onEnter(): void {}
   onExit(): void {}
   update(_dt: number): void {}
+  /**
+   * Optional exit animation for a popup. When a screen defines this, the screen
+   * manager stops sliding the whole screen — dimmer included — and lets the
+   * screen animate its own chrome in place. It is called for the duration of the
+   * manager's fly, then the screen is destroyed as usual.
+   */
+  animateOut?(_dt: number): void;
   handleKey(_event: KeyboardEvent): boolean {
     return false;
   }

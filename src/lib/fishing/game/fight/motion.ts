@@ -1,6 +1,7 @@
 import { FIGHT, TIMING } from "../../config";
 import { clamp, easeInOutQuad, lerp, randRange } from "../../utils";
 import { angleDelta } from "./angles";
+import { BubbleField } from "./bubbles";
 import { FIGHT_RADIUS, TAU } from "./constants";
 import type { Move } from "../behaviors";
 import type { FightState } from "./state";
@@ -10,7 +11,10 @@ import type { FightState } from "./state";
  * target selection and the steering that pulls the fish toward that target.
  */
 export class FightMotion {
-  constructor(private readonly state: FightState) {}
+  constructor(
+    private readonly state: FightState,
+    private readonly bubbles: BubbleField,
+  ) {}
 
   /** The heading of the fish around the ring. */
   fishAngle(): number {
@@ -34,11 +38,31 @@ export class FightMotion {
       s.lastRunPending = false;
       move = { kind: "dash", dir: "away", dur: 0.55, strong: true };
     }
+    // A fresh hook is never a burst: inside the opening grace the fish only
+    // circles, and a dash that would have started now is deferred by a pause
+    // instead of being thrown at a player who is still reading the gauges. The
+    // script index is left alone, so the authored move comes next, not later.
+    if (
+      s.elapsed < FIGHT.startGrace &&
+      (move.strong === true || move.kind === "dash")
+    ) {
+      this.beginMove({ kind: "pause", dur: FIGHT.startGrace - s.elapsed });
+      return;
+    }
     s.moveIndex += 1;
+    this.beginMove(move);
+  }
+
+  /** Start `move` and set up its warning, if it has one. */
+  private beginMove(move: Move): void {
+    const s = this.state;
     s.current = move;
     s.moveTime = 0;
     s.warnRest = 0;
     s.counterWindow = 0;
+    // A grab prepared for the previous dash does not carry over: the next move
+    // has its own heading, and a stale press must not arm it.
+    s.counterPrepared = false;
     s.feintActive = false;
     s.feintHasRevealed = false;
     s.feintTimer = 0;
@@ -71,6 +95,38 @@ export class FightMotion {
     s.warnTime = 0;
     s.warnAngle = s.escapeAngle;
     if (move.kind === "dash") this.bolt(0.7);
+  }
+
+  /**
+   * The telegraph is over. An honest dash bolts along its true heading and
+   * returns true so the caller can open the counter window; a feint only
+   * lunges toward the false arrow and schedules the turn, so it returns false.
+   */
+  resolveTelegraph(): boolean {
+    const s = this.state;
+    s.warnTime = 0;
+    if (s.feintActive) {
+      this.boltAt(s.warnAngle, FIGHT.feintPower);
+      s.feintTimer = FIGHT.feintDelay;
+      this.bubbles.burst();
+      return false;
+    }
+    this.bolt();
+    this.bubbles.burst();
+    return true;
+  }
+
+  /** The feint's false lunge is over: strike along the true heading. */
+  resolveFeintTurn(): void {
+    const s = this.state;
+    s.warnTime = 0;
+    s.feintTimer = 0;
+    s.vx = 0;
+    s.vy = 0;
+    this.boltAt(s.escapeAngle, 1);
+    s.turnFlashValue = 0.18;
+    s.feintHasRevealed = true;
+    this.bubbles.burst();
   }
 
   resolveAngle(move: Move): number {
@@ -116,9 +172,12 @@ export class FightMotion {
     const push = drift * FIGHT.neglectPush;
 
     // Dash targets sit clearly outside the ring: a fish that is not being
-    // pulled must be able to leave, so passivity is a real losing strategy.
+    // pulled must be able to leave, so passivity is a real losing strategy. The
+    // strong dash goes almost two radii out, which is the whole cost of a
+    // missed counter now that the miss itself is free: the player pays in the
+    // time it takes to drag the fish back, not in a meter penalty.
     if (kind === "dash") {
-      const radius = move.dir === "toward" ? 0.3 : move.strong ? 1.45 : 1.35;
+      const radius = move.dir === "toward" ? 0.3 : move.strong ? 1.75 : 1.6;
       s.targetX = Math.cos(s.escapeAngle) * FIGHT_RADIUS * radius;
       s.targetY = Math.sin(s.escapeAngle) * FIGHT_RADIUS * radius;
       return;

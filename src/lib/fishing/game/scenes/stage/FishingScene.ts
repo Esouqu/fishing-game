@@ -40,6 +40,9 @@ export class FishingScene extends CatchLayer {
     this.updateJumps(dt);
     this.updateHeldFish(dt);
     this.renderer.drawMotion(this.motionG, this.time);
+    // Textured water drifts on the same clock as the crests, one step apart: the
+    // caustics are under the surface, so they are advanced first.
+    this.renderer.updateWater?.(this.time);
     // Cloud shade goes over the props, so it is drawn on its own layer after
     // them rather than inside the water motion.
     this.clouds.clear();

@@ -44,10 +44,14 @@ if (existsSync(fishDir)) {
   missing.push(fishDir);
 }
 
+// 24 after the perfect-catch fanfare and its jingle left the game; every WAV
+// the sound catalog names has to be here.
+const SOUND_COUNT = 24;
+
 if (existsSync(soundsDir)) {
   const sounds = readdirSync(soundsDir).filter((name) => name.endsWith(".wav"));
-  if (sounds.length < 25) {
-    missing.push(`${soundsDir} (found ${sounds.length} of 25 WAVs)`);
+  if (sounds.length < SOUND_COUNT) {
+    missing.push(`${soundsDir} (found ${sounds.length} of ${SOUND_COUNT} WAVs)`);
   }
 } else {
   missing.push(soundsDir);

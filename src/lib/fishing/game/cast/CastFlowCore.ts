@@ -115,6 +115,10 @@ export abstract class CastFlowCore {
 
   setPaused(paused: boolean): void {
     this.paused = paused;
+    // The fight keeps its state across the pause, but a dash that was live when
+    // the player paused is settled on the way back instead of waiting frozen in
+    // the menu (see `FightStage.setPaused`).
+    this.fight.setPaused(paused);
     if (!paused) return;
     this.game.audio.stopReel();
     this.game.audio.stopCharge();
@@ -124,8 +128,8 @@ export abstract class CastFlowCore {
     this.fight.setHold(false);
     // The charge and the cast are reaction windows, so freezing them under a
     // pause menu let the player line up the luck zone and the bite for free.
-    // Only the fight is allowed to stay paused; it is continuous, not a
-    // one-frame cue.
+    // The fight is continuous and stays paused, but its own windows are
+    // settled on resume for the same reason.
     if (
       this.phaseValue === "charging" ||
       this.phaseValue === "waiting" ||

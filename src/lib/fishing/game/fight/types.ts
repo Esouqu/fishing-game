@@ -1,6 +1,5 @@
-﻿export interface MinigameResult {
+export interface MinigameResult {
   won: boolean;
-  perfect: boolean;
 }
 
 export interface MinigameOptions {

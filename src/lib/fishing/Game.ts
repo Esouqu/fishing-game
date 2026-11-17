@@ -5,7 +5,11 @@ import { UI } from "./ui/palette";
 import { GameScreensLayer } from "./GameScreensLayer";
 import { setUiSoundHandler } from "./ui/Button";
 import { normalizeOptions } from "./options";
-import type { FishingGameInstance, FishingGameOptions } from "./types";
+import type {
+  AreaLocations,
+  FishingGameInstance,
+  FishingGameOptions,
+} from "./types";
 
 export class Game extends GameScreensLayer implements FishingGameInstance {
   static async create(options: FishingGameOptions): Promise<Game> {
@@ -46,6 +50,15 @@ export class Game extends GameScreensLayer implements FishingGameInstance {
   }
 
   // --------------------------------------------------------------- accessors
+  /**
+   * Host hook for levels that open and close while the game is running. The
+   * picker repaints, and a round on a body that just closed returns to it.
+   */
+  setLocations(locations: AreaLocations): void {
+    this.applyLocations(locations);
+    this.refreshLocations();
+  }
+
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -68,9 +81,9 @@ export class Game extends GameScreensLayer implements FishingGameInstance {
       this.audioPanel.destroy({ children: true });
       this.audioPanel = null;
     }
-    if (this.devPanel) {
-      this.devPanel.destroy({ children: true });
-      this.devPanel = null;
+    if (this.skyPanel) {
+      this.skyPanel.destroy({ children: true });
+      this.skyPanel = null;
     }
     this.app.ticker.remove(this.tick);
     setUiSoundHandler(null);
@@ -89,5 +102,3 @@ export class Game extends GameScreensLayer implements FishingGameInstance {
     );
   }
 }
-
-export type { CodexReturn } from "./types";

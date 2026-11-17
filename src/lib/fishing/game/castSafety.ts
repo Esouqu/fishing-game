@@ -48,7 +48,7 @@ export interface CastBounds {
 }
 
 export interface SafeCastOptions {
-  /** Landing point the cast power and the sideways spread produced. */
+  /** Landing point the aim and the cast power produced. */
   point: CastSpot;
   /** Open-water test of the area renderer. */
   isWater: (x: number, y: number) => boolean;
@@ -110,7 +110,7 @@ export function isCastSpotSafe(
   return ringClearsAngler(x, y, angler) && ringClearsWater(isWater, x, y);
 }
 
-/** Ground the cast direction away from the angler, per bobber axis. */
+/** Fallback cast direction away from the angler, per bobber axis. */
 export function castAway(layout: SceneLayout): CastSpot {
   return layout.bobber.axis === "y" ? { x: 0, y: -1 } : { x: 1, y: 0 };
 }
@@ -130,7 +130,7 @@ export function layoutBounds(layout: SceneLayout): CastBounds {
  * Pushes a landing point along the cast until the whole ring clears the bank
  * and the angler. Points that are already fine are returned untouched, so the
  * authored bands stay the real source of the cast feel; the search only fires
- * when the sideways spread or a band edit would break the zone.
+ * when an aim or a band edit would break the zone.
  */
 export function safeCastSpot(options: SafeCastOptions): CastSpotResult {
   const { point, isWater, angler, away, bounds } = options;

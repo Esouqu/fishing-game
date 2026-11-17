@@ -4,20 +4,31 @@ import { ditherNoise } from "./dither";
 
 /**
  * Small pieces of the bank that every scene needs: the drift a tree stands in,
- * the stones lying on the snow, the reeds on the shore and the angler's pail.
+ * the contact shadow a bare prop leaves, the stones lying on the snow, the
+ * reeds on the shore and the angler's pail.
  *
- * Both used to be a flat grey ellipse for the drift and a recoloured asset-pack
- * sprite for the stone. At the size the game draws them, the ellipse read as a
- * puddle or a shadow (the player could not tell which), and the rock sprite's
- * pointed facets read as a bomb with spikes. These are built the way the rest of
- * the scenery is lit — a lumpy snow shape with a lit crest, a faceted stone with
- * a lit face, a shaded side and a snow cap — so they read at a glance.
+ * The stone used to be a recoloured asset-pack sprite; its pointed facets read
+ * as a bomb with spikes. It is drawn the way the rest of the scenery is lit — a
+ * faceted silhouette with a lit face, a shaded side and a snow cap — so it reads
+ * at a glance. Reeds and stones keep their own dark contact mark; trees, bushes
+ * and boulders stand in a drift instead, because a pile of snow under a trunk
+ * says "snow" where a dark oval says "shadow of something that is not there".
  */
 
 /** Deterministic 0..1 noise, so previews match the live scene. */
 function noise(a: number, b: number): number {
   return (ditherNoise(a, b) + 1) / 2;
 }
+
+/** Ink blue the props shade the snow with; the angler and the pail use it too. */
+const CONTACT = 0x0a1c2a;
+/**
+ * Transparent row every sprite sheet keeps under a trunk or a bush, in texture
+ * pixels. A sprite anchored at its base therefore ends one scaled row above the
+ * pixels that touch the ground, so callers pass the visible foot, not the
+ * anchor.
+ */
+export const SPRITE_PAD = 1;
 
 /**
  * Scale the pail is drawn at. It is a background prop: big enough to read as a
@@ -30,7 +41,9 @@ const BUCKET_SCALE = 1;
  *
  * The outline is a wavy half-ellipse rather than a clean oval: a drift is
  * something the wind piled up, and the bumps are what separate it from the
- * shadow it would otherwise be mistaken for.
+ * shadow it would otherwise be mistaken for. It is what the trees, bushes and
+ * stones stand in — the contact shadow below is only used where a prop has no
+ * mound of its own.
  */
 export function drawSnowDrift(
   props: Container,
@@ -83,12 +96,56 @@ export function drawSnowDrift(
 }
 
 /**
+ * The one contact shadow every prop in every scene uses.
+ *
+ * The angler's shadow is the reference: an ink-blue core inside a softer rim,
+ * both centred on the row where the prop touches the snow. Every tree, bush,
+ * stone, clump of grass, reed, signpost, lantern and log borrows this same
+ * recipe, so nothing on the bank looks pasted on while the angler looks
+ * anchored — a pale snow collar under one prop and a dark oval under the next
+ * was exactly what made them read as unrelated objects.
+ *
+ * `foot` is the row that visibly touches the ground. `halfWidth` is the half of
+ * the footprint — the trunk or the post, never the canopy — and the ellipse is
+ * centred on it, so the prop stands in the middle of its own shadow.
+ */
+export function paintContactShadow(
+  g: Graphics,
+  x: number,
+  foot: number,
+  halfWidth: number,
+): void {
+  const reach = Math.max(3, halfWidth);
+  g.ellipse(x, foot, reach, Math.max(1.2, reach * 0.33)).fill({
+    color: CONTACT,
+    alpha: 0.32,
+  });
+  g.ellipse(x, foot, reach * 0.52, Math.max(1, reach * 0.17)).fill({
+    color: CONTACT,
+    alpha: 0.35,
+  });
+}
+
+/** {@link paintContactShadow} as its own z-sorted node, under the sprite. */
+export function drawContactShadow(
+  props: Container,
+  x: number,
+  foot: number,
+  halfWidth: number,
+): void {
+  const g = new Graphics();
+  paintContactShadow(g, x, foot, halfWidth);
+  g.zIndex = foot - 0.1;
+  props.addChild(g);
+}
+
+/**
  * A clump of last year's reeds, ~20 px tall and ~18 px wide at `scale` 1.
  *
  * The river drew its own reeds inline; the lake needed the same plant on its
  * shore, so the drawing lives here and both waters use it. Winter reeds: dry
  * leaning stalks, a dark cattail head on the taller ones, snow caught on the
- * heads and a drift of snow at the foot.
+ * heads and the shade the clump leaves on the snow it stands in.
  */
 export function drawReedClump(
   props: Container,
@@ -101,6 +158,10 @@ export function drawReedClump(
   const g = new Graphics();
   const base = Math.round(x * 3 + y + seed * 17);
   const count = 6 + Math.round(noise(seed + 1, 3) * 4);
+
+  // The clump's own shadow, first: the stalks then stand in the middle of it
+  // instead of floating above it.
+  paintContactShadow(g, x, y, 6 * scale);
 
   for (let i = 0; i < count; i += 1) {
     // Stalks fan out from the clump's foot, so a group reads as one plant.
@@ -132,14 +193,16 @@ export function drawReedClump(
     }
   }
 
-  // Snow the clump stands in, and a shadow of the stalks on it.
-  g.ellipse(x, y + 1, 9 * scale, 2.4 * scale).fill({
+  // A last crust of snow caught at the foot of the stalks — a couple of pale
+  // pixels, not a patch: a wide pale ellipse here covered the clump's own
+  // shadow and left the grass standing above a puddle again.
+  g.rect(Math.round(x - 3 * scale), Math.round(y), 2, 1).fill({
     color: palette.snow,
-    alpha: 0.7,
+    alpha: 0.6,
   });
-  g.ellipse(x, y, 5.5 * scale, 1.3 * scale).fill({
+  g.rect(Math.round(x + 2 * scale), Math.round(y), 1, 1).fill({
     color: palette.snowLight,
-    alpha: 0.8,
+    alpha: 0.7,
   });
   g.zIndex = y;
   props.addChild(g);
@@ -168,11 +231,9 @@ export function drawShoreStone(
     y - v * h + (noise(v + 7, seed) - 0.5) * 1.2,
   ];
 
-  // Contact shadow, flattened on the snow.
-  g.ellipse(x, y + 0.6, w * 1.05, h * 0.22).fill({
-    color: 0x8fa6b4,
-    alpha: 0.25,
-  });
+  // The stone's own footprint in the shared shadow recipe: a rock that stands
+  // on a paler mark than the angler looked pasted onto the snow.
+  paintContactShadow(g, x, y + 0.4, w * 0.95);
 
   const body = [
     ...at(-1, 0.12),
@@ -239,11 +300,8 @@ export function drawBucket(
   const rim = 1.4 * scale;
   const top = y - h;
 
-  // Contact shadow, tighter than the body so the pail sits in the snow.
-  g.ellipse(x, y - 0.3 * scale, w * 1.02, 1.7 * scale).fill({
-    color: 0x0a1c2a,
-    alpha: 0.32,
-  });
+  // Contact shadow in the shared recipe, centred on the foot.
+  paintContactShadow(g, x, y, w * 1.05);
 
   // Body: a tapered pail, lit on the left, shaded on the right.
   const body = [x - foot, y, x + foot, y, x + w, top, x - w, top];

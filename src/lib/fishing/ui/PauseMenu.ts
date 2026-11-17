@@ -1,4 +1,4 @@
-import { Container, Graphics, Rectangle } from "pixi.js";
+﻿import { Container, Graphics, Rectangle } from "pixi.js";
 import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";

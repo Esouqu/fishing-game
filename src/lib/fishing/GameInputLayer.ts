@@ -5,6 +5,9 @@ import { CursorOverlay } from "./ui/CursorOverlay";
 import type { CursorTextures } from "./cursors";
 
 export abstract class GameInputLayer extends GameBootLayer {
+  /** True while the page hides the system pointer in favour of the overlay. */
+  private nativeCursorHidden = false;
+
   protected layout(): void {
     const width = this.app.screen.width;
     const height = this.app.screen.height;
@@ -36,6 +39,7 @@ export abstract class GameInputLayer extends GameBootLayer {
     if (!overlay) return;
     if (!this.pointerInside) {
       overlay.hide();
+      this.setNativeCursorHidden(false);
       return;
     }
 
@@ -50,13 +54,24 @@ export abstract class GameInputLayer extends GameBootLayer {
         : "default";
     overlay.setCursor(name);
     overlay.moveTo(this.cursorX, this.cursorY, this.world.scale.x * 0.5);
+    this.setNativeCursorHidden(true);
   }
 
   protected mountCursor(cursors: CursorTextures): void {
     const overlay = new CursorOverlay(cursors);
     this.cursorOverlay = overlay;
     this.app.stage.addChild(overlay);
-    this.app.canvas.classList.add("cursor-hidden");
     this.updateCursor();
+  }
+
+  /**
+   * Hides the system pointer only while the game is drawing its own. It used to
+   * be hidden unconditionally from the first frame, which is why a pointer that
+   * was already sitting over the canvas showed nothing at all until it moved.
+   */
+  private setNativeCursorHidden(hidden: boolean): void {
+    if (this.nativeCursorHidden === hidden) return;
+    this.nativeCursorHidden = hidden;
+    this.app.canvas.classList.toggle("cursor-hidden", hidden);
   }
 }

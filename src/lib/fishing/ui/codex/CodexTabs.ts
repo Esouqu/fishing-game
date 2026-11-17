@@ -101,24 +101,38 @@ export class CodexTabs extends Container {
       alignment: 0,
     });
 
+    /** Segment boundaries snapped to whole pixels, so no edge is half-lit. */
+    const edge = (index: number): number => Math.round(index * this.tick);
+
     if (this.hovered >= 0 && this.hovered !== this.selected) {
-      g.rect(this.hovered * this.tick + 1, 1, this.tick - 1, height - 2).fill({
+      const left = edge(this.hovered);
+      const right = edge(this.hovered + 1);
+      g.rect(left + 1, 1, right - left - 2, height - 2).fill({
         color: UI.surface,
         alpha: 0.3,
       });
     }
 
-    // Hairlines between the segments keep "one control" readable.
+    // Hairlines between the segments keep "one control" readable. The two that
+    // touch the raised tab are skipped: the tab carries its own ink border, and
+    // a hairline right next to it read as a second, thicker edge cutting into
+    // the selected segment.
     for (let index = 1; index < this.labels.length; index += 1) {
-      g.rect(index * this.tick, 3, 1, height - 6).fill({
+      if (index === this.selected || index === this.selected + 1) continue;
+      g.rect(edge(index), 3, 1, height - 6).fill({
         color: UI.periwinkle,
         alpha: 0.2,
       });
     }
 
     // The selected segment is the only raised part: an ice tab in the trough.
-    const left = this.selected * this.tick + 1;
-    const tabWidth = this.tick - 1;
+    //
+    // It is inset by one pixel on every side so its own ink border stays inside
+    // the trough's frame. Flush with the trough, the last segment's right border
+    // landed on the trough's border, and the raised tab read as having its right
+    // edge cut off.
+    const left = edge(this.selected) + 1;
+    const tabWidth = edge(this.selected + 1) - edge(this.selected) - 2;
     g.rect(left, 1, tabWidth, height - 2).fill(UI.primary);
     g.rect(left, 1, tabWidth, height - 2).stroke({
       width: 1,

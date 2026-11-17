@@ -51,8 +51,8 @@ export class GridWipe extends Container {
   }
 
   /** Starts covering the frame; the wave begins under `origin`. */
-  beginCover(origin: WipePoint): void {
-    this.buildDelays(origin);
+  beginCover(origin: WipePoint, inward = false): void {
+    this.buildDelays(origin, inward);
     this.mode = "covering";
     this.elapsed = 0;
     this.visible = true;
@@ -93,8 +93,18 @@ export class GridWipe extends Container {
     return finished;
   }
 
-  /** Wave starts in the cell under `origin` and spreads to the far corners. */
-  private buildDelays(origin: WipePoint): void {
+  /**
+   * Wave starts in the cell under `origin` and spreads to the far corners.
+   *
+   * With `inward` the profile is mirrored: the cells farthest from `origin`
+   * turn first and the origin is the last one to go dark, so the ink closes onto
+   * the point instead of running away from it. Cover and reveal share the same
+   * delays, so an inward wipe also peels back toward its origin — the whole
+   * transition converges on the cell the player's action came from. That is what
+   * leaving a round uses: going in is a wave spreading from where the button
+   * was, coming out is the same wave running backwards.
+   */
+  private buildDelays(origin: WipePoint, inward: boolean): void {
     const ox = clamp(origin.x / CELL, 0, COLS);
     const oy = clamp(origin.y / CELL, 0, ROWS);
     const reach = Math.hypot(Math.max(ox, COLS - ox), Math.max(oy, ROWS - oy));
@@ -106,7 +116,8 @@ export class GridWipe extends Container {
         // the wipe reads as a grid instead of as one solid edge crossing the
         // frame. A flat wall (delay by column only) is what this replaced.
         const distance = reach > 0 ? Math.hypot(dx, dy) / reach : 0;
-        this.delays[row * COLS + col] = distance * SPREAD;
+        const delay = distance * SPREAD;
+        this.delays[row * COLS + col] = inward ? SPREAD - delay : delay;
       }
     }
   }

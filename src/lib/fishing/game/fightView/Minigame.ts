@@ -9,6 +9,7 @@ import {
   LAND_RING_OUTER,
   SILHOUETTE,
   SILHOUETTE_ALPHA,
+  SILHOUETTE_COUNTER,
   SILHOUETTE_WARN,
 } from "./setup";
 
@@ -29,7 +30,6 @@ export class Minigame extends BarsView {
     this.counterG.alpha = 1;
     this.ringG.alpha = 1;
     this.barG.y = 0;
-    this.staminaLabel.visible = true;
 
     this.model.update(dt);
     if (!this.model.isRunning) return;
@@ -53,7 +53,14 @@ export class Minigame extends BarsView {
             : 1;
     const grow = 0.82 + 0.18 * this.introScale;
     this.fishSprite.scale.set(face * FISH_SCALE * grow, FISH_SCALE * grow);
-    this.fishSprite.tint = this.model.warn > 0 ? SILHOUETTE_WARN : SILHOUETTE;
+    // A countered jerk lifts the shadow towards the lock's ice: the padlock and
+    // the fish are one marker, and the fish must not wear a second ring.
+    this.fishSprite.tint =
+      this.model.counterFlashValue > 0
+        ? SILHOUETTE_COUNTER
+        : this.model.warn > 0
+          ? SILHOUETTE_WARN
+          : SILHOUETTE;
   }
 
   // -------------------------------------------------------------------- draw
@@ -69,15 +76,10 @@ export class Minigame extends BarsView {
   }
 
   /**
-   * The landing cue is a closing ring, so it needs a clock of its own: it starts
-   * the moment the fish becomes landable, closes over {@link LAND_RING_CLOSE}
-   * seconds and then holds at full weight for as long as the window stays open.
-   *
-   * Visibility fades on its own clock, because the window can close again at any
-   * moment (the fish shakes the hook loose or catches its breath). A ring that
-   * blinked out of existence read as a dropped frame; it fades out while opening
-   * up instead — the opposite motion of the closing ring, so "the moment is
-   * slipping away" is legible.
+   * Opens the landing cue on the tired fish: the fish's own outline lights up
+   * and breathes for as long as the window stays open. The window can close
+   * again at any moment (the fish shakes the hook loose or catches its breath),
+   * so the outline fades out on its own clock instead of blinking away.
    */
   protected updateLandRing(dt: number): void {
     const landable = this.model.canLand;
@@ -95,21 +97,24 @@ export class Minigame extends BarsView {
   }
 
   /**
-   * Draws the landing ring onto the tired fish: it closes from
+   * Draws the catch window on the float: an amber ring that closes from
    * {@link LAND_RING_OUTER} to {@link LAND_RING_INNER} as the window opens and
-   * then breathes at that size. The position comes from the same `fishPoint` as
-   * the sprite, so the ring rides the fish exactly — no float bob, no lag.
+   * then breathes at that size.
+   *
+   * It used to close on the fish, and then it was replaced by an outline of the
+   * fish; both put the cue on the thing that moves. The float is what the player
+   * is watching — it carries the endurance gauge and the direction pointer — so
+   * the ring frames the float and those two cues inside it.
    */
   protected drawLandRing(): void {
     const g = this.landRing;
     g.clear();
     if (this.landFade <= 0.005) return;
-    const point = this.model.fishPoint;
     const closed = easeOutCubic(Math.min(1, this.landCue));
     const radius =
       LAND_RING_OUTER + (LAND_RING_INNER - LAND_RING_OUTER) * closed;
     const breathe = Math.sin(this.model.time * 7) * 0.7;
-    g.circle(point.x, point.y, radius + breathe).stroke({
+    g.circle(this.floatPoint.x, this.floatPoint.y, radius + breathe).stroke({
       width: 1.5,
       color: UI.amber,
       alpha: 0.9 * this.landFade,

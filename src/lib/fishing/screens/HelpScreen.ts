@@ -1,54 +1,98 @@
 import { Container, Graphics, Sprite } from "pixi.js";
 import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
+import { easeOutCubic } from "../utils";
 import { Screen } from "../ui/Screen";
 import { Scrim } from "../ui/Scrim";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
 import { UI } from "../ui/palette";
-import {
-  PANEL_PAD,
-  SCREEN_INSET,
-  drawPanel,
-  makeText,
-  setText,
-} from "../ui/theme";
+import { drawPanel, makeText } from "../ui/theme";
+import { anchorInk } from "../ui/textInk";
+import { CodexTabs } from "../ui/codex/CodexTabs";
 import { HELP_PAGES, TEXT, type HelpPage } from "../texts";
 
-const PANEL = {
-  x: SCREEN_INSET,
-  y: SCREEN_INSET,
-  width: VIEW.width - SCREEN_INSET * 2,
-  height: VIEW.height - SCREEN_INSET * 2,
+/**
+ * A dialog, not a page: 380×186 in the middle of the frame, the same inset
+ * rhythm as the pause menu. The manual used to fill the screen and end in a
+ * row of page arrows plus a «1 / 4» counter, which made four short lessons read
+ * like a document; a popup keeps the menu visible behind it and every lesson
+ * is one tab away.
+ */
+const PANEL = { x: 50, y: 40, width: 380, height: 190 } as const;
+const LEFT = PANEL.x + 16;
+const RIGHT = PANEL.x + PANEL.width - 16;
+/** Header row, 16 px inside the frame like the codex's title row. */
+const TOP = PANEL.y + 16;
+/** Side of the square «Х» button in the title row, same as the codex. */
+const CLOSE_SIZE = 18;
+/**
+ * Lesson switcher: one segmented bar, the lessons as its segments. It keeps the
+ * same 8 px under the header row the codex leaves, so the two popups share one
+ * vertical rhythm.
+ */
+const TABS = {
+  x: LEFT,
+  y: TOP + CLOSE_SIZE + 8,
+  width: RIGHT - LEFT,
+  height: 16,
 };
-const LEFT = PANEL.x + PANEL_PAD;
-const RIGHT = PANEL.x + PANEL.width - PANEL_PAD;
-const IMAGE = { x: LEFT, y: 54, width: 218, height: 124 };
-const TEXT_X = LEFT + IMAGE.width + 16;
+/** The still and the copy beside it, 8 px under the switcher. */
+const IMAGE = { x: LEFT, y: TABS.y + TABS.height + 8, width: 190, height: 107 };
+const TEXT_X = IMAGE.x + IMAGE.width + 14;
 const TEXT_W = RIGHT - TEXT_X;
-const BUTTON_Y = PANEL.y + PANEL.height - PANEL_PAD - 21;
 
+/**
+ * Popup motion. The numbers are the codex's own (`ui/CodexOverlay.ts`), so the
+ * two dialogs open, hold and leave with one motion: same lift, same rise time,
+ * same dimmer fade.
+ */
+const FLY_LIFT = 26;
+const FLY_TIME = 0.34;
+const SCRIM_TIME = 0.24;
+const FLY_OUT_TIME = FLY_TIME;
+
+/**
+ * «Как играть», as a popup card.
+ *
+ * Four lessons — cast, fight, counter, landing — each with one line of the
+ * real interface and three lines of copy, switched by the tab bar. There are no
+ * page arrows and no counter: the tabs already say what the other lessons are,
+ * so a reader jumps straight to the one they need instead of walking a pager.
+ */
 export class HelpScreen extends Screen {
   override readonly popup = true;
+  /**
+   * The popup flies itself: only the card moves. Letting the manager slide the
+   * whole screen dragged the dark sheet across the menu with the panel, which
+   * read as a second page passing over the first instead of a dialog opening on
+   * top of it. The codex closes the same way.
+   */
+  override readonly selfFlown = true;
   private readonly game: GameContext;
+  private readonly scrim = new Scrim();
+  /** Everything the dialog is drawn from: the only thing that animates. */
+  private readonly card = new Container();
   private readonly focus = new FocusGroup();
   private readonly pageLayer = new Container();
-  private readonly pageText: ReturnType<typeof makeText>;
-  private readonly prevButton: Button;
-  private readonly nextButton: Button;
-  private readonly backButton: Button;
+  private readonly tabs: CodexTabs;
   private pageIndex = 0;
+  private intro = 0;
+  private outro = 0;
   /**
    * Pages are painted immediately and their screenshot arrives from the lazy
-   * loader a moment later. The token drops a late answer for a page the player
-   * has already flipped away from.
+   * loader a moment later. The token drops a late answer for a lesson the
+   * player has already switched away from.
    */
   private renderToken = 0;
 
   constructor(game: GameContext) {
     super();
     this.game = game;
-    this.addChild(new Scrim());
+    // The dimmer is static: it fades where it stands while the card lifts.
+    this.scrim.alpha = 0;
+    this.addChild(this.scrim);
+    this.addChild(this.card);
 
     const panel = new Graphics();
     drawPanel(panel, PANEL.x, PANEL.y, PANEL.width, PANEL.height, {
@@ -56,82 +100,95 @@ export class HelpScreen extends Screen {
       alpha: 0.94,
       shadow: true,
     });
-    this.addChild(panel);
+    this.card.addChild(panel);
 
     const title = makeText(TEXT.help.title, {
-      size: 16,
+      size: 14,
       weight: 800,
       color: UI.text,
       letterSpacing: 1,
     });
-    title.position.set(LEFT, PANEL.y + 12);
-    this.addChild(title);
+    // The wordmark and the close button are one row: the title is centred on
+    // the button's middle, not on the top of the font's line box.
+    anchorInk(title, "left", "center");
+    title.position.set(LEFT, TOP + CLOSE_SIZE / 2);
+    this.card.addChild(title);
 
-    this.pageText = makeText("", {
-      size: 8,
-      color: UI.textMuted,
-      align: "right",
-      letterSpacing: 0.5,
-    });
-    this.pageText.position.set(RIGHT, 26);
-    this.addChild(this.pageText);
-
-    const rule = new Graphics();
-    rule.rect(LEFT, 44, RIGHT - LEFT, 1).fill({
-      color: UI.periwinkle,
-      alpha: 0.45,
-    });
-    this.addChild(rule);
-
-    this.addChild(this.pageLayer);
-
-    this.prevButton = new Button({
-      label: TEXT.help.prev,
-      width: 58,
-      height: 21,
+    const close = new Button({
+      label: "Х",
+      width: CLOSE_SIZE,
+      height: CLOSE_SIZE,
+      size: 15,
       variant: "secondary",
-      size: 8,
-      onClick: () => this.changePage(-1),
+      marks: false,
+      onClick: () => this.close(),
     });
-    this.prevButton.position.set(LEFT, BUTTON_Y);
-    this.addChild(this.prevButton);
+    close.position.set(RIGHT - CLOSE_SIZE, TOP);
+    this.card.addChild(close);
 
-    this.nextButton = new Button({
-      label: TEXT.help.next,
-      width: 62,
-      height: 21,
-      variant: "secondary",
-      size: 8,
-      onClick: () => this.changePage(1),
+    this.tabs = new CodexTabs({
+      labels: HELP_PAGES.map((page) => page.title),
+      width: TABS.width,
+      height: TABS.height,
+      onPick: (index) => {
+        this.game.audio.click();
+        this.showPage(index);
+      },
+      onHover: () => this.game.audio.hover(),
     });
-    this.nextButton.position.set(LEFT + 64, BUTTON_Y);
-    this.addChild(this.nextButton);
+    this.tabs.position.set(TABS.x, TABS.y);
+    this.card.addChild(this.tabs);
 
-    this.backButton = new Button({
-      label: TEXT.common.menu,
-      width: 96,
-      height: 21,
-      variant: "primary",
-      size: 9,
-      onClick: () => game.showMenu(),
-    });
-    this.backButton.position.set(RIGHT - 96, BUTTON_Y);
-    this.addChild(this.backButton);
+    this.card.addChild(this.pageLayer);
 
-    this.focus.setItems([this.backButton]);
+    this.focus.setItems([close]);
     this.focus.onMove = () => game.audio.hover();
 
     this.renderPage();
+
+    // The card starts below its resting place and out of sight: the dimmer is
+    // already there, the panel rises into it.
+    this.card.y = FLY_LIFT;
+    this.card.alpha = 0;
   }
 
-  private changePage(delta: number): void {
-    const next = Math.max(
-      0,
-      Math.min(HELP_PAGES.length - 1, this.pageIndex + delta),
-    );
+  /** The rise, played once on entry. */
+  override update(dt: number): void {
+    if (this.intro >= 1) return;
+    this.intro = Math.min(1, this.intro + dt / FLY_TIME);
+    const eased = easeOutCubic(this.intro);
+    this.card.y = FLY_LIFT * (1 - eased);
+    this.card.alpha = eased;
+    this.scrim.alpha = Math.min(1, this.intro / (SCRIM_TIME / FLY_TIME));
+  }
+
+  /**
+   * The card drops out of the frame while the dimmer fades where it stands.
+   * Sliding the whole screen, as an ordinary popup does, dragged the dark sheet
+   * down with the panel and left the menu dimmed from the top.
+   */
+  override animateOut(dt: number): void {
+    if (this.outro === 0) {
+      // Nothing may take a click while the dialog is leaving.
+      this.scrim.eventMode = "none";
+      this.card.interactiveChildren = false;
+    }
+    this.outro = Math.min(1, this.outro + dt / FLY_OUT_TIME);
+    const eased = easeOutCubic(this.outro);
+    this.card.y = VIEW.height * eased;
+    this.card.alpha = 1 - eased;
+    this.scrim.alpha = Math.min(this.scrim.alpha, 1 - eased);
+  }
+
+  private close(): void {
+    this.game.audio.back();
+    this.game.showMenu();
+  }
+
+  private showPage(index: number): void {
+    const next = Math.max(0, Math.min(HELP_PAGES.length - 1, index));
     if (next === this.pageIndex) return;
     this.pageIndex = next;
-    this.game.audio.hover();
     this.renderPage();
   }
 
@@ -139,6 +196,7 @@ export class HelpScreen extends Screen {
     for (const child of this.pageLayer.removeChildren()) {
       child.destroy({ children: true });
     }
+    this.tabs.setSelected(this.pageIndex);
 
     const token = (this.renderToken += 1);
     const page: HelpPage = HELP_PAGES[this.pageIndex];
@@ -150,12 +208,14 @@ export class HelpScreen extends Screen {
     });
     this.pageLayer.addChild(frame);
 
-    // The screenshot is loaded on demand (see `assets.ts`): four images used
-    // to ride the boot path even though they live behind this screen. The
-    // frame is already painted, so the page behaves with a short gap.
+    // The screenshot is loaded on demand (see `assets.ts`): four images used to
+    // ride the boot path even though they live behind this screen. The frame is
+    // already painted, so the page behaves with a short gap.
     const imageLayer = new Container();
     const mask = new Graphics();
-    mask.rect(IMAGE.x + 4, IMAGE.y + 2, 210, 118).fill(0xffffff);
+    mask
+      .rect(IMAGE.x + 4, IMAGE.y + 2, IMAGE.width - 8, IMAGE.height - 6)
+      .fill(0xffffff);
     this.pageLayer.addChild(mask);
     imageLayer.mask = mask;
     this.pageLayer.addChild(imageLayer);
@@ -163,62 +223,50 @@ export class HelpScreen extends Screen {
     void this.game.helpTexture(page.id).then((texture) => {
       if (token !== this.renderToken) return;
       const illustration = new Sprite(texture);
-      illustration.width = 210;
-      illustration.height = 118;
+      illustration.width = IMAGE.width - 8;
+      illustration.height = IMAGE.height - 6;
       illustration.eventMode = "none";
       illustration.position.set(IMAGE.x + 4, IMAGE.y + 2);
       imageLayer.addChild(illustration);
     });
 
-    const caption = makeText(page.caption, {
-      size: 7,
-      color: UI.textMuted,
-      letterSpacing: 0.6,
-    });
-    caption.position.set(LEFT, 183);
-    this.pageLayer.addChild(caption);
-
     const heading = makeText(page.title, {
-      size: 12,
+      size: 11,
       weight: 800,
       color: UI.text,
       letterSpacing: 0.4,
     });
-    heading.position.set(TEXT_X, 60);
+    heading.position.set(TEXT_X, IMAGE.y);
     this.pageLayer.addChild(heading);
 
     const divider = new Graphics();
-    divider.rect(TEXT_X, 80, TEXT_W, 1).fill({
+    divider.rect(TEXT_X, IMAGE.y + 17, TEXT_W, 1).fill({
       color: UI.periwinkle,
       alpha: 0.4,
     });
     this.pageLayer.addChild(divider);
 
-    let lineY = 92;
+    // Bullets hang off the rule. Copy wraps inside the column, so a long rule
+    // takes two lines and the next one starts below it instead of behind.
+    let lineY = IMAGE.y + 25;
     for (const line of page.lines) {
       const bullet = new Graphics();
       bullet.rect(TEXT_X, lineY + 2, 3, 3).fill(UI.periwinkle);
       this.pageLayer.addChild(bullet);
 
       const text = makeText(line, {
-        size: 8,
+        size: 7,
         color: UI.text,
-        lineHeight: 10,
+        lineHeight: 9,
+        wordWrapWidth: TEXT_W - 10,
       });
-      text.position.set(TEXT_X + 10, lineY);
+      text.position.set(TEXT_X + 9, lineY);
       text.alpha = 0.94;
       this.pageLayer.addChild(text);
-
-      const lineCount = line.split("\n").length;
-      lineY += 15 + (lineCount - 1) * 11;
+      // `text.height` is the wrapped block, so the row after it is measured
+      // from what this one actually took.
+      lineY += Math.ceil(text.height) + 2;
     }
-
-    setText(
-      this.pageText,
-      TEXT.help.page(this.pageIndex + 1, HELP_PAGES.length),
-    );
-    this.prevButton.setEnabled(this.pageIndex > 0);
-    this.nextButton.setEnabled(this.pageIndex < HELP_PAGES.length - 1);
   }
 
   override onEnter(): void {
@@ -232,16 +280,15 @@ export class HelpScreen extends Screen {
 
   override handleKey(event: KeyboardEvent): boolean {
     if (event.code === "Escape" || event.code === "Backspace") {
-      this.game.audio.back();
-      this.game.showMenu();
+      this.close();
       return true;
     }
     if (event.code === "ArrowLeft" || event.code === "KeyA") {
-      this.changePage(-1);
+      this.showPage(this.pageIndex - 1);
       return true;
     }
     if (event.code === "ArrowRight" || event.code === "KeyD") {
-      this.changePage(1);
+      this.showPage(this.pageIndex + 1);
       return true;
     }
     return this.focus.handleKey(event);

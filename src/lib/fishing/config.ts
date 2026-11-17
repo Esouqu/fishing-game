@@ -21,6 +21,22 @@ export const FIGHT = {
   /** Hardcore counter window after a burst. */
   counterWindow: 0.2,
   counterRest: 0.15,
+  /**
+   * The counter is a gesture, not a second aim: the player presses on the dash
+   * side of the ring and drags toward the middle of it. `counterGrab` is how far
+   * past the arrow tip the grab wedge reaches — the wedge itself and its angles
+   * live in `game/fight/counter.ts` (`COUNTER_GRAB_*`), because the view draws
+   * the same shape the model tests. `counterDrag` is how far the drag has to
+   * travel before it counts.
+   *
+   * Aiming against the run with the button already held is not a gesture: the
+   * press has to land on the dash side, which is what makes the move read as
+   * "catch the dash by its tail" instead of "always pull the other way". The
+   * press may be prepared during the telegraph: a button put down in the wedge
+   * before the burst already arms the window.
+   */
+  counterGrab: 10,
+  counterDrag: 9,
   /** A successful counter cancels the burst and leaves the fish briefly stunned. */
   counterStun: 0.35,
   counterAngle: Math.PI / 4,
@@ -70,8 +86,35 @@ export const FIGHT = {
   tireAimGain: 0.55,
   /** Escape meter: how much a pull slows it, and counterplay swings. */
   escapePullFactor: 0.55,
-  counterRelief: 0.25,
-  uncounteredBurst: 0.15,
+  /**
+   * A missed strong dash and a landed counter are shares of the escape meter,
+   * not seconds. Half the meter per miss makes the rule temperament-proof:
+   * two missed dashes always tear the fish free, and a counter refunds most of
+   * one miss, so a miss followed by a read is survivable.
+   */
+  uncounteredBurst: 0.5,
+  counterRelief: 0.45,
+  /** Meter recovered per second while the fish is back inside the circle. */
+  escapeRecover: 0.06,
+  /**
+   * A miss freezes the inside recovery for this long, so the meter cannot be
+   * healed away between two dashes: two misses in a row always add up.
+   */
+  escapeLockTime: 2.5,
+  /**
+   * How long a missed dash's share of the meter takes to pour in. The miss is
+   * paid in full, but the clock climbs over this window instead of jumping:
+   * the sinking float is the only meter the player has, so an instant
+   * half-metre jump read as a bug.
+   */
+  missFillTime: 1.5,
+  /**
+   * No dash may start in the opening beat of a fight: the fish only circles for
+   * this long, so the first burst never lands on a player who is still reading
+   * the ring and the two gauges. A dash that would have started inside the
+   * grace is deferred, not skipped — the authored script keeps its order.
+   */
+  startGrace: 1.2,
   /** A final pull attempted too early. */
   resistEndurance: 0.05,
   resistGrip: 0.08,
@@ -80,6 +123,12 @@ export const FIGHT = {
   sameAimTime: 2.5,
   /** Escaping the ring: how quickly a neglected fish aims for the edge. */
   neglectRamp: 1.1,
+  /**
+   * How fast a held line unwinds the neglect clock. It is deliberately slower
+   * than real time: a single tapped frame must not reset the drift, otherwise
+   * "resting" could be faked with one click per second.
+   */
+  neglectRecover: 3,
   /** Extra ring radii the fish aims for once it is fully neglected. */
   neglectPush: 0.32,
   lowGrip: 0.25,
@@ -87,6 +136,13 @@ export const FIGHT = {
   lastRunChance: 0.3,
   /** Minimum gap between landing chimes. */
   readyChime: 0.9,
+  /**
+   * Hard ceiling on one fight, in seconds. Every real fight ends well inside
+   * it, so this only catches a soft-lock: a fight that neither player nor fish
+   * can finish (for example, input that keeps the fish circling but never
+   * tires it). At the limit the fish tears off.
+   */
+  timeLimit: 90,
 } as const;
 
 export type { Temperament } from "./types";
@@ -244,7 +300,7 @@ export const TIMING = {
   nibbleLeadMax: 0.9,
   nibbleDuration: 0.34,
   /** Warning window before a strong fish dash. */
-  telegraph: 0.36,
+  telegraph: 0.5,
 } as const;
 
 export type { WeatherId };

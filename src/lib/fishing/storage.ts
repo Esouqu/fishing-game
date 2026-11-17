@@ -69,16 +69,88 @@ export class SettingsStore {
   }
 }
 
-export interface WorldData {
-  /**
-   * Weather fronts, one per area. Older saves hold a single front as a plain
-   * string; the clock expands it to every area on load. The time of day is not
-   * stored any more: the clock follows the player's wall clock.
-   */
-  weather: Record<string, string> | string;
+/** One front as it is saved, anchored to the wall clock. */
+export interface SavedFront {
+  /** Weather id; the clock maps the legacy ids and rejects unknown ones. */
+  id: string;
+  /** Epoch seconds when this front ends: the anchor the clock restores from. */
+  endsAt: number;
+  /** Full length of the front, in seconds. */
+  length: number;
 }
 
-/** Weather fronts of every water body. */
+/** The sky over one water body: the live front and the ones queued behind it. */
+export interface SavedArea {
+  current: SavedFront;
+  queue: SavedFront[];
+}
+
+export interface WorldData {
+  /**
+   * Weather ids, one per area. Older saves hold a single front as a plain
+   * string; the clock expands it to every area on load. This is also written
+   * next to {@link areas} so a build that predates schedules still finds its
+   * sky, and it is the fallback when a save carries no times.
+   */
+  weather?: Record<string, string> | string;
+  /**
+   * Full per-area schedule: the live front with its absolute end and the
+   * forecast queue behind it. This is what makes the rail survive a reload.
+   */
+  areas?: Record<string, SavedArea>;
+}
+
+/** Deepest saved queue worth restoring; the clock rolls the rest anew. */
+const MAX_SAVED_QUEUE = 12;
+
+function parseFront(raw: unknown): SavedFront | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const { id, endsAt, length } = record;
+  if (typeof id !== "string") return null;
+  if (typeof endsAt !== "number" || !Number.isFinite(endsAt)) return null;
+  if (typeof length !== "number" || !Number.isFinite(length) || length <= 0) {
+    return null;
+  }
+  return { id, endsAt, length };
+}
+
+function parseArea(raw: unknown): SavedArea | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const current = parseFront(record.current);
+  if (!current) return null;
+  const queue: SavedFront[] = [];
+  if (Array.isArray(record.queue)) {
+    for (const item of record.queue.slice(0, MAX_SAVED_QUEUE)) {
+      const front = parseFront(item);
+      if (front) queue.push(front);
+    }
+  }
+  return { current, queue };
+}
+
+function parseAreas(raw: unknown): Record<string, SavedArea> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const areas: Record<string, SavedArea> = {};
+  for (const [areaId, value] of Object.entries(raw)) {
+    const area = parseArea(value);
+    if (area) areas[areaId] = area;
+  }
+  return areas;
+}
+
+function parseWeather(raw: unknown): Record<string, string> | string | null {
+  if (typeof raw === "string") return raw;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const fronts: Record<string, string> = {};
+  for (const [areaId, value] of Object.entries(raw)) {
+    if (typeof value === "string") fronts[areaId] = value;
+  }
+  return fronts;
+}
+
+/** Weather schedule of every water body, anchored to the wall clock. */
 export class WorldStore {
   private readonly key: string;
 
@@ -93,24 +165,20 @@ export class WorldStore {
       const parsed: unknown = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object") return null;
       const record = parsed as Record<string, unknown>;
-      const weather = record.weather;
-      if (typeof weather === "string") return { weather };
-      if (!weather || typeof weather !== "object" || Array.isArray(weather)) {
-        return null;
-      }
-      const fronts: Record<string, string> = {};
-      for (const [areaId, value] of Object.entries(weather)) {
-        if (typeof value === "string") fronts[areaId] = value;
-      }
-      return { weather: fronts };
+      const data: WorldData = {};
+      const weather = parseWeather(record.weather);
+      if (weather) data.weather = weather;
+      const areas = parseAreas(record.areas);
+      if (areas) data.areas = areas;
+      return data.areas || data.weather ? data : null;
     } catch {
       return null;
     }
   }
 
-  write(weather: Record<string, string>): void {
+  write(data: WorldData): void {
     try {
-      localStorage.setItem(this.key, JSON.stringify({ weather }));
+      localStorage.setItem(this.key, JSON.stringify(data));
     } catch {
       // ignore
     }

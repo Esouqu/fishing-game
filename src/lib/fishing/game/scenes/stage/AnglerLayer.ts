@@ -3,15 +3,20 @@ import { VIEW } from "../../../config";
 import { fishInArea } from "../../../fish";
 import { clamp, randRange } from "../../../utils";
 import { mixColor } from "../../../world";
+import { paintContactShadow } from "../props";
 import { FishingSceneCore } from "./FishingSceneCore";
 
 export abstract class AnglerLayer extends FishingSceneCore {
   protected addAnglerShadow(): void {
     const shadow = new Graphics();
-    const x = this.layout.angler.x - 1;
-    const y = this.layout.angler.y - 6;
-    shadow.ellipse(x, y, 9, 3).fill({ color: 0x0a1c2a, alpha: 0.32 });
-    shadow.ellipse(x, y, 5, 1.8).fill({ color: 0x0a1c2a, alpha: 0.35 });
+    // The reference shadow the rest of the bank copies: same colour, same two
+    // stacked ellipses, centred on the feet.
+    paintContactShadow(
+      shadow,
+      this.layout.angler.x - 1,
+      this.layout.angler.y - 6,
+      9,
+    );
     shadow.zIndex = this.layout.angler.y - 0.2;
     this.props.addChild(shadow);
   }
@@ -85,7 +90,10 @@ export abstract class AnglerLayer extends FishingSceneCore {
       Math.sin(this.time * 23.1) * 0.04;
     const alpha = level * flicker;
     const x = light.x;
-    const y = light.y - 7;
+    // The rings are centred on the flame, not on the foot of the fixture: the
+    // glass is what glows, and a halo sitting on the post read as light coming
+    // out of the ground.
+    const y = light.glowY;
     const bright = mixColor(light.color, 0xffffff, 0.55);
 
     const rings = light.kind === "fire" ? 6 : 8;

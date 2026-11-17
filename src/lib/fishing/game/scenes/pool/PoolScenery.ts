@@ -3,7 +3,13 @@ import { C, VIEW } from "../../../config";
 import { mixColor } from "../../../world";
 import { ditherNoise } from "../dither";
 import { drawGrassTuft } from "../grass";
-import { drawSnowDrift, drawReedClump, drawShoreStone } from "../props";
+import {
+  SPRITE_PAD,
+  drawContactShadow,
+  drawReedClump,
+  drawShoreStone,
+  drawSnowDrift,
+} from "../props";
 import { PoolWater } from "./PoolWater";
 import { CENTER, RADIUS } from "./geometry";
 
@@ -80,7 +86,7 @@ export class PoolScenery extends PoolWater {
       [432, 266, 0.75],
     ];
     for (const [x, y, size] of corners) {
-      this.placeDrift(props, x, y, size);
+      this.placeDrift(props, x, y, size * 0.9);
       const sprite = new Sprite(trees[Math.round(x + y) % trees.length]);
       sprite.anchor.set(0.5, 1);
       sprite.position.set(x, y);
@@ -113,17 +119,19 @@ export class PoolScenery extends PoolWater {
   }
 
   /**
-   * A drift whose footprint stays on the bank.
+   * A drift whose footprint stays on the bank, plus the trunk's own shadow.
    *
    * The firs of the near ring stand on the shoreline itself, so a mound drawn
    * around a trunk could hang over the surface and read as snow afloat. The
    * drift is nudged towards the middle of the lake, one pixel at a time, until
-   * every probe of its foot is dry.
+   * every probe of its foot is dry — while the shadow stays on the trunk, in
+   * the same recipe as the angler's, so the tree is anchored even where the
+   * drift had to move.
    */
   protected placeDrift(
     props: Container,
     x: number,
-    y: number,
+    base: number,
     scale: number,
   ): void {
     const half = 13 * scale;
@@ -137,16 +145,17 @@ export class PoolScenery extends PoolWater {
     ];
     const wet = (px: number, py: number): boolean =>
       probes.some(([ox, oy]) => this.isWater(px + ox, py + oy));
-    const inward = Math.hypot(CENTER.x - x, CENTER.y - y) || 1;
+    const inward = Math.hypot(CENTER.x - x, CENTER.y - base) || 1;
     const ux = (CENTER.x - x) / inward;
-    const uy = (CENTER.y - y) / inward;
+    const uy = (CENTER.y - base) / inward;
     let cx = x;
-    let cy = y;
+    let cy = base;
     for (let step = 0; step < 24 && wet(cx, cy); step += 1) {
       cx += ux;
       cy += uy;
     }
     drawSnowDrift(props, cx, cy, scale, this.palette);
+    drawContactShadow(props, x, base - SPRITE_PAD * scale, 6 * scale);
   }
 
   protected drawShoreSign(props: Container, angle: number): void {
@@ -160,13 +169,9 @@ export class PoolScenery extends PoolWater {
     sign.scale.set(1.1);
     sign.zIndex = y;
     props.addChild(sign);
-    const snow = new Graphics();
-    snow.ellipse(x - 1, y + 1, 6, 2).fill({
-      color: this.palette.snowLight,
-      alpha: 0.7,
-    });
-    snow.zIndex = y + 0.1;
-    props.addChild(snow);
+    // The pale pile of snow that used to sit at the post's foot read as a
+    // second, smaller sign lying on the bank; the post gets a shadow instead.
+    drawContactShadow(props, x, y, 6);
   }
 
   protected drawGrass(props: Container, angle: number): void {
@@ -177,33 +182,55 @@ export class PoolScenery extends PoolWater {
   }
 
   /**
-   * Reeds where the bank meets the water.
+   * Reeds standing in the shallows where the bank meets the water.
    *
    * The lake's edge was bare snow between the firs: a still-water shore has
    * cattails on the ice rim, and the clump drawing is shared with the river, so
-   * both waters grow the same plant. Every clump sits just outside the water
-   * outline, the far band stays clear (the fir line hides it anyway) and the
-   * angler's mooring is kept open.
+   * both waters grow the same plant. They stand in three clusters — upper left,
+   * the left foot of the hole and the right bank — instead of one clump every
+   * forty degrees around the lake: scattered singles read as a dotted ring,
+   * while a few clumps together read as reeds. Each clump is planted a couple of
+   * pixels *inside* the waterline, so it grows out of the shallows rather than
+   * standing on dry snow, and the angler's mooring stays open.
    */
   protected drawShoreReeds(props: Container): void {
     const { x: anglerX, y: anglerY } = this.layout.angler;
-    const angles = [0.22, 0.72, 1.18, 1.62, 2.06, 2.5, 2.88];
-    angles.forEach((angle, index) => {
-      const scale = this.shoreScale(angle) + 0.022;
-      const x = CENTER.x + Math.cos(angle) * RADIUS.x * scale;
-      const y = CENTER.y + Math.sin(angle) * RADIUS.y * scale;
-      if (x < 14 || x > VIEW.width - 14) return;
-      if (y < 96 || y > VIEW.height - 10) return;
-      if (Math.hypot(x - anglerX, y - anglerY) < 46) return;
-      drawReedClump(
-        props,
-        x,
-        y,
-        this.palette,
-        0.95 + (index % 3) * 0.14,
-        index + 1,
+    // Cluster centres, in frame pixels. The clumps are planted around each one,
+    // in the water nearest to it.
+    const clusters: ReadonlyArray<{ x: number; y: number }> = [
+      { x: 80, y: 85 },
+      { x: 63, y: 139 },
+      { x: 429, y: 116 },
+    ];
+    let seed = 0;
+    for (const cluster of clusters) {
+      const base = Math.atan2(
+        (cluster.y - CENTER.y) / RADIUS.y,
+        (cluster.x - CENTER.x) / RADIUS.x,
       );
-    });
+      // Three clumps per cluster, a few degrees apart along the bank, so the
+      // group fans out instead of stacking on one point.
+      for (const offset of [-0.06, 0, 0.06]) {
+        const angle = base + offset;
+        seed += 1;
+        // Inside the outline: the clump's feet stand in the shallows, a few
+        // pixels off the bank, with the water drawn over the bank behind them.
+        const scale = this.shoreScale(angle) - 0.032 - (seed % 3) * 0.006;
+        const x = CENTER.x + Math.cos(angle) * RADIUS.x * scale;
+        const y = CENTER.y + Math.sin(angle) * RADIUS.y * scale;
+        if (x < 14 || x > VIEW.width - 14) continue;
+        if (y < 26 || y > VIEW.height - 10) continue;
+        if (Math.hypot(x - anglerX, y - anglerY) < 46) continue;
+        drawReedClump(
+          props,
+          x,
+          y,
+          this.palette,
+          0.95 + (seed % 3) * 0.14,
+          seed,
+        );
+      }
+    }
   }
 
   /**
@@ -263,16 +290,8 @@ export class PoolScenery extends PoolWater {
     hull.scale.set(0.66);
     boat.addChild(hull);
 
-    const snow = new Graphics();
-    snow.ellipse(-12, -10, 7, 2).fill({
-      color: this.palette.snowLight,
-      alpha: 0.75,
-    });
-    snow.ellipse(10, -9, 5, 1.6).fill({
-      color: this.palette.snow,
-      alpha: 0.6,
-    });
-    boat.addChild(snow);
+    // No snow patches on the gunwales: the two pale ellipses that used to sit
+    // here read as ice floes lying on the hull, not as snow caught on the boat.
   }
 
   protected drawLampFixture(props: Container): void {
@@ -281,10 +300,16 @@ export class PoolScenery extends PoolWater {
     const g = new Graphics();
     const x = light.x;
     const y = light.y;
+    // The post had no contact mark at all: it looked pasted on the snow.
+    drawContactShadow(props, x, y, 5);
+    // The glass is centred on the light's own flame row, not on a hard-coded
+    // offset from the foot: the fixture and the halo it throws are fed the same
+    // number, so re-hanging the lamp cannot leave its glow behind.
+    const glassTop = Math.round(light.glowY - 2.5);
     g.rect(x - 1, y - 12, 2, 12).fill(C.brownDark);
     g.rect(x - 4, y - 15, 8, 2).fill(C.ink);
-    g.rect(x - 3, y - 13, 6, 5).fill({ color: C.ink, alpha: 0.92 });
-    g.rect(x - 2, y - 12, 4, 3).fill({ color: 0x34321f, alpha: 0.95 });
+    g.rect(x - 3, glassTop, 6, 5).fill({ color: C.ink, alpha: 0.92 });
+    g.rect(x - 2, glassTop + 1, 4, 3).fill({ color: 0x34321f, alpha: 0.95 });
     g.zIndex = y;
     props.addChild(g);
   }

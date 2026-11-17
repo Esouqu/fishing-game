@@ -3,9 +3,19 @@ import prettier from "eslint-plugin-prettier/recommended";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  // Scratch verification harnesses (headless screenshots, fight sim) live in
-  // gitignored folders and are page scripts, not modules: they are not linted.
-  { ignores: ["dist", ".tmp-assets/**", ".sim/**", "esb-test/**"] },
+  // Build output, the local pnpm store and scratch folders (compiled fight sim,
+  // asset unpacking, headless screenshots) are not source: `eslint .` used to
+  // spend ~90s of its ~100s on them, so they are excluded by pattern.
+  {
+    ignores: [
+      "dist/**",
+      ".sim/**",
+      ".pnpm-store/**",
+      ".tmp-*/**",
+      "assetspacks/**",
+      "esb-test/**",
+    ],
+  },
   {
     extends: [
       js.configs.recommended,

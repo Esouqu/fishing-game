@@ -31,7 +31,7 @@ export class Backdrop extends Container {
     this.atmosphere.setMood(area.mood);
     this.atmosphere.setLight(
       area.layout.light?.x ?? null,
-      area.layout.light?.y ?? null,
+      area.layout.light?.glowY ?? null,
     );
     // The backdrop shows the same screenshot the round starts with, so the fog
     // pocket has to sit on the angler in that picture too.

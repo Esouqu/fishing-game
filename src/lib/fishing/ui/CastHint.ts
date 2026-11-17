@@ -1,25 +1,23 @@
-import { Container } from "pixi.js";
-import { keycapWidth, makeKeycap, makeText } from "./theme";
-import { anchorInk } from "./textInk";
+import { Container, Sprite, type Texture } from "pixi.js";
+import { makeText } from "./theme";
+import { anchorInk, inkWidth } from "./textInk";
 import { UI } from "./palette";
 import { TEXT } from "../texts";
 
 /**
- * Gap between the label and the keycap, in pixels.
+ * Gap between the label and the mouse badge, in pixels.
  *
  * Four read as two separate things that happened to stand next to each other;
  * flush to zero read as one block with a seam. Two is the seam a prompt needs:
- * the outlined word and the bordered chip are one unit, and the chip is still
- * clearly its own key.
+ * the outlined word and the pictogram are one unit, and the badge is still
+ * clearly its own mark.
+ *
+ * The gap is measured from the *ink* of the word (see {@link inkWidth}), not
+ * from its advance box: the pixel font leaves about five empty pixels after the
+ * last glyph at this size, which used to be added on top of this gap and made
+ * the badge look pushed away from the prompt.
  */
-const GAP = 2;
-/**
- * Keycap height. Kept even on purpose: the label's own box is 8 px tall and is
- * centred on the prompt's y, so an odd chip would have to sit half a pixel off
- * that centre — impossible on the pixel grid, and the 1 px it rounded to is
- * visible as the badge hanging below the word.
- */
-const KEY_HEIGHT = 8;
+const GAP = 3;
 const LABEL_SIZE = 7;
 /** Height of the idle float above and below the anchor, in scene pixels. */
 const FLOAT_RISE = 2.2;
@@ -27,52 +25,51 @@ const FLOAT_RISE = 2.2;
 const FLOAT_RATE = 1.55;
 /** Outline width: the prompt sits straight on the water, so it needs its own edge. */
 const OUTLINE = 2.5;
-
-let cachedSize: { width: number; height: number } | null = null;
-
 /**
- * Size of the prompt, shared by the widget and its click dead zone.
- *
- * There is no plate around it any more: the badge used to be a 72×25 wooden
- * plate with a hairline frame and a drop shadow, which covered the water it was
- * pointing at. What is left is the label with its own outline and the keycap,
- * so the size is exactly those two things side by side.
+ * The badge is drawn at three quarters of its 16 px tile: at 1:1 it stood taller
+ * than two lines of the prompt's capitals and pulled the eye off the word it is
+ * captioning, while a smaller step (a half) lost the lit button.
  */
-function hintSize(): { width: number; height: number } {
-  if (!cachedSize) {
-    const label = makeText(TEXT.game.readyToCast, {
-      size: LABEL_SIZE,
-      weight: 800,
-      color: UI.text,
-      letterSpacing: 0.6,
-    });
-    label.style.stroke = { color: UI.ink, width: OUTLINE };
-    cachedSize = {
-      width: label.width + GAP + keycapWidth(TEXT.game.castKey),
-      height: Math.max(label.height, KEY_HEIGHT),
-    };
-    label.destroy();
-  }
-  return cachedSize;
+const BADGE_SCALE = 0.75;
+
+let labelInk = 0;
+
+/** Ink width of the prompt word; measured once, the label never changes. */
+function labelWidth(): number {
+  if (labelInk > 0) return labelInk;
+  const label = makeText(TEXT.game.readyToCast, {
+    size: LABEL_SIZE,
+    weight: 800,
+    color: UI.text,
+    letterSpacing: 0.6,
+  });
+  labelInk = inkWidth(label);
+  label.destroy();
+  return labelInk;
 }
 
 /**
  * Small "ready to cast" prompt above the angler. It only appears while the
  * player can start a new cast (idle), and disappears as soon as LMB is held.
  *
- * It is drawn as outlined text plus the keycap, with no plate: the prompt has
- * to read as a caption over the water, not as a dialog in front of it.
+ * It is drawn as outlined text plus one pictogram, with no plate: the prompt has
+ * to read as a caption over the water, not as a dialog in front of it. The
+ * pictogram is a single 16 px sprite from the input-prompt set — a mouse with
+ * its left button lit — instead of the mouse-and-stopwatch pair the UI used to
+ * draw by hand: the pack's art says "press this" with one mark, where the pair
+ * needed the player to read two shapes.
  */
 export class CastHint extends Container {
   private readonly inner = new Container();
   private time = 0;
 
-  constructor(x: number, y: number) {
+  constructor(x: number, y: number, icon: Texture) {
     super();
     this.eventMode = "none";
     this.interactiveChildren = false;
 
-    const { width } = hintSize();
+    const ink = labelWidth();
+    const width = ink + GAP + icon.width * BADGE_SCALE;
     const label = makeText(TEXT.game.readyToCast, {
       size: LABEL_SIZE,
       weight: 800,
@@ -88,9 +85,16 @@ export class CastHint extends Container {
     label.position.set(left, 0);
     this.inner.addChild(label);
 
-    const key = makeKeycap(TEXT.game.castKey, KEY_HEIGHT, 6, true);
-    key.position.set(left + label.width + GAP, -KEY_HEIGHT / 2);
-    this.inner.addChild(key);
+    // The badge is anchored on its left edge and its middle, so it sits against
+    // the word's ink with exactly {@link GAP} between them, on the label's
+    // centre line. The art is one pixel-grid glyph drawn at 75%: on the water,
+    // at the text's own size, a full 16 px badge read as big as the prompt's
+    // capitals twice over. Nearest sampling keeps the pixels square.
+    const mouse = new Sprite(icon);
+    mouse.anchor.set(0, 0.5);
+    mouse.scale.set(BADGE_SCALE);
+    mouse.position.set(left + ink + GAP, 0);
+    this.inner.addChild(mouse);
 
     this.addChild(this.inner);
     this.position.set(x, y);

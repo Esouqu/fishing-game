@@ -1,5 +1,6 @@
 import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
+import type { AreaId } from "../types";
 import { TEXT } from "../texts";
 import { Screen } from "../ui/Screen";
 import { Backdrop } from "../ui/Backdrop";
@@ -10,9 +11,13 @@ import { makeText } from "../ui/theme";
 
 const MAIN = { x: 130, y: 92, width: 220, height: 28, gap: 8 };
 const FOOTER = { y: 206, height: 24, width: 106, gap: 8 };
+/** Centre of the «играть» button: where the travel wipe opens from. */
+const PLAY_WIPE = { x: MAIN.x + MAIN.width / 2, y: MAIN.y + 17 };
 
 export class MenuScreen extends Screen {
   private readonly game: GameContext;
+  /** Water body the backdrop and the «играть» button point at. */
+  readonly areaId: AreaId;
   private readonly backdrop: Backdrop;
   private readonly focus = new FocusGroup();
   private readonly buttons: Button[] = [];
@@ -21,6 +26,7 @@ export class MenuScreen extends Screen {
   constructor(game: GameContext) {
     super();
     this.game = game;
+    this.areaId = game.areaId;
     game.audio.setAmbience(game.areaId);
     this.backdrop = new Backdrop(
       game.previewFor(game.areaId),
@@ -53,7 +59,10 @@ export class MenuScreen extends Screen {
       34,
       14,
       "primary",
-      () => this.game.showAreas(),
+      // Straight into the water body the player left last: the picker is no
+      // longer a step on the way in. Travel between the three waters stays in
+      // the round itself, on the corner cards.
+      () => this.game.startGame(this.game.areaId, PLAY_WIPE),
     );
     const codex = this.makeMainButton(
       TEXT.codex.title,
@@ -61,7 +70,9 @@ export class MenuScreen extends Screen {
       24,
       12,
       "secondary",
-      () => this.game.showCodex("menu"),
+      // The codex always comes back to the title now: the water picker is gone
+      // and travel between the remaining bodies happens in the round itself.
+      () => this.game.showCodex(),
     );
     const help = this.makeMainButton(
       TEXT.common.howToPlay,

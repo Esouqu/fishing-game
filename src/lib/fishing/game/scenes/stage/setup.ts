@@ -77,7 +77,14 @@ export function nibbleDip(nibbleTime: number): number {
 export const ANGLER_POSES = {
   side: {
     idle: [12],
-    cast: [12, 13, 14, 15],
+    /**
+     * The throw is two poses: the rod goes back over the shoulder (12) and
+     * snaps forward level with the water (13). The sheet also has a bent-rod
+     * whip and a raised follow-through between them, and playing all four made
+     * the cast read as a twitch of the rod rather than one throw — the end of
+     * the animation is also the waiting pose, so the arm lands where it stays.
+     */
+    cast: [12, 13],
     wait: [13],
     pull: [14, 15],
     land: [15],
@@ -86,7 +93,7 @@ export const ANGLER_POSES = {
   },
   back: {
     idle: [8],
-    cast: [8, 9, 10, 11],
+    cast: [8, 9],
     wait: [9],
     pull: [10, 11],
     land: [11],

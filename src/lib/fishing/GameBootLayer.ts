@@ -3,10 +3,11 @@ import { VIEW } from "./config";
 
 import { TEXT, type HelpPageId } from "./texts";
 import { AREA_BY_ID, AREAS, DEFAULT_AREA_ID, type AreaDef } from "./areas";
-import { drawPanel, makeText } from "./ui/theme";
+import { drawPanel, makeText, setText } from "./ui/theme";
 import { anchorInk, realignInk } from "./ui/textInk";
 import { UI } from "./ui/palette";
 import { loadGameAssets, loadHelpTexture, prefetchHelpPages } from "./assets";
+import { loadCursorTextures } from "./cursors";
 import { createFishingScene } from "./game/scenes";
 import { IceVeil } from "./ui/IceVeil";
 import { SettingsStore, WorldStore } from "./storage";
@@ -25,9 +26,28 @@ import { GameBase } from "./GameBase";
 /** Minimum time the loading screen stays up, in milliseconds. */
 const BOOT_MIN_MS = 1300;
 
+/** Progress rail of the boot screen; the caption row hangs off its top edge. */
+const BAR = { x: 140, y: 144, width: 200, height: 12 } as const;
+/** Gap between the caption row and the rail. */
+const ROW_GAP = 4;
+/** Gap between the rail and the asset name printed under it. */
+const FILE_GAP = 3;
+/** Longest asset name the boot line prints before it is shortened. */
+const BOOT_FILE_MAX = 34;
+
+/** Shortens a file name so the boot line cannot run past the rail. */
+function fitLabel(label: string, max: number): string {
+  if (label.length <= max) return label;
+  return `${label.slice(0, max - 1)}${TEXT.common.ellipsis}`;
+}
+
 export abstract class GameBootLayer extends GameBase {
+  /** «ЗАГРУЗКА…» caption over the rail. */
+  private bootCaption: Text | null = null;
   /** Percentage under the progress rail. */
   private bootPercent: Text | null = null;
+  /** Name of the asset being fetched, under the rail. */
+  private bootFile: Text | null = null;
 
   previewFor(areaId: AreaId): Texture {
     const ready = this.previews[areaId] ?? this.previews[DEFAULT_AREA_ID];
@@ -51,6 +71,15 @@ export abstract class GameBootLayer extends GameBase {
     const startedAt = performance.now();
     this.mountBoot();
 
+    // The game paints the pointer itself, so cursors are the first request of
+    // the boot and the overlay is mounted the frame they land. Requesting them
+    // last, as part of the art bag, left the whole loading screen without a
+    // cursor until the menu was ready.
+    const cursorsPromise = loadCursorTextures();
+    void cursorsPromise.then((cursors) => {
+      if (!this.destroyed) this.mountCursor(cursors);
+    });
+
     // Decorative frost over every screen. It is fetched alongside the rest of
     // the art but never awaited: a missing or slow ice.png must not hold the
     // boot screen, and the veil is attached whenever it arrives.
@@ -65,14 +94,17 @@ export abstract class GameBootLayer extends GameBase {
     });
 
     const [bag, rawProgress] = await Promise.all([
-      loadGameAssets(this.options.assetBase, (progress) => {
-        this.setBootProgress(progress);
-      }),
+      loadGameAssets(
+        this.options.assetBase,
+        (progress, label) => {
+          this.setBootProgress(progress, label);
+        },
+        cursorsPromise,
+      ),
       progressPromise,
     ]);
 
     this.assetBag = bag;
-    this.mountCursor(bag.cursors);
     this.settingsStore = new SettingsStore(this.options.storagePrefix);
     this.worldClock = new WorldClock(
       new WorldStore(this.options.storagePrefix),
@@ -160,11 +192,6 @@ export abstract class GameBootLayer extends GameBase {
     }
   }
 
-  /** The area picker needs all three cards, all with real screenshots. */
-  protected ensureAreaPreviews(): void {
-    for (const area of AREAS) this.buildAreaPreview(area);
-  }
-
   protected fallbackPreview(area: AreaDef): Texture {
     const canvas = document.createElement("canvas");
     canvas.width = VIEW.width;
@@ -196,9 +223,12 @@ export abstract class GameBootLayer extends GameBase {
     // and the progress, nothing that has to be read while the game is loading.
     for (let y = 0; y < VIEW.height; y += 1) {
       const t = y / VIEW.height;
-      bg.rect(0, y, VIEW.width, 1).fill(mixColor(0x141d33, 0x232a56, t));
+      bg.rect(0, y, VIEW.width, 1).fill(mixColor(UI.ink, UI.night, t));
     }
-    bg.rect(140, 130, 200, 1).fill({ color: UI.periwinkle, alpha: 0.2 });
+    bg.rect(BAR.x, 130, BAR.width, 1).fill({
+      color: UI.periwinkle,
+      alpha: 0.2,
+    });
 
     // Wordmark: the same title the menu uses, so the first frame already looks
     // like this game and not like a generic loading strip.
@@ -211,54 +241,83 @@ export abstract class GameBootLayer extends GameBase {
     });
     title.position.set(VIEW.width / 2, 92);
     title.style.stroke = { color: UI.ink, width: 3 };
-    // The wordmark and the caption below it are anchored on their glyphs: the
-    // constant text box is almost twice the cap height, and the top of that box
-    // used to push the wordmark down onto the caption.
+    // The wordmark is anchored on its glyphs: the constant text box is almost
+    // twice the cap height, and the top of that box pushed it down onto the
+    // progress block.
     anchorInk(title, "center", "top");
 
-    const caption = makeText(TEXT.boot.loading, {
+    // The caption and the percentage are one row over the rail: the caption
+    // hangs off the rail's left edge, the number off its right, so the pair
+    // reads as the two ends of the bar instead of a centred caption with a
+    // stray number under it.
+    this.bootCaption = makeText(`${TEXT.boot.loading}${TEXT.common.ellipsis}`, {
       size: 7,
+      weight: 800,
       color: UI.textMuted,
-      align: "center",
-      letterSpacing: 3,
+      letterSpacing: 1.5,
     });
-    caption.position.set(VIEW.width / 2, 116);
-    anchorInk(caption, "center", "top");
+    anchorInk(this.bootCaption, "left", "bottom");
+    this.bootCaption.position.set(BAR.x, BAR.y - ROW_GAP);
 
-    // One clear job: a wide rail with the percentage under it.
+    this.bootPercent = makeText("0%", {
+      size: 7,
+      weight: 800,
+      color: UI.text,
+      align: "right",
+    });
+    anchorInk(this.bootPercent, "right", "bottom");
+    this.bootPercent.position.set(BAR.x + BAR.width, BAR.y - ROW_GAP);
+
     const barBg = new Graphics();
-    drawPanel(barBg, 140, 144, 200, 12, { fill: UI.ink, inner: false });
+    drawPanel(barBg, BAR.x, BAR.y, BAR.width, BAR.height, {
+      fill: UI.ink,
+      inner: false,
+    });
 
     this.bootFill = new Graphics();
 
-    this.bootPercent = makeText("0%", {
+    // The file being fetched, under the rail: the same line as the name of a
+    // loading asset in the reference, and the one thing that tells a player
+    // staring at a stuck bar that the game is still working.
+    this.bootFile = makeText("", {
       size: 6,
       color: UI.textMuted,
-      align: "center",
+      letterSpacing: 0.4,
     });
-    anchorInk(this.bootPercent, "center");
-    this.bootPercent.position.set(VIEW.width / 2, 166);
+    anchorInk(this.bootFile, "left", "top");
+    this.bootFile.position.set(BAR.x, BAR.y + BAR.height + FILE_GAP);
 
-    layer.addChild(bg, title, caption, barBg, this.bootFill, this.bootPercent);
+    layer.addChild(
+      bg,
+      title,
+      this.bootCaption,
+      this.bootPercent,
+      barBg,
+      this.bootFill,
+      this.bootFile,
+    );
     this.bootLayer = layer;
     this.world.addChild(layer);
     // A small stub so the first painted frame already shows a live rail.
     this.setBootProgress(0.02);
   }
 
-  protected setBootProgress(progress: number): void {
+  protected setBootProgress(progress: number, label?: string): void {
     if (!this.bootFill) return;
     const clamped = Math.max(0.02, Math.min(1, progress));
     this.bootFill.clear();
     this.bootFill
-      .rect(142, 146, 196 * clamped, 8)
+      .rect(BAR.x + 2, BAR.y + 2, (BAR.width - 4) * clamped, BAR.height - 4)
       .fill({ color: UI.periwinkle, alpha: 0.95 });
     this.bootFill
-      .rect(142, 146, 196 * clamped, 2)
+      .rect(BAR.x + 2, BAR.y + 2, (BAR.width - 4) * clamped, 2)
       .fill({ color: UI.primary, alpha: 0.9 });
     if (this.bootPercent) {
       this.bootPercent.text = `${Math.round(clamped * 100)}%`;
       realignInk(this.bootPercent);
+    }
+    if (label !== undefined && this.bootFile) {
+      setText(this.bootFile, fitLabel(label, BOOT_FILE_MAX));
     }
   }
 
@@ -269,6 +328,8 @@ export abstract class GameBootLayer extends GameBase {
     this.bootLayer = null;
     this.bootFill = null;
     this.bootPercent = null;
+    this.bootCaption = null;
+    this.bootFile = null;
   }
   protected abstract mountCursor(cursors: CursorTextures): void;
   abstract showMenu(): void;

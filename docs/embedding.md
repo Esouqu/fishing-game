@@ -17,9 +17,31 @@ game.destroy();
 ```
 
 Опции: `container` (обязательно), `assetBase`, `storagePrefix`, `muted`,
-`startScreen` (`menu` | `game`), `progress`, `onExit`, `onCatch`, `onProgress`,
-`onReady`. Методы: `restart`, `pause`, `resume`, `showMenu`, `setMuted`,
-`flushProgress`, `destroy`.
+`startScreen` (`menu` | `game`), `progress`, `locations`, `onExit`, `onCatch`,
+`onProgress`, `onReady`. Методы: `restart`, `pause`, `resume`, `showMenu`,
+`setMuted`, `setLocations`, `flushProgress`, `destroy`.
+
+## Закрытые водоёмы
+
+`locations` закрывает уровень до начала игры: `false` напротив id водоёма
+(`cove` — бухта, `deep` — омут, `rapids` — плёс). Всё, что не перечислено,
+остаётся открытым.
+
+```ts
+const game = await createFishingGame({
+  container: document.getElementById("game")!,
+  locations: { cove: false }, // бухта закрыта, омут и плёс открыты
+});
+
+// После покупки/разблокировки — на ходу, без перезапуска:
+game.setLocations({ cove: true });
+```
+
+Закрытый водоём не исчезает с экрана: в раунде его карточка-мини-превью в углу
+остаётся, но вместо кадра воды, названия и погоды на ней запаянная плитка с
+замком и надписью «НЕДОСТУПНО», и переход по ней заблокирован. Игра никогда не
+стартует на закрытом водоёме: сохранённый выбор откатывается на первый открытый,
+а `startGame(areaId)` с закрытым id открывает первый доступный.
 
 ## Svelte
 
@@ -29,9 +51,9 @@ game.destroy();
 копирования в Svelte-приложение.
 
 Пропсы: `assetBase`, `storagePrefix`, `muted`, `startScreen`, `progress`,
-`onExit`, `onCatch`, `onProgress`, `onReady`, `class`.
+`locations`, `onExit`, `onCatch`, `onProgress`, `onReady`, `class`.
 Экспортируемые методы: `restart`, `pause`, `resume`, `showMenu`, `setMuted`,
-`flushProgress`.
+`setLocations`, `flushProgress`.
 
 ## Прогресс в БД
 

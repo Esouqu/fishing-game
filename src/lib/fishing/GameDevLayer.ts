@@ -2,7 +2,7 @@ import type { AreaId, WeatherId } from "./types";
 import { AUDIO_MIX, MIX_CHANNELS, type AudioMix } from "./audioMix";
 import { TEXT } from "./texts";
 import { AudioMixPanel } from "./ui/AudioMixPanel";
-import { DevWeatherPanel } from "./ui/DevWeatherPanel";
+import { DevSkyPanel } from "./ui/DevSkyPanel";
 import { copyOrDownloadMix, saveOrDownloadMix } from "./audioMixSave";
 import { GameScreen } from "./screens/GameScreen";
 import { GameInputLayer } from "./GameInputLayer";
@@ -30,26 +30,41 @@ export abstract class GameDevLayer extends GameInputLayer {
     this.screens.active?.onAudioPanel(false);
   }
 
-  /** Opens or closes the dev weather picker (`F3`, dev only). */
+  /**
+   * Opens or closes the dev sky-and-water inspector (`F3`, dev only).
+   *
+   * The weather is rolled by the clock, the hour follows the player and the
+   * water is a table of numbers; this window is where all three can be looked at
+   * while the scene runs.
+   */
   toggleDevPanel(): void {
     if (!import.meta.env.DEV) return;
-    if (this.devPanel?.isOpen) this.closeDevPanel();
+    if (this.skyPanel?.isOpen) this.closeDevPanel();
     else this.openDevPanel();
   }
 
   openDevPanel(): void {
     if (!import.meta.env.DEV || this.assetBag === null) return;
-    const panel = this.devPanel ?? this.mountDevPanel();
+    const panel = this.skyPanel ?? this.mountSkyPanel();
     if (!panel.isOpen) panel.open();
   }
 
   closeDevPanel(): void {
-    this.devPanel?.close();
+    this.skyPanel?.close();
   }
 
   /**
-   * Pins the weather of the current water body (`F3` panel). Saved like a
-   * normal front, so the pick survives a reload.
+   * Pins the hour for the dev session, or returns the sky to the wall clock
+   * with null. Nothing is saved: the real time is the game's, not the panel's.
+   */
+  setTimeOfDay(minutes: number | null): void {
+    this.clock.setTime(minutes);
+    this.skyPanel?.refresh();
+  }
+
+  /**
+   * Pins the weather of the current water body. Saved like a normal front, so
+   * the pick survives a reload.
    */
   setWeather(weather: WeatherId, areaId: AreaId = this.areaId): void {
     this.clock.setWeather(weather, areaId);
@@ -58,18 +73,20 @@ export abstract class GameDevLayer extends GameInputLayer {
     if (active instanceof GameScreen && areaId === this.areaId) {
       active.snapWeather();
     }
-    this.devPanel?.refresh();
+    this.skyPanel?.refresh();
   }
 
-  protected mountDevPanel(): DevWeatherPanel {
-    const panel = new DevWeatherPanel({
-      current: () => this.clock.weatherFor(this.areaId),
-      onPick: (weather) => this.setWeather(weather),
+  protected mountSkyPanel(): DevSkyPanel {
+    const panel = new DevSkyPanel({
+      weather: () => this.clock.weatherFor(this.areaId),
+      onWeather: (weather) => this.setWeather(weather),
+      pinned: () => this.clock.pinnedMinutes,
+      onTime: (minutes) => this.setTimeOfDay(minutes),
       onClose: () => this.closeDevPanel(),
     });
-    this.devPanel = panel;
-    // Above the screen layer, so the picker is never clipped by the letterbox
-    // and its buttons take the click before the water does.
+    this.skyPanel = panel;
+    // Above the screen layer, so the inspector is never clipped by the
+    // letterbox and its buttons take the click before the water does.
     this.world.addChild(panel);
     return panel;
   }

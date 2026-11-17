@@ -21,6 +21,13 @@
 - Used for: UI clicks, cast/bite/reel/catch feedback and one ambience loop per water body.
 - Rights remain with the author. These files are included only because the project owner supplied them; do not redistribute the audio separately from this project.
 
+## Input Prompts Pixel
+
+- Author: **Kenney** (<https://www.kenney.nl>), pack «Input Prompts Pixel» (1.0).
+- Used for: the mouse-with-pressed-left-button pictogram beside the cast prompt (`src/assets/fishing/mouse-lmb.png`, taken from `Tiles/tile_0077.png` of the pack; only the outline pixels are recoloured to the interface ink `UI.ink`, so the badge sits in the UI's own 1 px line).
+- License: Creative Commons Zero (CC0) — <http://creativecommons.org/publicdomain/zero/1.0/>.
+- The original pack is **not** included in this repository.
+
 ## Tiny5
 
 - Self-hosted as four woff2 subsets in `public/assets/fishing/fonts/` (`tiny5-latin`, `tiny5-latin-ext`, `tiny5-cyrillic`, `tiny5-cyrillic-ext`), split by `unicode-range` and loaded by `src/lib/fishing/fonts.ts`. The original single TTF was 230 KB on the boot path; the subsets are ~18 KB together.

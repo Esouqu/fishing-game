@@ -23,7 +23,10 @@ export abstract class GameOverlays extends GameScreenCore {
   protected closePause(silent = false): void {
     if (!this.paused) return;
     const hadCodex = this.codex !== null;
-    this.closeCodex();
+    // The codex flies out over the round that is about to run again; the screen
+    // drops it when the animation is over (see `updateCodex`), exactly like the
+    // pause panel itself.
+    this.codex?.beginClose();
     this.paused = false;
     this.flow.setPaused(false);
     this.game.audio.setPaused(false);
@@ -42,9 +45,21 @@ export abstract class GameOverlays extends GameScreenCore {
     // click; a second one here read as a stutter.
   }
 
+  /** Starts the close; the overlay itself animates out from here. */
   protected closeCodex(): void {
-    if (!this.codex) return;
-    this.codex.destroy({ children: true });
+    this.codex?.beginClose();
+  }
+
+  /**
+   * Ticks the codex and drops it when its fly-out has landed. It runs while the
+   * round is paused and after it resumed, so a codex closed together with the
+   * pause menu still finishes its slide instead of vanishing.
+   */
+  protected updateCodex(dt: number): void {
+    const codex = this.codex;
+    if (!codex) return;
+    if (!codex.update(dt)) return;
+    codex.destroy({ children: true });
     this.codex = null;
     // The codex is the second entry (resume, codex, sound, menu).
     this.pauseMenu.focusAt(1);

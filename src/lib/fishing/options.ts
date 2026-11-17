@@ -1,4 +1,5 @@
-import type { FishingGameOptions, NormalizedOptions } from "./types";
+import { AREAS } from "./areas";
+import type { AreaId, FishingGameOptions, NormalizedOptions } from "./types";
 
 /**
  * Resolves defaults that depend on the bundler (`import.meta.env`). Kept out
@@ -8,6 +9,16 @@ export function normalizeOptions(
   options: FishingGameOptions,
 ): NormalizedOptions {
   const base = options.assetBase ?? `${import.meta.env.BASE_URL}assets/fishing`;
+  const locations = { cove: true, deep: true, rapids: true } as Record<
+    AreaId,
+    boolean
+  >;
+  // Only an explicit `false` closes a location: a missing field and an unknown
+  // id both mean "the host did not mention this water body", which has to stay
+  // playable instead of silently disappearing from the picker.
+  for (const area of AREAS) {
+    if (options.locations?.[area.id] === false) locations[area.id] = false;
+  }
   return {
     container: options.container,
     assetBase: base.replace(/\/+$/, ""),
@@ -19,5 +30,6 @@ export function normalizeOptions(
     onProgress: options.onProgress,
     onReady: options.onReady,
     progress: options.progress,
+    locations,
   };
 }

@@ -6,7 +6,7 @@ export {
   WEATHER_MIN,
   pickWeather,
 } from "./weather";
-export type { ForecastStep, QueuedFront, WeatherDef } from "./weather";
+export type { ForecastStep, WeatherDef } from "./weather";
 export {
   WINTER,
   WINTER_WATER_STOPS,

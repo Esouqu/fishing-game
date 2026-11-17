@@ -1,9 +1,13 @@
 import { AudioCore } from "./core";
-import {
-  CAST_BLEND,
-  PERFECT_JINGLE_DELAY,
-  PERFECT_JINGLE_LEVEL,
-} from "./catalog";
+import { CAST_BLEND } from "./catalog";
+
+/**
+ * Playback rate of the «grip out» cue: the escape sample, pitched up.
+ *
+ * 1.12 is roughly two semitones — audible as a different take of the same tear
+ * without reading as a separate, louder event.
+ */
+const GRIP_OUT_PITCH = 1.12;
 
 /** One-shot cues: interface clicks, fishing feedback and fight telegraphs. */
 export abstract class CueBank extends AudioCore {
@@ -61,22 +65,8 @@ export abstract class CueBank extends AudioCore {
     this.play("waterLap", this.mix.nibble, 1 + Math.random() * 0.06);
   }
 
-  catchFish(perfect: boolean): void {
-    if (!perfect) {
-      this.play("reward", this.mix.catchCommon);
-      return;
-    }
-    this.play("achievement", this.mix.catchPerfect);
-    // The perfect catch is the one moment the game is allowed to show off, so
-    // the fanfare is answered by a short jingle a beat later. The delay is what
-    // makes it read as a flourish: played together the two cues just sound
-    // louder, played apart the second one lands as a reply.
-    this.play(
-      "jingle",
-      this.mix.catchPerfect * PERFECT_JINGLE_LEVEL,
-      1,
-      PERFECT_JINGLE_DELAY,
-    );
+  catchFish(): void {
+    this.play("reward", this.mix.catchCommon);
   }
 
   escape(): void {
@@ -139,9 +129,18 @@ export abstract class CueBank extends AudioCore {
     this.play("thud", this.mix.resist);
   }
 
-  /** Grip reserve burned out: the line tears loose for a moment. */
+  /**
+   * Grip reserve burned out: the line tears loose for a moment.
+   *
+   * It is the escape sample a notch brighter than the fish's own break-off
+   * (`escape()`): the two moments are different things — the fish tearing free
+   * ends the fight, a burnt-out grip only costs the player a beat — and until
+   * now they were the same sound at the same pitch. A twelfth of an octave up is
+   * enough for the ear to tell them apart without turning the loss into a
+   * fanfare over the fight that is still running.
+   */
   gripOut(): void {
-    this.play("escape", this.mix.gripOut);
+    this.play("escape", this.mix.gripOut, GRIP_OUT_PITCH);
   }
 
   comboBreak(): void {

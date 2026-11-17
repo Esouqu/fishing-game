@@ -1,6 +1,11 @@
 import { Graphics } from "pixi.js";
+import {
+  COUNTER_ARROW_REACH,
+  COUNTER_GRAB_ARC,
+  COUNTER_GRAB_INNER,
+  COUNTER_GRAB_OUTER,
+} from "../fight/counter";
 import { FIGHT_RADIUS } from "../fight";
-import { mixColor } from "../../world";
 import { UI } from "../../ui/palette";
 import { clamp } from "../../utils";
 import { RingView } from "./RingView";
@@ -27,150 +32,144 @@ export abstract class WarningView extends RingView {
         },
       );
     }
-    if (this.model.warn <= 0) return;
-    // The telegraphed heading. An honest dash is red; a feint is violet, so the
-    // colour itself says "this one is lying to you" before the player has read
-    // the arrow.
-    if (this.model.isFeint) {
-      // ...and under the false pointer, a barely-there red mark on the heading
-      // the fish will really take. Dim enough that it does not cancel the trick
-      // — a player who knows to look for it can learn to catch the turn.
-      this.drawWarningArrow(
-        g,
-        this.model.counterHeading,
-        (Math.sin(this.model.time * 3.2) + 1) / 2,
-        {
-          color: UI.rose,
-          scale: 0.72,
-          alpha: 0.2,
-          rim: false,
-        },
-      );
-    }
     const pulse = (Math.sin(this.model.time * 3.2) + 1) / 2;
-    this.drawWarningArrow(g, this.model.warnHeading, pulse, {
-      color: this.model.isFeint ? UI.violet : UI.rose,
+    const open = this.model.counterOpen;
+
+    // One cone per direction, always drawn the same way: a filled band with a
+    // thin outline. An honest dash gets one rose cone; a feint gets two — rose
+    // for the heading it will really take, violet for the heading it pretends
+    // to take — so the pair can be compared like two arrows of the same kind.
+    if (open > 0) {
+      const heading = this.model.counterHeading;
+      this.drawGrabWedge(g, heading, pulse, 1);
+      this.drawGrabRing(g, heading);
+    } else if (this.model.warn > 0) {
+      if (this.model.isFeint) {
+        this.drawGrabWedge(g, this.model.counterHeading, pulse, 0.8);
+        this.drawGrabWedge(g, this.model.warnHeading, pulse, 0.8, UI.violet);
+      } else {
+        this.drawGrabWedge(g, this.model.warnHeading, pulse, 0.8);
+      }
+    }
+
+    // The cone alone carries the dash: it is drawn from the very arc the model
+    // tests a press against, so it says where a grab lands without a pointer
+    // drawn over it. The arrowheads that used to sit on the rim are gone — on a
+    // feint the pair stacked two pointers of the same weight in the same band,
+    // and the violet cone already says which heading is the lie.
+  }
+
+  /**
+   * A cone of the ring: the side a press can come from.
+   *
+   * Drawn from the very constants the model tests against
+   * ({@link COUNTER_GRAB_ARC} / `_INNER` / `_OUTER`), so the highlight *is* the
+   * rule and not an illustration of it: a press anywhere in the rose cone is a
+   * valid grab. It is a wash of water rather than a panel — the fish and the
+   * float stay readable over it — but opaque enough to be found at a glance.
+   *
+   * Every cone is drawn with the same fill and stroke; the colour is the only
+   * difference, so an honest dash and a feint read as the same object: rose is
+   * a heading the fish will really take, violet is a lie.
+   */
+  protected drawGrabWedge(
+    g: Graphics,
+    heading: number,
+    pulse: number,
+    strength: number,
+    color: number = UI.rose,
+  ): void {
+    const from = heading - COUNTER_GRAB_ARC;
+    const to = heading + COUNTER_GRAB_ARC;
+    const steps = 12;
+    const at = (angle: number, radius: number): [number, number] => [
+      this.model.centerX + Math.cos(angle) * radius,
+      this.model.centerY + Math.sin(angle) * radius,
+    ];
+
+    const points: number[] = [];
+    for (let i = 0; i <= steps; i += 1) {
+      points.push(...at(from + ((to - from) * i) / steps, COUNTER_GRAB_OUTER));
+    }
+    for (let i = steps; i >= 0; i -= 1) {
+      points.push(...at(from + ((to - from) * i) / steps, COUNTER_GRAB_INNER));
+    }
+
+    // The zone is a band of water the player presses through, so it stays a
+    // wash rather than a panel — but at seven percent it was almost invisible
+    // over the bright part of the ring, and the one cue the counter depends on
+    // has to be read at a glance. The fill roughly doubled and the rim carries
+    // the rest of the contrast.
+    g.poly(points).fill({ color, alpha: (0.16 + pulse * 0.1) * strength });
+    g.poly(points).stroke({
+      width: 1,
+      color,
+      alpha: (0.5 + pulse * 0.3) * strength,
     });
   }
 
-  /** A clear pointer: the fish is about to burst in this direction. */
-  protected drawWarningArrow(
-    g: Graphics,
-    angle: number,
-    pulse: number,
-    style: {
-      color: number;
-      /** Hops of the pointer; 1 is the full-size cue. */
-      scale?: number;
-      /** Overall opacity, for the ghost hint of a feint's true heading. */
-      alpha?: number;
-      /** Whether the short arc at the rim is drawn. */
-      rim?: boolean;
-    },
-  ): void {
-    const cx = this.model.centerX;
-    const cy = this.model.centerY;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const perpX = -sin;
-    const perpY = cos;
-    const scale = style.scale ?? 1;
-    const alpha = style.alpha ?? 1;
-    const flash = (0.6 + pulse * 0.4) * alpha;
-    const core = mixColor(style.color, UI.text, 0.55);
-
-    // Short arc right at the rim, where the pointer meets the water.
-    if (style.rim !== false) {
-      this.strokeArc(g, FIGHT_RADIUS + 1, 1, angle - 0.45, angle + 0.45, {
-        width: 2,
-        color: style.color,
-        alpha: (0.55 + pulse * 0.3) * alpha,
-      });
-    }
-
-    for (let i = 0; i < 2; i += 1) {
-      const tip = FIGHT_RADIUS + (6 + i * 6) * scale;
-      const base = tip - 6 * scale;
-      const half = (4.5 - i * 0.7) * scale;
-      const tipX = cx + cos * tip;
-      const tipY = cy + sin * tip;
-      const baseAX = cx + cos * base + perpX * half;
-      const baseAY = cy + sin * base + perpY * half;
-      const baseBX = cx + cos * base - perpX * half;
-      const baseBY = cy + sin * base - perpY * half;
-
-      // Dark backing keeps the pointer readable against the water.
-      g.poly([
-        tipX + cos * 1.5,
-        tipY + sin * 1.5,
-        baseAX + cos * 1,
-        baseAY + sin * 1,
-        baseBX + cos * 1,
-        baseBY + sin * 1,
-      ]).fill({ color: UI.ink, alpha: 0.45 * alpha });
-      g.poly([tipX, tipY, baseAX, baseAY, baseBX, baseBY]).fill({
-        color: style.color,
-        alpha: flash,
-      });
-      const inner = 0.3;
-      g.poly([
-        tipX - cos * 1.5,
-        tipY - sin * 1.5,
-        baseAX + (tipX - baseAX) * inner,
-        baseAY + (tipY - baseAY) * inner,
-        baseBX + (tipX - baseBX) * inner,
-        baseBY + (tipY - baseBY) * inner,
-      ]).fill({
-        color: core,
-        alpha: flash * 0.85,
-      });
-    }
+  /**
+   * The grab window, marked by a small core on the arrow tip.
+   *
+   * It used to be a ring that breathed around that tip, then a shield opening
+   * off the float. Both were a second circle in a frame that already carries the
+   * fight ring, the telegraph cone and the fish's own arc; at the speed of a
+   * counter that read as noise rather than as "press here". A dot is enough: the
+   * cone says the side, the dot says the point.
+   */
+  protected drawGrabRing(g: Graphics, heading: number): void {
+    const glow = (Math.sin(this.model.time * 12) + 1) / 2;
+    const dotX = this.model.centerX + Math.cos(heading) * COUNTER_ARROW_REACH;
+    const dotY = this.model.centerY + Math.sin(heading) * COUNTER_ARROW_REACH;
+    g.circle(dotX, dotY, 3).fill({ color: UI.ice, alpha: 0.3 + glow * 0.5 });
   }
 
   protected drawCounterFlash(): void {
     const g = this.counterG;
     g.clear();
 
-    for (const bubble of this.model.bubbles) {
-      const alpha = clamp(bubble.life / bubble.maxLife);
-      g.circle(bubble.x, bubble.y, bubble.size).stroke({
-        width: 1,
-        color: UI.text,
-        alpha: 0.65 * alpha,
-      });
-      g.circle(
-        bubble.x - bubble.size * 0.3,
-        bubble.y - bubble.size * 0.3,
-        0.55,
-      ).fill({ color: UI.ice, alpha: 0.7 * alpha });
+    if (this.model.counterFlashValue <= 0) {
+      this.lockG.clear();
+      return;
     }
+    // A landed counter is one mark: the padlock on the fish. It says "this jerk
+    // is cancelled" and sits where the jerk was. No shockwave rings — the fight
+    // already draws its own ring, the float its waterline and the counter cone
+    // flashes in the same instant, so every extra circle turned a clear "blocked"
+    // into a burst of them.
+    const lock = this.lockG;
+    lock.clear();
+    const point = this.model.fishPoint;
+    const flash = clamp(this.model.counterFlashValue * 4);
 
-    if (this.model.counterFlashValue > 0) {
-      const point = this.model.fishPoint;
-      const progress = 1 - this.model.counterFlashValue / 0.6;
-      g.circle(point.x, point.y, 5 + progress * 7).stroke({
-        width: 1.5,
-        color: UI.ice,
-        alpha: this.model.counterFlashValue,
-      });
-      for (const [sx, sy] of [
-        [-1, -1],
-        [1, -1],
-        [-1, 1],
-        [1, 1],
-      ]) {
-        g.moveTo(point.x + sx * 4, point.y + sy * 4)
-          .lineTo(point.x + sx * 7, point.y + sy * 7)
-          .stroke({
-            width: 1,
-            color: UI.ice,
-            alpha: this.model.counterFlashValue * 0.9,
-          });
-      }
-    }
+    lock.ellipse(point.x, point.y + 1, 8, 5).fill({
+      color: UI.ink,
+      alpha: 0.45 * flash,
+    });
+
+    // Padlock: a dark body with a light shackle, drawn in whole pixels so it
+    // stays crisp at the fight's own scale.
+    const x = Math.round(point.x);
+    const y = Math.round(point.y) - 4;
+    lock.rect(x - 3, y, 6, 5).fill({ color: UI.ink, alpha: 0.9 * flash });
+    lock.rect(x - 2, y + 1, 4, 3).fill({ color: UI.ice, alpha: 0.95 * flash });
+    lock.rect(x - 1, y + 2, 2, 1).fill({ color: UI.ink, alpha: 0.95 * flash });
+    lock
+      .moveTo(x - 2, y)
+      .lineTo(x - 2, y - 2)
+      .lineTo(x + 1, y - 2)
+      .lineTo(x + 1, y)
+      .stroke({ width: 1, color: UI.ice, alpha: 0.95 * flash });
   }
 
-  /** Small arrow orbiting the fish and pointing along its velocity. */
+  /**
+   * Small arrow orbiting the float and pointing along the fish's velocity.
+   *
+   * It used to orbit the fish, which put the one "where is it going" cue on the
+   * thing that is moving instead of on the thing the player is watching — the
+   * float. The float leads the fish by a few pixels, so the arrow sits on the
+   * water mark the player already tracks.
+   */
   protected drawDirection(): void {
     const g = this.directionG;
     g.clear();
@@ -179,7 +178,7 @@ export abstract class WarningView extends RingView {
     if (speed < 8) return;
 
     const angle = Math.atan2(velocity.y, velocity.x);
-    const point = this.model.fishPoint;
+    const point = this.floatPoint;
     const x = point.x + Math.cos(angle) * 12;
     const y = point.y + Math.sin(angle) * 12;
     const cos = Math.cos(angle);

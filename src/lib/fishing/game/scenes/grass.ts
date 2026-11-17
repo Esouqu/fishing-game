@@ -1,4 +1,5 @@
 import { Container, Graphics } from "pixi.js";
+import { paintContactShadow } from "./props";
 
 /**
  * A small procedural clump of dry winter grass. The Tiny Coast `Grass.png` is
@@ -14,10 +15,9 @@ export function drawGrassTuft(
   scale = 1,
 ): void {
   const g = new Graphics();
-  g.ellipse(x, y + 1, 6 * scale, 1.6 * scale).fill({
-    color: 0x0a1c24,
-    alpha: 0.16,
-  });
+  // The tuft's shadow goes first and is centred on the blades' own foot: drawn
+  // a pixel lower it read as a dark puddle the grass hovered over.
+  paintContactShadow(g, x, y, 5.5 * scale);
   for (let i = 0; i < 6; i += 1) {
     const bladeX = x + (i - 2.5) * 2.1 * scale * flip;
     const height = (4 + ((i * 3 + Math.round(x)) % 6)) * scale;

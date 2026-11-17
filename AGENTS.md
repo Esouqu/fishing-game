@@ -30,7 +30,7 @@ pnpm dev
 src/main.ts                 страница-хост
 src/lib/fishing/index.ts    публичный API (createFishingGame)
 src/lib/fishing/Game*.ts    жизненный цикл, boot, ввод, dev-панели, экраны
-src/lib/fishing/screens/    меню, выбор водоёма, игра, помощь, кодекс
+src/lib/fishing/screens/    меню, игра, помощь, кодекс
 src/lib/fishing/game/       CastFlow, Scene, Minigame, FightModel, Atmosphere
 src/lib/fishing/ui/         HUD, кнопки, тема, панели, кодекс
 src/lib/fishing/fish/       данные 40 видов и запросы
@@ -64,11 +64,22 @@ src/lib/fishing/fight/      чистая симуляция боя
 | Ассеты, шрифты, звук, dev-панели | [docs/assets-and-audio.md](docs/assets-and-audio.md) |
 | Команды, sim-parity, smoke-чеклист | [docs/testing.md](docs/testing.md) |
 | Стиль, лимиты, public API | [docs/conventions.md](docs/conventions.md) |
+| Стиль UI: обводки, отступы попапов, шрифты | [docs/style-guide.md](docs/style-guide.md) |
 | Встраивание в Svelte/HTML | [docs/embedding.md](docs/embedding.md) |
 
 ## Workflow
 
 1. Прочитать только нужный doc из таблицы.
 2. Внести изменение, не расширяя публичный API без причины.
-3. `pnpm check`; при правке рыб/боя — сравнить `pnpm sim` с baseline.
+3. Прогнать проверки по типу правки — полный `pnpm check` нужен перед коммитом,
+   а не на каждой итерации.
 4. Если изменились границы модулей — обновить `docs/modules.md` и, при необходимости, этот файл.
+
+| Что правили | Проверки |
+| --- | --- |
+| только `docs/**` и `AGENTS.md` | `pnpm check:structure` — он же проверяет ссылки в docs |
+| `src/**`, `scripts/**`, конфиги | `pnpm typecheck` на итерацию, `pnpm check` перед коммитом |
+| `fish/`, `fight/`, `FightModel`, баланс | то же + `pnpm sim`, вывод сравнить с baseline ([docs/testing.md](docs/testing.md)) |
+| ассеты, `audioMix.ts`, публикация | то же + `pnpm check:assets`, перед деплоем `pnpm build` |
+
+`pnpm sim` компилирует в `.sim/`, поэтому ему нужно право записи в рабочую папку.

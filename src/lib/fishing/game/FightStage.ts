@@ -6,7 +6,6 @@ import type { FloaterLayer } from "../ui/FloaterLayer";
 import { UI } from "../ui/palette";
 import type { FishingScene } from "./scenes/FishingScene";
 import type { JuiceFx } from "./JuiceFx";
-import { FIGHT_RADIUS } from "./fight";
 import { Minigame, type MinigameResult } from "./Minigame";
 
 import type { FightFocus } from "./FightFocus";
@@ -115,12 +114,15 @@ export class FightStage {
       onResist: () => this.game.audio.resist(),
       onGripOut: () => {
         this.game.audio.gripOut();
-        // The bars empty in silence: a short caption over the ring says why the
-        // line went slack for a beat. The ring is anchored on the cast point.
+        // The bars empty in silence: a short caption over the scale says why the
+        // line went slack for a beat. It rises out of the middle of the gauge —
+        // the caption is about that gauge, and spawning it under the bar put it
+        // closer to the water than to the thing it explains.
+        const gauge = this.minigame?.gaugeCentre ?? castPoint;
         this.floaters.add(
           TEXT.game.gripOut,
-          castPoint.x,
-          castPoint.y - FIGHT_RADIUS - 6,
+          gauge.x,
+          gauge.y,
           UI.amber,
           9,
           1.1,
@@ -160,6 +162,10 @@ export class FightStage {
     this.scene.setPulling(input.held);
     minigame.setPointer(input.pointerX, input.pointerY);
     minigame.setDirection(input.directionX, input.directionY);
+    // The cues that belong to the float (direction pointer, counter lock) are
+    // drawn on the float's layer, so they need its position, not the fish's.
+    const float = this.scene.bobberPosition;
+    minigame.setFloatPoint(float.x, float.y);
     minigame.setHold(input.held);
     minigame.update(dt);
 
@@ -174,6 +180,9 @@ export class FightStage {
     );
     this.scene.setEscapeMeter(minigame.escapeMeter);
     this.scene.setFishStamina(minigame.endurance);
+    // The crank strains as the hand fails: the last third of the grip lifts the
+    // reel's pitch, so the sound runs out before the bar does.
+    this.game.audio.setGrip(minigame.grip);
 
     // The reel is a sustain: it loops for as long as the player holds the
     // line, and fades out the moment they let go. It also has to go quiet the
@@ -193,6 +202,15 @@ export class FightStage {
   /** Hold to pull; release to rest. */
   setHold(held: boolean): void {
     this.minigame?.setHold(held);
+  }
+
+  /**
+   * The round was frozen under the pause menu. On the way back, a dash that was
+   * live when the player paused is not forgiven: the pause must not bank a
+   * counter window (see `FightModel.resumeFromPause`).
+   */
+  setPaused(paused: boolean): void {
+    if (!paused) this.minigame?.resumeAfterPause();
   }
 
   /** The round is decided: hide the fight view but keep it until the reset. */

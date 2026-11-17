@@ -3,10 +3,13 @@ import { C } from "../../../config";
 import { drawGrassTuft } from "../grass";
 import { drawFloatingLog } from "../logs";
 import {
+  SPRITE_PAD,
   drawBucket,
+  drawContactShadow,
   drawReedClump,
   drawShoreStone,
   drawSnowDrift,
+  paintContactShadow,
 } from "../props";
 import { RiverBanks } from "./RiverBanks";
 import { TREE_BODY } from "./geometry";
@@ -20,13 +23,22 @@ export class RiverScenery extends RiverBanks {
     this.drawLantern(props);
   }
 
+  /**
+   * The drift a fir stands in, and the contact shadow on top of it.
+   *
+   * The drift is the snow the trunk grew out of — wider than the trunk, as snow
+   * piles are — while the shadow is the mark where the trunk actually meets it,
+   * in the same recipe the angler's own shadow uses. Drawn on its own the drift
+   * read as the tree's shadow and looked weaker than the player's.
+   */
   protected addMound(
     props: Container,
     x: number,
-    y: number,
+    base: number,
     scale: number,
   ): void {
-    drawSnowDrift(props, x, y, scale, this.palette);
+    drawSnowDrift(props, x, base, scale, this.palette);
+    drawContactShadow(props, x, base - SPRITE_PAD * scale, 6 * scale);
   }
 
   /**
@@ -66,8 +78,9 @@ export class RiverScenery extends RiverBanks {
       [268, 0.8],
       [356, 0.84],
     ] as const) {
-      // The mound is pushed up the bank: centred on the waterline it spilled
-      // over the ice rim and read as snow floating on the river.
+      // A shadow instead of the mound that used to be pushed up the bank:
+      // centred on the waterline it spilled over the ice rim, and pushed back
+      // it left the bush standing beside a grey oval of its own.
       const y = this.farAt(x) - 5;
       this.addMound(props, x, y, scale * 0.5);
       const bush = new Sprite(this.assets.bushes[0] ?? this.assets.trees[1]);
@@ -81,14 +94,31 @@ export class RiverScenery extends RiverBanks {
   }
 
   protected drawNearProps(props: Container): void {
-    // Reeds and dry grass at the water's edge.
-    for (const [x, seed] of [
-      [150, 1],
-      [214, 2],
-      [352, 3],
-      [438, 4],
+    // Reeds standing in the shallows of the near bank, in three clusters.
+    //
+    // They used to be one clump every fifty pixels along the waterline, which
+    // read as a dotted rule following the bank. A few clumps together read as
+    // reeds, and their feet sit a couple of pixels *inside* the waterline so
+    // they grow out of the shallows instead of standing on dry snow.
+    for (const [anchor, seed] of [
+      [132, 1],
+      [262, 4],
+      [404, 7],
     ] as const) {
-      drawReedClump(props, x, this.nearAt(x) + 1, this.palette, 1, seed);
+      for (const [offset, lift] of [
+        [-8, 0],
+        [6, 2],
+      ] as const) {
+        const x = anchor + offset;
+        drawReedClump(
+          props,
+          x,
+          this.nearAt(x) - 3 - lift,
+          this.palette,
+          offset > 0 ? 1.07 : 0.95,
+          seed + (offset > 0 ? 1 : 0),
+        );
+      }
     }
     for (const [x, flip] of [
       [72, 1],
@@ -121,13 +151,16 @@ export class RiverScenery extends RiverBanks {
     sign.scale.set(1.1);
     sign.zIndex = this.nearAt(176) + 12;
     props.addChild(sign);
+    drawContactShadow(props, 176, this.nearAt(176) + 12, 6);
 
     drawBucket(props, 124, 214);
   }
 
   protected drawDriftwood(props: Container, x: number, y: number): void {
     // The same trunk drawing as the water, only dry: it lies on the snow, so it
-    // takes the snow shading and a contact shadow instead of a waterline.
+    // takes the snow shading and a contact shadow instead of a waterline. The
+    // shadow is the trunk's own long footprint, a pixel under it.
+    drawContactShadow(props, x, y + 1, 15);
     const g = new Graphics();
     drawFloatingLog(
       g,
@@ -205,17 +238,20 @@ export class RiverScenery extends RiverBanks {
     const x = light.x;
     const y = light.y;
     const g = new Graphics();
-    g.ellipse(x - 1, y + 1, 7, 2.6).fill({
-      color: this.palette.snowShade,
-      alpha: 0.9,
-    });
+    // The post stands in the middle of its own shadow: the pale ellipse that
+    // used to sit a pixel right and a pixel down left the lantern hanging off
+    // the top-right of its own shade.
+    paintContactShadow(g, x, y, 4.5);
+    // Same rule as the other two banks: the glass hangs on the flame row that
+    // the glow is lit from, so the halo sits on the light and not on the post.
+    const glassTop = Math.round(light.glowY - 3);
     g.rect(x - 1, y - 12, 2, 12).fill(C.brownDark);
     g.rect(x - 1, y - 12, 1, 12).fill(C.brownLight);
     g.rect(x - 4, y - 13, 8, 2).fill(C.ink);
     g.rect(x - 3, y - 14, 6, 1).fill(this.palette.snow);
-    g.rect(x - 3, y - 12, 6, 6).fill({ color: C.ink, alpha: 0.92 });
-    g.rect(x - 2, y - 11, 4, 4).fill({ color: 0x34321f, alpha: 0.95 });
-    g.rect(x - 3, y - 6, 6, 1).fill(C.brownDark);
+    g.rect(x - 3, glassTop, 6, 6).fill({ color: C.ink, alpha: 0.92 });
+    g.rect(x - 2, glassTop + 1, 4, 4).fill({ color: 0x34321f, alpha: 0.95 });
+    g.rect(x - 3, glassTop + 6, 6, 1).fill(C.brownDark);
     g.zIndex = y;
     props.addChild(g);
   }

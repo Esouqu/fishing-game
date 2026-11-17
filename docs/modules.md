@@ -12,7 +12,7 @@ src/
     GameBase.ts                 поля, конструктор, accessors, ввод-хуки
     GameBootLayer.ts            boot, previews, boot-сцена
     GameInputLayer.ts           layout/resize, курсор
-    GameDevLayer.ts             F2/F3 панели, setWeather
+    GameDevLayer.ts             F2/F3 панели, setWeather, setTimeOfDay
     GameScreensLayer.ts         навигация и публичные действия
     GameContext.ts              узкий контракт хоста
     options.ts  types.ts  progress.ts  storage.ts
@@ -26,11 +26,11 @@ src/
     game/
       CastFlow.ts               фасад фазы раунда
       cast/                     core, input, state, setup
-      fight/                    FightModel, motion, stamina, counter, bubbles, zone
+      fight/                    FightModel, motion, stamina, counter, bubbles, zone, pace, pause
       fightView/                ring, warning, bars, Minigame
       scenes/
         FishingScene.ts         фасад
-        stage/                  core, angler, cast, fx, catch
+        stage/                  core, angler, cast, fx, catch, biteMark
         dither.ts grass.ts noise.ts props.ts water.ts
         logs/  river/  cove/  pool/
       Atmosphere.ts             фасад
@@ -40,9 +40,11 @@ src/
     screens/
       GameScreen.ts             фасад
       game/                     core + overlays
-      MenuScreen.ts  HelpScreen.ts  AreaSelectScreen.ts  CodexScreen.ts
+      MenuScreen.ts  HelpScreen.ts  CodexScreen.ts
     ui/
       theme.ts  Button.ts  palette.ts  tier.ts  Screen.ts  ScreenManager.ts
+      weatherRail.ts  railCard.ts     полоса погоды: строка и её карточки
+      CastHint.ts  holdIcon.ts        подсказка заброса и значок «зажми ЛКМ»
       mix/                      AudioMixPanel + MixRow + layout
       codex/                    CodexView + реестр + карточка записи
       остальные HUD/панели/курсор/фон
@@ -65,5 +67,6 @@ src/
 - 400 строк на `.ts`; `pnpm check:structure`.
 - `Game` не импортируется экранами: только `GameContext`.
 - Публичный API — только `src/lib/fishing/index.ts`; всё остальное внутреннее.
+- Стиль UI (обводки, отступы попапов, шрифты, состояния) — [style-guide.md](style-guide.md).
 - В `audioMix.ts` не удалять маркеры `// #region audio-mix` / `// #endregion audio-mix`.
 - `FishingGame.svelte` не входит в сборку этого репозитория.

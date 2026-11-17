@@ -21,13 +21,11 @@ export class CoveShore extends CoveWater {
       stops: this.palette.waterStops,
     });
 
-    // Open sea reads through its surface, not through its depth ramp: a field
-    // of short wavelets, a few breaking crests and sparkles on top of it.
-    this.drawChop(g);
-    this.drawCrests(g);
-    this.drawSparkles(g);
-    this.drawWaterRipples(g);
-    this.drawFoam(g);
+    // The open sea reads through its own surface now: the depth ramp carries
+    // the shallow-to-deep run of colour, and the living water (caustics, glints
+    // and foam) is drawn by `pixelWater` above this layer. The painted field of
+    // wavelets, crests, sparkles and the fixed foam line that used to stand in
+    // for it are gone — they were static strokes over a moving surface.
 
     // Slush and drift ice near the left bank.
     this.drawIce(g, this.shoreEdgeAt(24) + 6, 24, 15, 3);
@@ -72,17 +70,11 @@ export class CoveShore extends CoveWater {
     innerPoly.push(0, height);
     g.poly(innerPoly).fill(this.palette.snow);
 
-    for (let y = 0; y < height; y += 29) {
-      const driftX = this.shoreEdgeAt(y) - 18 - ((y * 11) % 13);
-      g.ellipse(driftX, y + 8, 11, 3.5).fill({
-        color: this.palette.snowShade,
-        alpha: 0.5,
-      });
-      g.ellipse(driftX + 2, y + 6, 9, 2.5).fill({
-        color: this.palette.snowLight,
-        alpha: 0.75,
-      });
-    }
+    // The bank used to be strewn with pairs of pale ellipses every 29 px, meant
+    // as wind drifts. On snow they read as flat grey ovals lying on the bank —
+    // stray shadows rather than relief — so the bank is left clean: its relief
+    // comes from the wavy edge, the ice shelf and the props that stand on it,
+    // each of which now casts its own contact shadow.
 
     for (let y = 12; y < height; y += 41) {
       const tuftX = this.shoreEdgeAt(y) - 18 - ((y * 5) % 9);

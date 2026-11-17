@@ -2,6 +2,7 @@ import type { AudioMix, MixChannel } from "../audioMix";
 import type { AreaId, WeatherId } from "../types";
 import { AmbienceBeds } from "./ambience";
 import { CueBank } from "./cues";
+import { REEL_RATE, REEL_STRAIN_FLOOR, REEL_STRAIN_PITCH } from "./catalog";
 import { ChargeVoice, ReelVoice, createNoiseBuffer } from "./loops";
 
 /**
@@ -28,6 +29,14 @@ export class AudioKit extends CueBank {
    */
   private chargePreviewTimer = 0;
   private reelPreviewTimer = 0;
+  /**
+   * The angler's grip, 0..1, as the fight last reported it.
+   *
+   * The loop reads it on start and on every change, so a reel that begins while
+   * the hand is already failing starts at the strained pitch instead of sliding
+   * up to it after the crank is already turning.
+   */
+  private grip = 1;
 
   constructor(muted: boolean, assetBase: string, mix?: Partial<AudioMix>) {
     super(muted, assetBase, mix);
@@ -63,7 +72,36 @@ export class AudioKit extends CueBank {
     const ctx = this.ctx;
     const out = this.bus(false);
     if (!ctx || !out) return;
-    this.reelLoop = new ReelVoice(ctx, out, buffer, this.mix.reel);
+    this.reelLoop = new ReelVoice(
+      ctx,
+      out,
+      buffer,
+      this.mix.reel,
+      this.reelRate(),
+    );
+  }
+
+  /**
+   * The angler's remaining grip, 0..1, from the fight model. The last third is
+   * where the crank starts to climb: by the time the grip is gone the reel is
+   * turning a quarter faster, which is the audible half of the stamina bar.
+   */
+  setGrip(grip: number): void {
+    const next = Math.max(0, Math.min(1, grip));
+    if (Math.abs(next - this.grip) < 0.002) return;
+    this.grip = next;
+    if (this.reelLoop && this.ctx) {
+      this.reelLoop.setRate(this.reelRate(), this.ctx);
+    }
+  }
+
+  /** Playback rate of the reel for the current grip; see {@link setGrip}. */
+  private reelRate(): number {
+    const strain = Math.max(
+      0,
+      Math.min(1, (REEL_STRAIN_FLOOR - this.grip) / REEL_STRAIN_FLOOR),
+    );
+    return REEL_RATE * (1 + REEL_STRAIN_PITCH * strain);
   }
 
   /** Releases the reel handle: the loop fades out instead of cutting off. */
@@ -186,11 +224,8 @@ export class AudioKit extends CueBank {
           this.stopReel();
         }, 800);
         break;
-      case "catchPerfect":
-        this.catchFish(true);
-        break;
       case "catchCommon":
-        this.catchFish(false);
+        this.catchFish();
         break;
       case "escape":
         this.escape();

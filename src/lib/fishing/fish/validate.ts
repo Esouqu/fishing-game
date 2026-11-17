@@ -15,9 +15,14 @@ function windowLength(window: TimeWindow): number {
 /**
  * Data invariants used by the fight simulation and the dev boot. Returns a
  * list of human-readable problems; an empty array means the roster is sound.
+ *
+ * `hasStrongDash` also enforces the telegraph rule: every rare and legendary
+ * fish has a counterable beat, and each water teaches it at least twice. Quiet
+ * commons are intentional — their fight is the tug, not the read.
  */
 export function validateFishData(
   hasBehavior?: (id: string) => boolean,
+  hasStrongDash?: (id: string) => boolean,
 ): string[] {
   const problems: string[] = [];
   const ids = new Set<string>();
@@ -67,9 +72,25 @@ export function validateFishData(
     problems.push(`expected 40 species, found ${FISH.length}`);
   }
 
+  if (hasStrongDash) {
+    for (const fish of FISH) {
+      if (fish.tier !== "common" && !hasStrongDash(fish.behavior)) {
+        problems.push(`${fish.id}: ${fish.tier} fish has no telegraphed dash`);
+      }
+    }
+  }
+
   for (const area of Object.values(AREA_BY_ID)) {
     const roster = fishInArea(area.id);
     if (roster.length === 0) problems.push(`${area.id}: empty roster`);
+    if (hasStrongDash) {
+      const strong = roster.filter((fish) =>
+        hasStrongDash(fish.behavior),
+      ).length;
+      if (strong < 2) {
+        problems.push(`${area.id}: only ${strong} telegraphed dashes (min 2)`);
+      }
+    }
     const always = roster.filter(
       (fish: FishSpecies) =>
         (!fish.windows || fish.windows.length === 0) &&

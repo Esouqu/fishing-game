@@ -4,7 +4,9 @@ import type { AreaDef, SceneLayout } from "../../../areas";
 import { lerp, randRange } from "../../../utils";
 import { mixColor } from "../../../world";
 import { ditherNoise } from "../dither";
+import { PixelWater } from "../pixelWater";
 import { WaterSurface } from "../water";
+import { waterLookFor } from "../waterLook";
 import type { LogShape } from "../logs";
 import {
   CENTER,
@@ -37,6 +39,8 @@ export class PoolBase {
   protected readonly bubbles: Bubble[] = [];
   /** Living surface: the lake is calm, so it breathes rather than rolls. */
   protected readonly water: WaterSurface;
+  /** Baked caustics, glitter and foam: the surface texture under the crests. */
+  protected readonly pixelWater: PixelWater;
 
   constructor(assets: AssetBag, area: AreaDef) {
     this.assets = assets;
@@ -54,16 +58,33 @@ export class PoolBase {
       pops: 7,
     });
 
+    // The lake breathes: broad nets at half the sea's pace, and the least foam
+    // of the three, because nothing here is breaking.
+    this.pixelWater = new PixelWater({
+      look: waterLookFor(this.area.water, this.palette),
+      isShore: (x, y) => this.isBank(x, y),
+    });
+
     for (let i = 0; i < 9; i += 1) {
-      const angle = randRange(0, Math.PI * 2);
-      const r = randRange(0.25, 0.9);
-      this.discs.push({
-        x: CENTER.x + Math.cos(angle) * RADIUS.x * r,
-        y: CENTER.y + Math.sin(angle) * RADIUS.y * r,
-        rx: randRange(4, 12),
-        ry: randRange(1.5, 4),
-        alpha: randRange(0.18, 0.4),
-      });
+      // Ice floats. A disc whose rim crossed the ragged shoreline sat on the
+      // bank as a flat pale oval — the puddle the snow should never show — so
+      // every disc, rim included, has to land in open water.
+      for (let tries = 0; tries < 40; tries += 1) {
+        const angle = randRange(0, Math.PI * 2);
+        const r = randRange(0.25, 0.9);
+        const x = CENTER.x + Math.cos(angle) * RADIUS.x * r;
+        const y = CENTER.y + Math.sin(angle) * RADIUS.y * r;
+        const rx = randRange(4, 12);
+        const ry = randRange(1.5, 4);
+        const dry =
+          !this.isWater(x - rx, y) ||
+          !this.isWater(x + rx, y) ||
+          !this.isWater(x, y - ry) ||
+          !this.isWater(x, y + ry);
+        if (dry) continue;
+        this.discs.push({ x, y, rx, ry, alpha: randRange(0.18, 0.4) });
+        break;
+      }
     }
 
     // Three drifting trunks, all lying within fifteen degrees of flat: that is
@@ -202,11 +223,27 @@ export class PoolBase {
   }
 
   // ---------------------------------------------------------------- scenery
-  isWater(x: number, y: number): boolean {
+  attachWater(layer: Container): void {
+    layer.addChild(this.pixelWater);
+  }
+
+  updateWater(time: number): void {
+    this.pixelWater.update(time);
+  }
+
+  /**
+   * The snowfield around the hole, outside the ragged shoreline. The skiff the
+   * angler fishes from is dry as well, but it is a prop afloat, not a shore.
+   */
+  protected isBank(x: number, y: number): boolean {
     const nx = (x - CENTER.x) / RADIUS.x;
     const ny = (y - CENTER.y) / RADIUS.y;
     const radius = Math.hypot(nx, ny);
-    if (radius > this.shoreScale(Math.atan2(ny, nx))) return false;
+    return radius > this.shoreScale(Math.atan2(ny, nx));
+  }
+
+  isWater(x: number, y: number): boolean {
+    if (this.isBank(x, y)) return false;
     // The angler and the whole skiff are dry: the hull is wider and longer than
     // the old box around the angler, so ripples used to lap over the bow and
     // stern. The box now covers the hull with a little air around it.

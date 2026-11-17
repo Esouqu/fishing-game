@@ -55,6 +55,17 @@ export interface FightState {
   counterWindow: number;
   counterAngle: number;
   counterArmed: boolean;
+  /**
+   * The button went down while a dash was already live — in its telegraph, its
+   * feint lunge or its counter window.
+   *
+   * The grab may be prepared: pressing on the dash side before the window opens
+   * has to count, otherwise the whole move is a reflex test against a window
+   * shorter than a reaction. The flag belongs to the dash it was made in: a new
+   * move clears it, so a press left over from an earlier dash cannot arm the
+   * next one and the counter never fires by itself.
+   */
+  counterPrepared: boolean;
   counterUsed: boolean;
   counterPending: boolean;
   counterFlash: number;
@@ -72,10 +83,25 @@ export interface FightState {
   lastRunRolled: boolean;
 
   hold: boolean;
+  /**
+   * True for the tick right after the pull button went down. A counter that
+   * skips the rest (`reversed`) needs the player to actually press again;
+   * otherwise simply aiming against the run would land counters on its own.
+   */
+  freshPress: boolean;
   finalCooldown: number;
 
   pointerX: number | null;
   pointerY: number | null;
+  /**
+   * Where the pull button went down.
+   *
+   * The counter is a gesture: the player grabs the direction arrow and drags
+   * toward the middle of the ring, so the press has to be remembered. It is
+   * null until the first press, and refreshed on every new one.
+   */
+  pressX: number | null;
+  pressY: number | null;
   directionX: number;
   directionY: number;
   steeringNow: boolean;
@@ -92,11 +118,17 @@ export interface FightState {
   bubbleTimer: number;
 
   running: boolean;
-  perfect: boolean;
-  slips: number;
   outside: boolean;
   outsideTimer: number;
-  slipCooldown: number;
+  /** Seconds left before the inside recovery applies again after a miss. */
+  escapeLock: number;
+  /**
+   * Seconds of escape clock still to pour in from missed dashes.
+   *
+   * A miss deposits its whole share here at once and the clock drinks it over
+   * `missFillTime`, so the meter climbs instead of jumping.
+   */
+  escapeFill: number;
   elapsed: number;
   finishResult: MinigameResult | null;
 

@@ -1,10 +1,13 @@
-import type { AreaId } from "../../types";
+import type { AreaId, WeatherId } from "../../types";
 import type { FederatedPointerEvent } from "pixi.js";
 import { CURSORS } from "../../cursors";
 import type { WipePoint } from "../../ui/GridWipe";
 import { GameOverlays } from "./GameOverlays";
 
 export class GameScreen extends GameOverlays {
+  /** Front the ambience bed is currently voiced for; see `update`. */
+  private weatherId: WeatherId | null = null;
+
   protected switchArea(areaId: AreaId, origin: WipePoint): void {
     if (areaId === this.area.id) return;
     this.flow.setPaused(true);
@@ -45,7 +48,7 @@ export class GameScreen extends GameOverlays {
     return this.flow.phase === "charging" && this.hud.isOverPowerBar(x, y);
   }
   override handleKey(event: KeyboardEvent): boolean {
-    if (this.codex) {
+    if (this.codex && !this.codex.isClosing) {
       return this.codex.handleKey(event);
     }
     if (this.paused) {
@@ -87,19 +90,22 @@ export class GameScreen extends GameOverlays {
     // The pause dialog animates in and out even though the round is frozen
     // under it, or already running again while it drops away.
     this.pauseMenu.update(dt);
-    if (this.paused) {
-      this.codex?.update(dt);
-      return;
-    }
+    // The codex rides the same clock: it opens and closes while paused, and it
+    // finishes its fly-out after the round resumed under it.
+    this.updateCodex(dt);
+    if (this.paused) return;
 
     const clock = this.game.clock;
-    const changed = clock.update(dt);
-    if (changed) clock.persist();
     const palette = clock.palette;
     const weatherDef = clock.weatherDefFor(this.area.id);
     // A new front brings its own air; the bed crossfades on the same frame the
-    // sky starts to turn, so the ear and the eye agree about the weather.
-    if (changed) this.game.audio.setWeather(weatherDef.id);
+    // sky starts to turn, so the ear and the eye agree about the weather. The
+    // front itself is advanced by the host tick, on every screen, so a front
+    // that passed while the page was hidden is already in place here.
+    if (weatherDef.id !== this.weatherId) {
+      this.weatherId = weatherDef.id;
+      this.game.audio.setWeather(weatherDef.id);
+    }
     this.scene.tint = palette.tint;
     this.scene.setLantern(palette.lantern);
     this.scene.setCloudiness(weatherDef.cloud);
@@ -149,7 +155,9 @@ export class GameScreen extends GameOverlays {
    */
   override onEnter(): void {
     this.game.audio.setAmbience(this.area.id);
-    this.game.audio.setWeather(this.game.clock.weatherDefFor(this.area.id).id);
+    const weather = this.game.clock.weatherDefFor(this.area.id).id;
+    this.weatherId = weather;
+    this.game.audio.setWeather(weather);
     // Fetch the cast/fight cues now, not on the first pointerdown: the round
     // starts in a second and `play` would otherwise wait on the network.
     this.game.audio.preloadRound();

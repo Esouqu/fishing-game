@@ -112,7 +112,7 @@ export class WaterSurface {
 
     for (let i = 0; i < chopCount; i += 1) {
       // The dashes are spread over the frame and drift from there; because the
-      // speeds differ by ±25%, the field shears apart instead of sliding as a
+      // speeds differ by В±25%, the field shears apart instead of sliding as a
       // printed sheet.
       const jitter = randRange(0.75, 1.25);
       const row = i % rows;
@@ -161,10 +161,9 @@ export class WaterSurface {
   /**
    * True when the whole ellipse lies on open water.
    *
-   * A band of sky light is up to 180 px across, and a ripple ring grows as it
-   * opens, so testing only the centre let both of them run over the pier, the
-   * bank and the snow behind it. The outline is what has to be dry, so the
-   * outline is what is asked.
+   * A ripple ring grows as it opens, so testing only the centre let it run over
+   * the pier, the bank and the snow behind it. The outline is what has to be
+   * dry, so the outline is what is asked.
    */
   private insideWater(x: number, y: number, rx: number, ry: number): boolean {
     for (let i = 0; i < 8; i += 1) {

@@ -17,19 +17,21 @@ import {
 export class ReelVoice {
   private readonly source: AudioBufferSourceNode;
   private readonly gain: GainNode;
+  private rate: number;
 
   constructor(
     ctx: AudioContext,
     out: AudioNode,
     buffer: AudioBuffer,
     level: number,
+    rate = REEL_RATE,
   ) {
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
     source.loopStart = REEL_LOOP_START;
     source.loopEnd = REEL_LOOP_END;
-    source.playbackRate.value = REEL_RATE;
+    source.playbackRate.value = rate;
     const gain = ctx.createGain();
     const now = ctx.currentTime;
     gain.gain.setValueAtTime(0, now);
@@ -39,10 +41,22 @@ export class ReelVoice {
     source.start(now, REEL_LOOP_START);
     this.source = source;
     this.gain = gain;
+    this.rate = rate;
   }
 
   setLevel(level: number, ctx: AudioContext): void {
     this.gain.gain.setTargetAtTime(level, ctx.currentTime, 0.03);
+  }
+
+  /**
+   * Playing speed of the loop. It carries both the pitch and the cadence, so a
+   * climbing rate reads as a crank that is being turned harder: the ratchet
+   * quickens and its note rises with it.
+   */
+  setRate(rate: number, ctx: AudioContext): void {
+    if (Math.abs(rate - this.rate) < 0.004) return;
+    this.rate = rate;
+    this.source.playbackRate.setTargetAtTime(rate, ctx.currentTime, 0.12);
   }
 
   /** Release the handle: the loop fades out instead of cutting off. */

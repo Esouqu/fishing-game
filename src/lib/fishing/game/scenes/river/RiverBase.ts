@@ -3,7 +3,9 @@ import type { AssetBag } from "../../../assets";
 import type { AreaDef, SceneLayout } from "../../../areas";
 import { VIEW } from "../../../config";
 import { clamp, randRange } from "../../../utils";
+import { PixelWater } from "../pixelWater";
 import { WaterSurface } from "../water";
+import { waterLookFor } from "../waterLook";
 import {
   FAR_BANK,
   NEAR_BANK,
@@ -15,7 +17,6 @@ import {
   type BankTree,
   type Bubble,
   type Drift,
-  type Ripple,
 } from "./geometry";
 
 export class RiverBase {
@@ -27,7 +28,6 @@ export class RiverBase {
   protected readonly nearLine: Float32Array;
   protected readonly drifts: Drift[] = [];
   protected readonly bubbles: Bubble[] = [];
-  protected readonly ripples: Ripple[] = [];
   /** Spruces on both banks, painted as sprites in `drawScenery`. */
   protected readonly bankTrees: BankTree[] = [];
   /** The half-drowned trunk in mid-channel, rocked by the current. */
@@ -36,6 +36,8 @@ export class RiverBase {
   protected trunkBaseY = 0;
   /** Living surface: the current carries every crest downstream. */
   protected readonly water: WaterSurface;
+  /** Baked caustics, glitter and foam: the surface texture under the crests. */
+  protected readonly pixelWater: PixelWater;
 
   constructor(assets: AssetBag, area: AreaDef) {
     this.assets = assets;
@@ -63,13 +65,20 @@ export class RiverBase {
     this.water = new WaterSurface({
       palette: this.palette,
       isWater: (x, y) => this.isWater(x, y),
-      // The reach runs to the right and drops away downhill, so the drift is
-      // quick and everything travels the same way.
-      flow: 17,
+      // The reach drops away downhill to the left, so the drift is quick and
+      // negative: everything on the surface travels the same way, downstream.
+      flow: -17,
       energy: 0.55,
       chops: 46,
       sheens: 5,
       pops: 4,
+    });
+
+    // The current runs one way: both nets travel downstream and the fine one
+    // much faster, so the surface shears with the river instead of sliding.
+    this.pixelWater = new PixelWater({
+      look: waterLookFor(this.area.water, this.palette),
+      isShore: (x, y) => this.isBank(x, y),
     });
   }
 
@@ -223,24 +232,25 @@ export class RiverBase {
         speed: randRange(0.5, 1.3),
       });
     }
-
-    for (let i = 0; i < 64; i += 1) {
-      const x = randRange(8, VIEW.width - 8);
-      const top = this.farAt(x);
-      const y = top + (this.nearAt(x) - top) * randRange(0.14, 0.86);
-      this.ripples.push({
-        x,
-        y,
-        length: randRange(5, 22),
-        slope: randRange(-0.5, 0.5),
-        alpha: randRange(0.04, 0.13),
-      });
-    }
   }
+  /** Either bank: everything outside the channel. */
+  protected isBank(x: number, y: number): boolean {
+    if (x < 0 || x > VIEW.width) return false;
+    const column = Math.round(x);
+    return y <= this.farLine[column] || y >= this.nearLine[column];
+  }
+
   isWater(x: number, y: number): boolean {
     if (x < 0 || x > VIEW.width || y < 0 || y > VIEW.height) return false;
-    const column = Math.round(x);
-    return y > this.farLine[column] && y < this.nearLine[column];
+    return !this.isBank(x, y);
+  }
+
+  attachWater(layer: Container): void {
+    layer.addChild(this.pixelWater);
+  }
+
+  updateWater(time: number): void {
+    this.pixelWater.update(time);
   }
 
   protected traceEdge(g: Graphics, edge: (x: number) => number): void {

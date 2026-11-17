@@ -1,12 +1,10 @@
-import { Container, Graphics, Sprite, Text } from "pixi.js";
+import { Container, Graphics, Sprite } from "pixi.js";
 import type { AssetBag } from "../../../assets";
 import type { AreaDef, AreaPalette, SceneLayout } from "../../../areas";
 import { C } from "../../../config";
-import { TEXT } from "../../../texts";
-import { makeText } from "../../../ui/theme";
-import { anchorInk } from "../../../ui/textInk";
 import { CloudShadows } from "../cloudShadow";
 import type { SceneRenderer } from "../types";
+import { drawBiteMark } from "./biteMark";
 import {
   ANGLER_POSES,
   type AnglerPose,
@@ -33,6 +31,15 @@ export abstract class FishingSceneCore extends Container {
   protected readonly bobberRipple = new Graphics();
   protected readonly bobberClip = new Graphics();
   protected readonly staminaArc = new Graphics();
+  /**
+   * The landing threshold of the fish's gauge, on its own layer.
+   *
+   * It shares the float with the gauge but not its Graphics: the arc is
+   * repainted every frame, while the threshold mark is static, and the two are
+   * read at different moments — the arc answers "how much is left", the notch
+   * answers "when it opens".
+   */
+  protected readonly staminaThreshold = new Graphics();
   protected readonly motionG = new Graphics();
   /** Cloud shade, above the props: a cloud is over the bank, the boat and the water. */
   protected readonly clouds = new Graphics();
@@ -42,9 +49,16 @@ export abstract class FishingSceneCore extends Container {
   protected readonly props = new Container();
   /** Trunks in the water; the area renderer rocks them in `animate`. */
   protected readonly floating = new Container();
+  /**
+   * Textured water from the area renderer: caustics, glitter and foam. It sits
+   * between the painted world and the surface motion, so the crests run over the
+   * texture instead of being painted into it.
+   */
+  protected readonly waterLayer = new Container();
   protected readonly lightGlow = new Graphics();
   protected readonly lightFlame = new Graphics();
-  protected readonly biteMark: Text;
+  /** The drawn bite mark, hung over the float by its dot. */
+  protected readonly biteMark: Container;
 
   protected readonly fishShadows: {
     sprite: Sprite;
@@ -133,6 +147,11 @@ export abstract class FishingSceneCore extends Container {
     this.floating = new Container();
     this.addChild(this.floating);
     this.renderer.drawFloating?.(this.floating);
+    // Textured water goes between the trunks and the crests: the tiled caustics
+    // belong to the surface, and everything `drawMotion` paints has to run over
+    // them. The layer exists whether or not the renderer fills it.
+    this.addChild(this.waterLayer);
+    this.renderer.attachWater?.(this.waterLayer);
     this.addChild(this.motionG);
     this.addChild(this.previewG);
 
@@ -174,6 +193,9 @@ export abstract class FishingSceneCore extends Container {
     this.bobberBody.mask = this.bobberClip;
     this.staminaArc.visible = false;
     this.bobber.addChild(this.staminaArc);
+    // Above the gauge's own layer: the threshold notch is a reading of its own.
+    this.staminaThreshold.visible = false;
+    this.bobber.addChild(this.staminaThreshold);
 
     this.bobber.visible = false;
     // Float first, line second: the line is the thing tying the rod to the
@@ -181,15 +203,11 @@ export abstract class FishingSceneCore extends Container {
     // its body at the waterline.
     this.addChild(this.bobber, this.line);
 
-    this.biteMark = makeText(TEXT.game.biteMark, {
-      size: 22,
-      color: C.gold,
-      weight: 800,
-      align: "center",
-    });
-    anchorInk(this.biteMark, "center", "bottom");
+    this.biteMark = new Container();
+    const biteArt = new Graphics();
+    drawBiteMark(biteArt);
+    this.biteMark.addChild(biteArt);
     this.biteMark.visible = false;
-    this.biteMark.style.stroke = { color: C.ink, width: 3 };
     // Never leave it sitting at the scene origin: if anything shows it before
     // the first frame pass, it must already be over the float.
     this.placeBiteMark(0);

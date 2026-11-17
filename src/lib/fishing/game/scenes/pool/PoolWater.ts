@@ -12,20 +12,11 @@ export class PoolWater extends PoolBase {
     // ground around the trees reads as snow instead of dark forest floor.
     g.rect(0, 0, VIEW.width, VIEW.height).fill(this.palette.snow);
 
-    // Wind drifts across the field. They are drawn before the water, so the
-    // ones that fall inside the hole are simply covered by it.
-    for (let i = 0; i < 34; i += 1) {
-      const x = 14 + ((i * 89) % (VIEW.width - 28));
-      const y = 12 + ((i * 57) % (VIEW.height - 24));
-      g.ellipse(x, y, 13 + (i % 4) * 7, 3.4).fill({
-        color: this.palette.snowShade,
-        alpha: 0.38,
-      });
-      g.ellipse(x + 2, y - 1, 8 + (i % 3) * 5, 2.2).fill({
-        color: this.palette.snowLight,
-        alpha: 0.5,
-      });
-    }
+    // Wind drifts across the field used to be painted here: 34 pairs of pale
+    // ellipses, meant as relief. On white snow they read as flat grey ovals
+    // scattered over the field — stray shadows with nothing above them to cast
+    // them — so the field stays clean and every fir, bush, stone and reed on it
+    // casts its own contact shadow instead.
     for (let i = 0; i < 18; i += 1) {
       const x = 20 + ((i * 53) % (VIEW.width - 40));
       const y = 18 + ((i * 71) % (VIEW.height - 36));
@@ -86,19 +77,11 @@ export class PoolWater extends PoolBase {
       }
     }
 
-    // A broken moon path and a few reflections, kept off the bank.
-    for (let i = 0; i < 12; i += 1) {
-      const width = Math.max(1, 7 - i * 0.5);
-      g.rect(
-        CENTER.x - width / 2 + Math.sin(i * 1.3) * 3,
-        40 + i * 5,
-        width,
-        1,
-      ).fill({
-        color: 0xdbe8ff,
-        alpha: 0.12 - i * 0.007,
-      });
-    }
+    // The lake's living surface is drawn above this layer (`pixelWater`), so the
+    // pale dashes that used to stand in for a moon path here are gone: a row of
+    // static strokes down the middle of the water read as a painted ladder
+    // under the caustics. What stays is what is actually on the lake — the ice
+    // discs below.
 
     for (const disc of this.discs) {
       g.ellipse(disc.x, disc.y, disc.rx, disc.ry).fill({

@@ -21,12 +21,10 @@ export const SOUND_FILES = {
   escape: "escape.wav",
   reel: "reel.wav",
   waterLap: "water-lap.wav",
-  achievement: "achievement.wav",
   reward: "reward.wav",
   lineSnap: "line-snap.wav",
   shiny: "shiny.wav",
   crit: "crit.wav",
-  jingle: "jingle1.wav",
   objective: "objective-complete.wav",
   thud: "thud.wav",
   newRecord: "new-record.wav",
@@ -61,12 +59,10 @@ export const ROUND_CUES: readonly SoundName[] = [
   "escape",
   "reel",
   "waterLap",
-  "achievement",
   "reward",
   "lineSnap",
   "shiny",
   "crit",
-  "jingle",
   "objective",
   "thud",
   "newRecord",
@@ -145,6 +141,18 @@ export const REEL_LOOP_END = 0.663;
 export const REEL_RATE = 1.0;
 /** Fade on the loop edges so holding and releasing the line never clicks. */
 export const REEL_FADE = 0.06;
+/**
+ * Grip share under which the crank starts to strain, and how much faster it
+ * turns when the grip is gone.
+ *
+ * The angler's grip is the fight's countdown: the last third is the part where
+ * the line is nearly out of hand. Lifting the crank's rate across exactly that
+ * stretch turns the loop into a warning — the ear hears the reel climbing
+ * before the bar on screen has been read. A quarter faster is enough to feel
+ * like strain without the ratchet turning into a buzz.
+ */
+export const REEL_STRAIN_FLOOR = 0.3;
+export const REEL_STRAIN_PITCH = 0.24;
 
 /**
  * Charge wind-up. The old charge looped a slice of `cast.wav`; the whoosh is
@@ -200,12 +208,3 @@ export const LEAD_IN_WINDOW = 0.01;
  * the air falls away under the whoosh instead of stopping at full pitch.
  */
 export const CAST_BLEND = 0.22;
-
-/**
- * Perfect-catch jingle: how it sits against the fanfare.
- *
- * The jingle is a reply, not a second announcement, so it comes in under the
- * fanfare's own level and a fifteenth of a second after it.
- */
-export const PERFECT_JINGLE_DELAY = 0.15;
-export const PERFECT_JINGLE_LEVEL = 0.7;

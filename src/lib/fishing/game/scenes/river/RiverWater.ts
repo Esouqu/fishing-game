@@ -1,11 +1,10 @@
 import { Container, Graphics } from "pixi.js";
-import { VIEW } from "../../../config";
 import { clamp } from "../../../utils";
 import { winterWaterAt } from "../../../world";
 import { drawDepthRamp } from "../dither";
 import { drawFloatingLog } from "../logs";
 import { RiverBase } from "./RiverBase";
-import { BOULDERS, STONE, WATER_BOTTOM, WATER_TOP, noise } from "./geometry";
+import { BOULDERS, STONE, WATER_BOTTOM, WATER_TOP } from "./geometry";
 
 export class RiverWater extends RiverBase {
   protected drawWater(g: Graphics): void {
@@ -20,45 +19,13 @@ export class RiverWater extends RiverBase {
   }
 
   protected drawWaterDetails(g: Graphics): void {
-    // Sky sheen down the channel. It used to be three continuous bands built
-    // from nested rectangles, which read as painted guide lines running the
-    // width of the river. The highlight is now a scatter of short glints along
-    // the same mid-channel curve: it still tells the eye where the open water
-    // is, but it breaks up and never forms a stripe.
-    for (const [at, alpha] of [
-      [0.38, 0.05],
-      [0.55, 0.042],
-      [0.72, 0.032],
-    ] as const) {
-      let x = 2;
-      let index = 0;
-      while (x < VIEW.width - 2) {
-        const seed = noise(index, Math.round(at * 100));
-        // The gaps are what stop the glints from lining up into a band.
-        if (seed < 0.42) {
-          x += 4 + seed * 30;
-          index += 1;
-          continue;
-        }
-        const length = 3 + noise(index, 41) * 9;
-        const top = this.farAt(x);
-        const bottom = this.nearAt(x);
-        const mid =
-          top + (bottom - top) * (at + (noise(index, 42) - 0.5) * 0.06);
-        this.rect(g, x, mid, length, 1, 0xa8e4e4, alpha);
-        this.rect(
-          g,
-          x + length * 0.3,
-          mid + 1,
-          length * 0.55,
-          1,
-          0xbfeef0,
-          alpha * 0.55,
-        );
-        x += length + 3 + noise(index, 43) * 13;
-        index += 1;
-      }
-    }
+    // The reach is drawn by the shared surface now: the depth ramp carries the
+    // near-to-far colour, and the living current — caustics, glitter and foam —
+    // is drawn by `pixelWater` above this layer. What used to live here was a
+    // stand-in for moving water: a scatter of sky-sheen dashes down the channel,
+    // sleeping ripples, a line of current crests and a trailing ripple that
+    // pointed downstream. All of them were painted once, so on a river that now
+    // runs they read as engraving on the surface, and they are gone.
 
     // Contact shade and a bright rim along both banks: the depth gradient
     // alone gives no sense of an embankment.
@@ -100,51 +67,12 @@ export class RiverWater extends RiverBase {
     }
 
     // Sleeping ripples that belong to the water, not to the frame.
-    for (const ripple of this.ripples) {
-      g.moveTo(ripple.x, ripple.y);
-      g.quadraticCurveTo(
-        ripple.x + ripple.length * 0.5,
-        ripple.y - 1.4,
-        ripple.x + ripple.length,
-        ripple.y + ripple.slope,
-      );
-      g.stroke({
-        width: 1,
-        color: ripple.alpha > 0.09 ? this.palette.snowLight : this.palette.ice,
-        alpha: ripple.alpha,
-      });
-    }
-
     // Current crests: short, brighter wavelets that show which way the river
     // runs even while the frame is still.
-    for (let i = 0; i < 14; i += 1) {
-      const x = 30 + i * 31 + noise(i, 31) * 10;
-      const top = this.farAt(x);
-      const y = top + (this.nearAt(x) - top) * (0.38 + noise(i, 32) * 0.26);
-      const width = 5 + noise(i, 33) * 7;
-      const slope = this.flowSlope(x, width);
-      g.moveTo(x - width, y)
-        .quadraticCurveTo(x, y - 2.4, x + width, y + slope * width)
-        .stroke({
-          width: 1,
-          color: this.palette.snowLight,
-          alpha: 0.16 + noise(i, 34) * 0.1,
-        });
-    }
-
     // A ripple line that trails the current flowing in from upstream.
-    for (let i = 0; i < 9; i += 1) {
-      const x = 24 + i * 18;
-      const y = 116 - i * 5 + Math.sin(i * 1.7) * 5;
-      g.moveTo(x - 5, y)
-        .quadraticCurveTo(x, y - 3, x + 6, y)
-        .stroke({ width: 1, color: this.palette.snowLight, alpha: 0.22 });
-    }
-
-    // The half-drowned gravel bars that used to sit mid-channel were grey
-    // ellipse smudges with a lighter core: at a glance they read as floating
-    // rubbish rather than as river bed, so they are gone. The current crests,
-    // ripples and boulders carry the water on their own.
+    //
+    // All three are gone: they were static strokes standing in for a current
+    // that the surface now actually runs.
 
     // The trunk is not painted here: it gets its own layer between the water
     // and the surface motion (see `drawFloating`), because the current rolls it
@@ -339,15 +267,17 @@ export class RiverWater extends RiverBase {
       .lineTo(x + w * 0.34, y - h * 0.3)
       .stroke({ width: 1, color: STONE.dark, alpha: 0.35 });
 
-    // Water torn by the upstream face, and a wake trailing downstream.
-    g.moveTo(x - w * 1.0, water + h * 0.12)
-      .lineTo(x - w * 0.7, water + h * 0.06)
+    // Water torn by the upstream face, and a wake trailing downstream. The
+    // current runs to the left, so the torn water is on the right face and the
+    // wake trails away from it.
+    g.moveTo(x + w * 1.0, water + h * 0.12)
+      .lineTo(x + w * 0.7, water + h * 0.06)
       .stroke({ width: 1, color: this.palette.snowLight, alpha: 0.32 });
     for (let i = 0; i < 3; i += 1) {
-      const wakeX = x + w * 0.96 + i * (w * 0.3 + 2);
+      const wakeX = x - w * 0.96 - i * (w * 0.3 + 2);
       const wakeY = water + h * 0.02 + i * h * 0.16;
       g.moveTo(wakeX, wakeY)
-        .lineTo(wakeX + w * 0.46 + i * 3, wakeY + h * 0.12)
+        .lineTo(wakeX - w * 0.46 - i * 3, wakeY + h * 0.12)
         .stroke({
           width: 1,
           color: this.palette.snowLight,

@@ -1,14 +1,19 @@
 import { Container, Graphics, Sprite } from "pixi.js";
 import type { GameContext } from "../../GameContext";
 import { AREAS, type AreaDef } from "../../areas";
-import { TEXT, WATER_LABEL } from "../../texts";
+import { TEXT } from "../../texts";
 import type { AreaId } from "../../types";
 import { Button } from "../Button";
 import { FocusGroup } from "../FocusGroup";
 import { UI } from "../palette";
 import { drawPanel, makeText } from "../theme";
+import { anchorInk, inkTopInset } from "../textInk";
 import { CodexTabs } from "./CodexTabs";
+import { SelectionRing } from "./selectionRing";
 import { CONTENT, DETAILS, GRID, PANEL, TABS, TITLE, type Cell } from "./setup";
+
+/** Side of the square «Х» button in the title row. */
+const CLOSE_SIZE = 18;
 
 export abstract class CodexBase extends Container {
   protected readonly game: GameContext;
@@ -22,13 +27,17 @@ export abstract class CodexBase extends Container {
   protected mode: "tabs" | "grid" = "grid";
 
   protected readonly gridLayer = new Container();
+  /** Both columns: tabs, roster and entry card. */
+  private readonly columns = new Container();
   /** Ring around the entry whose details the card is showing. */
-  private readonly selection = new Graphics();
+  private readonly selection = new SelectionRing();
 
   /** Fixed entry card on the right of the split. */
   protected readonly detailsLayer = new Container();
   private readonly detailsPanel = new Graphics();
   private readonly portraitSlot = new Graphics();
+  /** Hairline above the footer; hidden while the species is still unknown. */
+  protected readonly footerRule = new Graphics();
   protected readonly portrait = new Sprite();
   protected readonly detailsName = makeText("", {
     size: 10,
@@ -49,7 +58,7 @@ export abstract class CodexBase extends Container {
   protected readonly detailsDesc = makeText("", {
     size: 6.5,
     color: UI.textMuted,
-    lineHeight: 8.5,
+    lineHeight: DETAILS.bodyLineHeight,
     wordWrapWidth: this.wrap,
   });
 
@@ -62,11 +71,14 @@ export abstract class CodexBase extends Container {
     this.buildChrome();
     this.buildDetails();
     this.buildGrids();
-    this.addChild(this.gridLayer);
-    // Above every grid, so the ring marks the shown entry no matter which tab
-    // drew the cells.
+    // The two columns live in one container of their own, so they are laid out
+    // and flown in as one block. The ring sits above every grid, so it marks the
+    // shown entry no matter which tab drew the cells.
+    this.columns.addChild(this.tabs);
+    this.columns.addChild(this.gridLayer);
     this.gridLayer.addChild(this.selection);
-    this.addChild(this.detailsLayer);
+    this.columns.addChild(this.detailsLayer);
+    this.addChild(this.columns);
     this.selectArea(this.area);
   }
 
@@ -85,7 +97,11 @@ export abstract class CodexBase extends Container {
       color: UI.text,
       letterSpacing: 1,
     });
-    title.position.set(TITLE.x, TITLE.y);
+    // The wordmark and the close button are one row, so the title is centred on
+    // the button's middle (not on the top of the font's line box, which put the
+    // capitals a few pixels lower than the «Х»).
+    anchorInk(title, "left", "center");
+    title.position.set(TITLE.x, TITLE.y + CLOSE_SIZE / 2);
     this.addChild(title);
 
     // Standard secondary button with a big uppercase «Х»: the codex used to end
@@ -93,18 +109,18 @@ export abstract class CodexBase extends Container {
     // eye. The letter is a text glyph from the pixel font, so it stays crisp.
     const close = new Button({
       label: "Х",
-      width: 18,
-      height: 18,
+      width: CLOSE_SIZE,
+      height: CLOSE_SIZE,
       size: 15,
       variant: "secondary",
       marks: false,
       onClick: () => this.onClose(),
     });
-    close.position.set(CONTENT.right - 18, TITLE.y);
+    close.position.set(CONTENT.right - CLOSE_SIZE, TITLE.y);
     this.addChild(close);
 
     this.tabs = new CodexTabs({
-      labels: AREAS.map((area) => WATER_LABEL[area.water]),
+      labels: AREAS.map((area) => area.name),
       width: TABS.width,
       height: TABS.height,
       onPick: (index) => {
@@ -158,7 +174,16 @@ export abstract class CodexBase extends Container {
     this.detailsName.position.set(centre, DETAILS.nameY);
     this.detailsType.anchor.y = 0.5;
     this.detailsType.position.set(centre, DETAILS.typeY);
-    this.detailsRecord.position.set(pad, DETAILS.recordY);
+    // The catch tally is a footer: a hairline across the card, then the line
+    // centred in the strip under it. Anchored on its glyphs, so the row sits in
+    // the middle of the strip instead of on top of it.
+    const footerTop = height - DETAILS.footer;
+    this.footerRule
+      .rect(pad, footerTop, width - pad * 2, 1)
+      .fill({ color: UI.periwinkle, alpha: 0.3 });
+    anchorInk(this.detailsRecord, "left", "center");
+    this.detailsRecord.position.set(pad, footerTop + DETAILS.footer / 2);
+    this.footerRule.visible = false;
 
     const rule = new Graphics();
     rule.rect(pad, DETAILS.ruleY, width - pad * 2, 1).fill({
@@ -167,10 +192,18 @@ export abstract class CodexBase extends Container {
     });
     this.detailsLayer.addChild(rule);
 
-    this.detailsDesc.position.set(pad, DETAILS.bodyTop);
+    // The blurb is wrapped, so its box height changes with the number of lines;
+    // pinning the box top put the first line further from the rule whenever the
+    // copy ran longer. The caps are pinned instead, one `bodyGap` under the
+    // rule, which is what the eye reads as the block's inset.
+    this.detailsDesc.position.set(
+      pad,
+      DETAILS.ruleY + DETAILS.bodyGap - inkTopInset(this.detailsDesc),
+    );
     this.detailsLayer.addChild(
       this.detailsName,
       this.detailsType,
+      this.footerRule,
       this.detailsRecord,
       this.detailsDesc,
     );
@@ -179,6 +212,9 @@ export abstract class CodexBase extends Container {
   protected selectArea(area: AreaDef): void {
     this.area = area;
     this.tabs.setSelected(AREAS.indexOf(area));
+    // The outline belongs to one roster: switching tabs starts it on the new
+    // grid's first entry instead of flying it across the gutter.
+    this.hideSelection();
 
     // Every area grid is built once; switching only toggles visibility, so no
     // Text/Button objects are destroyed or re-rasterized on a tab click.
@@ -212,14 +248,17 @@ export abstract class CodexBase extends Container {
 
   /** Marks the roster entry whose details the card is showing. */
   protected markSelection(cell: Cell): void {
-    const g = this.selection;
-    g.clear();
-    g.rect(
-      Math.round(cell.button.x) - 1,
-      Math.round(cell.button.y) - 1,
-      Math.round(GRID.cellWidth),
-      Math.round(GRID.cellHeight),
-    ).stroke({ width: 1, color: UI.periwinkle, alignment: 0 });
+    this.selection.aim({
+      x: cell.button.x,
+      y: cell.button.y,
+      w: cell.w,
+      h: cell.h,
+    });
+  }
+
+  /** Drops the outline, so the next {@link markSelection} starts in place. */
+  protected hideSelection(): void {
+    this.selection.hide();
   }
 
   handleKey(event: KeyboardEvent): boolean {

@@ -21,9 +21,11 @@
 
 1. `createFishingGame(options)` → `Game.create`.
 2. Создаётся Pixi `Application`, считается letterbox, создаётся `Game`.
-3. `GameBootLayer.boot`: параллельно грузятся `loadGameAssets` и прогресс,
-   рисуется boot-сцена, монтируется курсор, создаются `SettingsStore`,
-   `WorldClock`, `AudioKit`, `ProgressTracker`.
+3. `GameBootLayer.boot`: первым делом запрашиваются курсоры, и `CursorOverlay`
+   монтируется сразу, как только они пришли (страница прячет системный
+   указатель); параллельно грузятся `loadGameAssets` и прогресс, рисуется
+   boot-сцена, создаются `SettingsStore`, `WorldClock`, `AudioKit`,
+   `ProgressTracker`.
 4. `previewFor`/`AreaPreviewCache`: выбранный водоём рендерится в текстуру;
    остальные два и скриншоты помощи — на idle.
 5. Показывается `MenuScreen` или сразу `GameScreen` (`startScreen`).
@@ -31,8 +33,15 @@
 ## Экраны и оверлеи
 
 `ScreenManager` хранит один активный `Screen` и слой `IceVeil`.
-`GameScreensLayer` — навигация (`showMenu`, `showHelp`, `showAreas`, `showCodex`,
-`startGame`). `GameScreen` собирает сцену, HUD, атмосферу, `CastFlow`, паузу и кодекс.
+`GameScreensLayer` — навигация (`showMenu`, `showHelp`, `showCodex`, `startGame`).
+`GameScreen` собирает сцену, HUD, атмосферу, `CastFlow`, паузу и кодекс. Выбора
+водоёма отдельным экраном нет: между водоёмами ходят карточками-мини-превью в
+углах раунда (`AreaShortcuts`), и они же показывают водоёмы, закрытые хостом.
+
+Попап может анимировать свой выезд сам (`Screen.animateOut`): тогда менеджер не
+сдвигает экран целиком, и затемнение остаётся на месте, пока панель уезжает.
+Кодекс так закрывается из меню и из паузы одинаково (`CodexScreen.animateOut`,
+`CodexOverlay.beginClose`).
 
 Порядок слоёв внутри `GameScreen.playfield`:
 
@@ -55,9 +64,9 @@ idle → charging → waiting → bite → fighting → resolve → idle
 
 ## Данные и сохранение
 
-`ProgressTracker` — единственный владелец `ProgressSnapshot`; `WorldClock` — погоды
-и времени; `SettingsStore` — mute и dev-оверрайды микса. Подробности —
-[data-and-progress.md](data-and-progress.md).
+`ProgressTracker` — единственный владелец `ProgressSnapshot`; `WorldClock` — погодное
+расписание на реальном времени; `SettingsStore` — mute и dev-оверрайды микса.
+Подробности — [data-and-progress.md](data-and-progress.md).
 
 ## Сцены
 

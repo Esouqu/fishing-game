@@ -11,17 +11,21 @@ import type { Screen } from "./Screen";
  * - `fade` — the original short dip to ink; used when a round ends and the menu
  *   comes back, where there is no spatial relationship to animate.
  * - `wipe` — the pixel grid wave, reserved for a change of place: another water
- *   body, or the picker handing over to a round.
+ *   body, or the picker handing over to a round. The wave spreads out of
+ *   `origin`.
+ * - `wipeIn` — the same grid wave running backwards: the ink closes onto
+ *   `origin` instead of leaving it. Used when the player leaves a round, so
+ *   going out is the exact reverse of going in.
  * - `flyIn` / `flyOut` — the popup slide: the new panel rises from the bottom
  *   edge, or the current panel drops away to reveal the one underneath. No
  *   full-screen flash, exactly like Svelte's `transition:fly`.
  */
-export type ScreenTransition = "fade" | "wipe" | "flyIn" | "flyOut";
+export type ScreenTransition = "fade" | "wipe" | "wipeIn" | "flyIn" | "flyOut";
 
 /** Where the wave starts when the change did not come from a pointer. */
 const CENTRE: WipePoint = { x: VIEW.width / 2, y: VIEW.height / 2 };
 /** How long a popup takes to slide in or out. */
-const FLY_TIME = 0.28;
+export const FLY_TIME = 0.28;
 /** Vertical travel of the popup slide, in pixels. */
 const FLY_LIFT = 22;
 
@@ -87,10 +91,10 @@ export class ScreenManager {
     this.pending = screen;
     this.phase = "out";
     this.progress = 0;
-    this.style = transition;
-    if (transition === "wipe") {
+    this.style = transition === "wipeIn" ? "wipe" : transition;
+    if (transition === "wipe" || transition === "wipeIn") {
       this.fade.alpha = 0;
-      this.wipe.beginCover(origin);
+      this.wipe.beginCover(origin, transition === "wipeIn");
     } else {
       this.wipe.hide();
     }
@@ -195,8 +199,12 @@ export class ScreenManager {
       } else if (this.leaving) {
         // Going back drops the popup off the bottom edge instead of
         // cross-fading two detailed screens into each other: the one underneath
-        // is revealed from the top as the panel slides away.
-        this.leaving.y = VIEW.height * eased;
+        // is revealed from the top as the panel slides away. A screen that
+        // animates its own chrome drops only its panel — the whole screen used
+        // to slide, dimmer included, which read as a dark sheet being dragged
+        // off the frame.
+        if (this.leaving.animateOut) this.leaving.animateOut(dt);
+        else this.leaving.y = VIEW.height * eased;
       }
       if (this.flyT >= 1) {
         if (this.current) {

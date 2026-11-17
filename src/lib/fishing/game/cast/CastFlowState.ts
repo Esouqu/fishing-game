@@ -24,36 +24,7 @@ export class CastFlowState extends CastFlowInput {
     this.updateCatchCrossfade();
 
     if (this.phaseValue === "charging") {
-      this.chargeValue += (this.chargeDir * dt) / TIMING.chargeCycle;
-      if (this.chargeValue >= 1) {
-        this.chargeValue = 1;
-        this.chargeDir = -1;
-      } else if (this.chargeValue <= 0) {
-        this.chargeValue = 0;
-        this.chargeDir = 1;
-      }
-      this.chargeTime += dt;
-      const inside =
-        Math.abs(this.chargeValue - this.luckBandCenterValue) <=
-        LUCK_BAND.width / 2;
-      if (inside) {
-        this.lastZoneInside = this.chargeTime;
-        if (!this.wasInsideZone) {
-          // No cue here any more: the zone is confirmed by the completion
-          // chime when the cast actually leaves the hand. The haptic stays —
-          // it is a touch hint, not the cast's reward.
-          if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-            navigator.vibrate(8);
-          }
-        }
-      }
-      this.wasInsideZone = inside;
-      this.chargeSoundTimer -= dt;
-      if (this.chargeSoundTimer <= 0) {
-        this.game.audio.startCharge();
-        this.game.audio.setCharge(this.chargeValue);
-        this.chargeSoundTimer = 0.1;
-      }
+      this.updateCharge(dt);
     } else if (this.phaseValue === "waiting") {
       this.waitTimer -= dt;
       if (this.waitTimer <= this.nibbleLead && !this.nibblePlayed) {
@@ -82,6 +53,53 @@ export class CastFlowState extends CastFlowInput {
     }
   }
 
+  /**
+   * The power bar is a reaction window as well: one 0.1 s frame at 10 fps would
+   * move it straight across the release band. Integrate it in fixed slices so a
+   * slow frame cannot skip the zone the bar was actually in.
+   */
+  private updateCharge(dt: number): void {
+    let left = dt;
+    while (left > 0) {
+      const part = Math.min(left, 1 / 60);
+      left -= part;
+      this.advanceCharge(part);
+    }
+    this.chargeSoundTimer -= dt;
+    if (this.chargeSoundTimer <= 0) {
+      this.game.audio.startCharge();
+      this.game.audio.setCharge(this.chargeValue);
+      this.chargeSoundTimer = 0.1;
+    }
+  }
+
+  private advanceCharge(part: number): void {
+    this.chargeValue += (this.chargeDir * part) / TIMING.chargeCycle;
+    if (this.chargeValue >= 1) {
+      this.chargeValue = 1;
+      this.chargeDir = -1;
+    } else if (this.chargeValue <= 0) {
+      this.chargeValue = 0;
+      this.chargeDir = 1;
+    }
+    this.chargeTime += part;
+    const inside =
+      Math.abs(this.chargeValue - this.luckBandCenterValue) <=
+      LUCK_BAND.width / 2;
+    if (inside) {
+      this.lastZoneInside = this.chargeTime;
+      if (!this.wasInsideZone) {
+        // No cue here any more: the zone is confirmed by the completion chime
+        // when the cast actually leaves the hand. The haptic stays — it is a
+        // touch hint, not the cast's reward.
+        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate(8);
+        }
+      }
+    }
+    this.wasInsideZone = inside;
+  }
+
   // ------------------------------------------------------------- cast flow
   protected doCast(): void {
     if (this.phaseValue !== "charging") return;
@@ -100,7 +118,12 @@ export class CastFlowState extends CastFlowInput {
       // the completion chime alone.
       this.game.audio.objective();
     }
-    this.scene.playCast(this.chargeValue);
+    // The cursor at the moment of release is the cast's direction; the charge
+    // is how far along it the float lands.
+    this.scene.playCast(this.chargeValue, {
+      x: this.pointerX,
+      y: this.pointerY,
+    });
     this.game.clock.persist();
     this.waitTimer = randRange(TIMING.waitMin, TIMING.waitMax);
     this.nibbleLead = randRange(TIMING.nibbleLeadMin, TIMING.nibbleLeadMax);
@@ -194,8 +217,6 @@ export class CastFlowState extends CastFlowInput {
       return;
     }
 
-    const perfect = result.perfect;
-
     const firstCatch = this.game.progress.recordCatch(
       fish.id,
       this.fishWeightKg,
@@ -211,10 +232,11 @@ export class CastFlowState extends CastFlowInput {
     const catchTop = this.scene.catchFish(
       this.game.assets.fish[fish.id],
       1.15 * weightScale(fish, this.fishWeightKg),
+      fish.tier,
     );
     const splash = this.scene.bobberPosition;
     this.juice.trigger("catch", splash.x, splash.y);
-    this.game.audio.catchFish(perfect);
+    this.game.audio.catchFish();
     if (fish.tier === "legendary") this.game.audio.ready();
     this.showCatchFeedback(fish, firstCatch, catchTop);
 

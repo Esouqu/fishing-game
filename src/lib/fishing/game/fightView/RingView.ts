@@ -1,6 +1,7 @@
 import { Graphics } from "pixi.js";
 import { FIGHT_RADIUS } from "../fight";
 import { WINTER } from "../../world";
+import { UI } from "../../ui/palette";
 import { clamp } from "../../utils";
 import { RING_SEGMENTS, ringRadiusAt } from "../fightRing";
 import { MinigameCore } from "./MinigameCore";
@@ -92,8 +93,23 @@ export abstract class RingView extends MinigameCore {
     // circle is least welcome. The bolt is already announced by the orange
     // pointer, the frightened fish and the bubbles.
 
-    // Leaving the zone has no mark of its own either: the float sinking under
-    // the surface is the cue, and red arcs at the rim only competed with the
-    // heading arrow for the same pixels.
+    // Leaving the zone lights the rim on the side the fish is escaping to. It
+    // has no mark of its own otherwise: the float sinking under the surface is a
+    // slow cue, and a fish already outside the ring is losing the fight, so the
+    // edge itself has to say it. Drawn as a short arc at the fish's heading, so
+    // it never competes with the direction pointer on the float.
+    const offset = Math.hypot(this.model.fishOffset.x, this.model.fishOffset.y);
+    const proximityToEdge = clamp((offset / FIGHT_RADIUS - 0.85) / 0.3, 0, 1);
+    if (proximityToEdge > 0.02) {
+      const heading = Math.atan2(
+        this.model.fishOffset.y,
+        this.model.fishOffset.x,
+      );
+      this.strokeArc(g, FIGHT_RADIUS + 2, 1, heading - 0.5, heading + 0.5, {
+        width: 2,
+        color: UI.rose,
+        alpha: proximityToEdge * (0.35 + pulse * 0.45),
+      });
+    }
   }
 }

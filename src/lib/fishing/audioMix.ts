@@ -31,7 +31,6 @@ export type MixChannel =
   | "nibble"
   | "hook"
   | "reel"
-  | "catchPerfect"
   | "catchCommon"
   | "escape"
   | "warn"
@@ -67,7 +66,6 @@ export const MIX_CHANNELS: readonly MixChannelDef[] = [
   { id: "nibble", group: "fishing", label: "ТЫЧОК" },
   { id: "hook", group: "fishing", label: "ПОДСЕЧКА" },
   { id: "reel", group: "fishing", label: "КАТУШКА" },
-  { id: "catchPerfect", group: "fishing", label: "ИДЕАЛ" },
   { id: "catchCommon", group: "fishing", label: "УЛОВ" },
   { id: "escape", group: "fishing", label: "СРЫВ" },
 
@@ -103,7 +101,6 @@ export const AUDIO_MIX: AudioMix = {
   nibble: 0.24,
   hook: 0.4,
   reel: 0.5,
-  catchPerfect: 0.3,
   catchCommon: 0.4,
   escape: 0.3,
   warn: 0.5,

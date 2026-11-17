@@ -60,6 +60,12 @@ const zigzag = (count: number, dur: number, amplitude = 0.28): Move => ({
  *
  * Every cycle gives the player at least one clear recovery beat: dashing
  * without a pause is what used to make some fish impossible.
+ *
+ * `strong` is the telegraphed, counterable beat. Every rare and legendary fish
+ * carries at least one, and so do the big predatory commons; schooling, tiny
+ * and slow/round fish stay quiet on purpose — their fight is the tug, not the
+ * read. `validateFishData` enforces the tier half of that rule, and the area
+ * half (each water teaches the counter at least twice).
  */
 const SCRIPTS: Record<string, () => Move[]> = {
   // Широкая дуга, короткий прямой рывок и пауза.
@@ -108,7 +114,7 @@ const SCRIPTS: Record<string, () => Move[]> = {
     dash("flip", 0.22),
     arc("flip", 0.9),
     pause(0.5),
-    dash("away", 0.3),
+    dash("away", 0.3, true),
   ],
   // Широкие боковые движения, затем сильный рывок.
   largemouthbass: () => [
@@ -128,7 +134,7 @@ const SCRIPTS: Record<string, () => Move[]> = {
   smallmouthbass: () => [
     dash("away", 0.32),
     pause(0.3),
-    dash("flip", 0.32),
+    dash("flip", 0.32, true),
     pause(0.7),
   ],
   // Сильный рывок вбок, волна и пауза.
@@ -150,7 +156,12 @@ const SCRIPTS: Record<string, () => Move[]> = {
     pause(1.1),
   ],
   // Рывки по траектории в форме буквы S, затем короткий рывок.
-  eel: () => [wave(1.2, 0.38, 2), pause(0.4), dash("flip", 0.3), pause(0.5)],
+  eel: () => [
+    wave(1.2, 0.38, 2),
+    pause(0.4),
+    dash("flip", 0.3, true),
+    pause(0.5),
+  ],
   // Медленная широкая волна, затем рывок за пределы круга.
   grouper: () => [wave(1.6, 0.34, 1.3), pause(0.45), dash("away", 0.35)],
   // Два резких рывка вбок и пауза.
@@ -239,7 +250,7 @@ const SCRIPTS: Record<string, () => Move[]> = {
     pause(0.5),
   ],
   // Палтус тяжело идет волной и тянет ко дну.
-  halibut: () => [wave(1.4, 0.3, 1), pause(0.5), dash("toward", 0.4)],
+  halibut: () => [wave(1.4, 0.3, 1), pause(0.5), dash("toward", 0.4, true)],
   // Марлин — два длинных сильных выпада.
   marlin: () => [
     dash("away", 1, true),
@@ -275,4 +286,14 @@ export function buildScript(fish: FishSpecies): Move[] {
   const factory = SCRIPTS[fish.behavior];
   if (factory) return factory();
   return FALLBACK;
+}
+
+/**
+ * True when the species' script contains a telegraphed, counterable dash.
+ * A quiet species is a deliberate fight variant, not a missing script.
+ */
+export function hasStrongDash(id: string): boolean {
+  const factory = SCRIPTS[id];
+  const script = factory ? factory() : FALLBACK;
+  return script.some((move) => move.strong === true);
 }

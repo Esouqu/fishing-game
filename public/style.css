@@ -38,12 +38,11 @@ canvas {
   image-rendering: crisp-edges;
 }
 
-canvas,
+/* The game paints its own pixel cursor and only then takes the system pointer
+   away (`cursor-hidden` is toggled with the overlay). Hiding the pointer from
+   the first frame left the loading screen — and any pointer that never moved —
+   with no cursor at all. */
 canvas.cursor-hidden {
-  cursor: none !important;
-}
-
-#game {
   cursor: none !important;
 }
 

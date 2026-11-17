@@ -16,14 +16,6 @@ interface Flake {
   wind: number;
 }
 
-interface Star {
-  x: number;
-  y: number;
-  phase: number;
-  speed: number;
-  size: number;
-}
-
 interface Splash {
   x: number;
   y: number;
@@ -35,13 +27,11 @@ const DAY: WorldPalette = {
   tint: 0xf3f9ff,
   overlay: 0xffffff,
   overlayAlpha: 0,
-  stars: 0,
   lantern: 0,
   water: WINTER.waterDeep,
   deep: WINTER.waterFar,
 };
 
-const STAR_COUNT = 44;
 /**
  * Flake pool. A clear sky uses none of it and a snowfall a quarter, so the pool
  * has to be big enough for the blizzard: at full gust every one of these is on
@@ -68,14 +58,12 @@ interface WeatherVisual {
 
 export class AtmosphereBase extends Container {
   protected readonly wash = new Graphics();
-  protected readonly sky = new Graphics();
   protected readonly glow = new Graphics();
   /** Dark cloud bank around the frame; see `fog.ts`. */
   protected readonly fog = new FogLayer();
   protected readonly snowG = new Graphics();
 
   protected readonly flakes: Flake[] = [];
-  protected readonly stars: Star[] = [];
   protected splashes: Splash[] = [];
 
   protected world: WorldPalette = DAY;
@@ -123,16 +111,6 @@ export class AtmosphereBase extends Container {
     super();
     this.eventMode = "none";
 
-    for (let i = 0; i < STAR_COUNT; i += 1) {
-      this.stars.push({
-        x: randRange(4, VIEW.width - 4),
-        y: randRange(1, 10),
-        phase: randRange(0, Math.PI * 2),
-        speed: randRange(0.7, 2.1),
-        size: Math.random() > 0.82 ? 2 : 1,
-      });
-    }
-
     for (let i = 0; i < FLAKE_COUNT; i += 1) {
       this.flakes.push({
         x: randRange(-20, VIEW.width + 20),
@@ -145,6 +123,6 @@ export class AtmosphereBase extends Container {
       });
     }
 
-    this.addChild(this.wash, this.sky, this.glow, this.fog, this.snowG);
+    this.addChild(this.wash, this.glow, this.fog, this.snowG);
   }
 }

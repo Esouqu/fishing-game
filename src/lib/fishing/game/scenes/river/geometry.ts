@@ -5,9 +5,9 @@ export type BankPoint = readonly [number, number];
 /**
  * Waterlines as (x, y) control points, smoothed in between: the river runs
  * between `FAR_BANK` (top) and `NEAR_BANK` (bottom). The far bank leaves the
- * frame through the top edge on the left, so the water continues upstream
- * instead of ending against a bank, and it drops away to the right, so the
- * reach bends out of sight downstream.
+ * frame through the top edge on the left and the near bank through the bottom
+ * edge on the right, so the water continues past both ends of the reach instead
+ * of ending against a bank.
  */
 export const FAR_BANK: readonly BankPoint[] = [
   [0, -40],

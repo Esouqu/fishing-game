@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { TEXT } from "./fishing/texts";
   import type {
+    AreaLocations,
     CatchEvent,
     FishingGameInstance,
     ProgressRepository,
@@ -18,6 +19,8 @@
     startScreen?: StartScreen;
     /** Optional DB/HTTP-backed progress storage. */
     progress?: ProgressRepository;
+    /** Water bodies the host keeps closed; `false` seals a location. */
+    locations?: AreaLocations;
     onExit?: () => void;
     onCatch?: (event: CatchEvent) => void;
     onProgress?: (snapshot: ProgressSnapshot) => void;
@@ -31,6 +34,7 @@
     muted = false,
     startScreen = "menu",
     progress,
+    locations,
     onExit,
     onCatch,
     onProgress,
@@ -59,6 +63,7 @@
           muted,
           startScreen,
           progress,
+          locations,
           onExit,
           onCatch,
           onProgress,
@@ -100,6 +105,11 @@
 
   export function setMuted(value: boolean): void {
     game?.setMuted(value);
+  }
+
+  /** Opens or closes water bodies without restarting the game. */
+  export function setLocations(value: AreaLocations): void {
+    game?.setLocations(value);
   }
 
   export function flushProgress(): Promise<void> {

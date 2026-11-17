@@ -1,16 +1,12 @@
-import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
+import { Container, Graphics, Sprite, type Texture } from "pixi.js";
 import type { FishSpecies } from "../../config";
-import { TEXT } from "../../texts";
 import { FIGHT_RADIUS } from "../fight";
-import { UI } from "../../ui/palette";
-import { makeText } from "../../ui/theme";
-import { anchorInk } from "../../ui/textInk";
 import {
   FightModel,
   type MinigameOptions,
   type MinigameResult,
 } from "../fight";
-import { FISH_SCALE, SILHOUETTE } from "./setup";
+import { FISH_SCALE, GAUGE, SILHOUETTE } from "./setup";
 
 export abstract class MinigameCore extends Container {
   protected readonly model: FightModel;
@@ -30,6 +26,8 @@ export abstract class MinigameCore extends Container {
   protected readonly landRing = new Graphics();
   protected readonly directionG = new Graphics();
   protected readonly cueG = new Graphics();
+  /** The padlock of a landed counter; above the float, like the pointers. */
+  protected readonly lockG = new Graphics();
   protected readonly barG = new Graphics();
   protected readonly warnG = new Graphics();
   /** 0..1 progress of the closing landing ring; 0 while it is not landable. */
@@ -37,10 +35,18 @@ export abstract class MinigameCore extends Container {
   /** 0..1 opacity of the landing ring, so it can fade in and out on its own. */
   protected landFade = 0;
   protected wasLandable = false;
-  /** Caption over the player's stamina bar. */
-  protected readonly staminaLabel: Text;
   /**
-   * The stamina stack, in a container of its own.
+   * Where the float is, in scene pixels.
+   *
+   * The fight view draws the fish and the ring, but the float is the scene's
+   * own sprite: the cues that belong to the float (the direction pointer, the
+   * counter lock) have to sit on it, so the stage hands its position over every
+   * frame. Until the first update it falls back to the fish, which is where the
+   * float starts.
+   */
+  protected floatPoint = { x: 0, y: 0 };
+  /**
+   * The stamina stack, on a container of its own.
    *
    * It is deliberately **not** a child of the minigame: the fight layer sits
    * under the weather, so bars parented here were dimmed by the fog. The screen
@@ -56,6 +62,9 @@ export abstract class MinigameCore extends Container {
   constructor(fish: FishSpecies, icon: Texture, options: MinigameOptions) {
     super();
     this.model = new FightModel(fish, options);
+    // The float starts on the hooked fish; the stage corrects this on its first
+    // update, and the cues never draw at the origin.
+    this.floatPoint = { ...this.model.fishPoint };
     this.eventMode = "none";
 
     this.addChild(this.ringG);
@@ -69,15 +78,6 @@ export abstract class MinigameCore extends Container {
     this.addChild(this.counterG);
 
     this.bars.addChild(this.barG);
-    this.staminaLabel = makeText(TEXT.fight.stamina, {
-      size: 5,
-      color: UI.textMuted,
-      weight: 700,
-      align: "center",
-    });
-    anchorInk(this.staminaLabel, "center", "bottom");
-    this.staminaLabel.style.stroke = { color: UI.ink, width: 2 };
-    this.bars.addChild(this.staminaLabel);
     this.bars.eventMode = "none";
 
     // The landing ring rides above the float with the pointers, so neither the
@@ -86,6 +86,7 @@ export abstract class MinigameCore extends Container {
 
     this.pointers.addChild(this.landRing);
     this.pointers.addChild(this.directionG);
+    this.pointers.addChild(this.lockG);
     this.pointers.addChild(this.warnG);
     this.pointers.eventMode = "none";
     this.addChild(this.cueG);
@@ -132,9 +133,27 @@ export abstract class MinigameCore extends Container {
     return this.model.enduranceValue;
   }
 
+  /** 0..1 angler grip; the reel's pitch climbs in its last third. */
+  get grip(): number {
+    return this.model.gripValue;
+  }
+
   /** Top of the two-row stamina stack, just above the ring. */
   protected get staminaY(): number {
     return this.model.centerY - FIGHT_RADIUS - 26;
+  }
+
+  /**
+   * Centre of the grip gauge in scene pixels. Captions that explain the scale
+   * («нет сил») belong on it, not under it: they are read as coming out of the
+   * gauge the player is watching, so the stage anchors them here and lets them
+   * rise off the bar.
+   */
+  get gaugeCentre(): { x: number; y: number } {
+    return {
+      x: this.model.centerX,
+      y: Math.round(this.staminaY + GAUGE.height / 2),
+    };
   }
 
   /** Screen position of the tired fish, used as the touch landing target. */
@@ -149,6 +168,11 @@ export abstract class MinigameCore extends Container {
     this.model.setHold(held);
   }
 
+  /** The round returned from a pause; a dash frozen by it is not forgiven. */
+  resumeAfterPause(): void {
+    this.model.resumeFromPause();
+  }
+
   /** Separate final pull: RMB/F, or a tap on the fish. */
   finalPull(): void {
     this.model.finalPull();
@@ -157,6 +181,12 @@ export abstract class MinigameCore extends Container {
   /** Cursor position in screen space; while held it sets the pull direction. */
   setPointer(x: number | null, y: number | null): void {
     this.model.setPointer(x, y);
+  }
+
+  /** Scene position of the float, so the pointer and the lock ride on it. */
+  setFloatPoint(x: number, y: number): void {
+    this.floatPoint.x = x;
+    this.floatPoint.y = y;
   }
 
   /** Optional keyboard steering direction (normalized by the caller). */

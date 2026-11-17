@@ -37,47 +37,6 @@ export class AtmosphereSky extends AtmosphereBase {
     }
   }
 
-  protected drawSky(): void {
-    const g = this.sky;
-    g.clear();
-    const stars = this.world.stars;
-    if (stars <= 0.02) return;
-
-    for (const star of this.stars) {
-      const twinkle =
-        0.55 + Math.sin(this.time * star.speed + star.phase) * 0.45;
-      g.rect(star.x, star.y, star.size, star.size).fill({
-        color: star.size > 1 ? WINTER.moon : WINTER.star,
-        alpha: stars * twinkle * 0.85,
-      });
-    }
-
-    // Cold moon and its broken reflection on the water.
-    const moonX = 398;
-    g.circle(moonX, 5, 10).fill({
-      color: 0xcfe2ff,
-      alpha: 0.05 * stars,
-    });
-    g.circle(moonX, 5, 7).fill({
-      color: 0xe4efff,
-      alpha: 0.1 * stars,
-    });
-    g.circle(moonX, 5, 4).fill({ color: WINTER.moon, alpha: 0.9 * stars });
-    g.circle(moonX - 1, 4, 2).fill({
-      color: 0xd6e6ff,
-      alpha: 0.6 * stars,
-    });
-
-    for (let i = 0; i < 9; i += 1) {
-      const drift = Math.sin(this.time * 0.9 + i * 1.7) * (2 + i * 0.6);
-      const width = Math.max(1, 8 - i * 0.7);
-      g.rect(moonX - width / 2 + drift, 16 + i * 6, width, 1).fill({
-        color: 0xdbe8ff,
-        alpha: stars * (0.16 - i * 0.012),
-      });
-    }
-  }
-
   protected drawGlow(): void {
     const g = this.glow;
     g.clear();
@@ -85,9 +44,10 @@ export class AtmosphereSky extends AtmosphereBase {
     if (lantern <= 0.02 || this.lightX === null || this.lightY === null) return;
 
     // Warm pool of light around the area's lamp/fire. Several low-alpha rings
-    // read as a soft wash instead of hard circles.
+    // read as a soft wash instead of hard circles. The position handed in is
+    // the flame itself, so this wash and the scene's own glow agree.
     const x = this.lightX;
-    const y = this.lightY - 7;
+    const y = this.lightY;
     for (let i = 0; i < 8; i += 1) {
       const t = i / 7;
       const radius = 44 * (1 - t * 0.82);

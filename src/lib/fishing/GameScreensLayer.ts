@@ -1,15 +1,10 @@
 import { MenuScreen } from "./screens/MenuScreen";
 import { HelpScreen } from "./screens/HelpScreen";
-import {
-  AreaSelectScreen,
-  type AreaPickOrigin,
-} from "./screens/AreaSelectScreen";
 import { CodexScreen } from "./screens/CodexScreen";
 import { GameScreen } from "./screens/GameScreen";
 
 import type { AreaId, CatchEvent } from "./types";
 import { GameDevLayer } from "./GameDevLayer";
-import type { CodexReturn } from "./types";
 import { VIEW } from "./config";
 import type { WipePoint } from "./ui/GridWipe";
 
@@ -21,9 +16,11 @@ export abstract class GameScreensLayer extends GameDevLayer {
     const active = this.screens.active;
     // Leaving a round through the pause menu is a change of place as well: the
     // lake gives way to the title behind the same grid wave the travel cards
-    // use, entering from the middle of the frame where the dialog sat.
+    // use — but running backwards, closing onto the middle of the frame where
+    // the dialog sat. Going in spreads the water out of the click; coming out
+    // pulls the frame back into it.
     if (active instanceof GameScreen) {
-      this.screens.show(new MenuScreen(this), "wipe", CENTRE);
+      this.screens.show(new MenuScreen(this), "wipeIn", CENTRE);
       return;
     }
     // Coming back from a popup drops it off the bottom edge instead of
@@ -36,35 +33,46 @@ export abstract class GameScreensLayer extends GameDevLayer {
     this.screens.show(new HelpScreen(this), "flyIn");
   }
 
-  showAreas(origin: AreaPickOrigin = "menu"): void {
-    // Cards and the backdrop both need the real stills; anything the idle
-    // warm-up has not reached yet is rendered now, before the screen reads it.
-    this.ensureAreaPreviews();
-    this.screens.show(new AreaSelectScreen(this, origin), "flyIn");
-  }
-
-  showCodex(returnTo: CodexReturn = "menu"): void {
-    this.screens.show(new CodexScreen(this, returnTo), "flyIn");
+  showCodex(): void {
+    this.screens.show(new CodexScreen(this), "flyIn");
   }
 
   /**
    * Starts a round. This is the one navigation that gets the grid wipe instead
-   * of the flat dip: it either crosses to another water body (the travel cards
-   * in the round, the picker's «к рыбалке») or hands the picker over to the
-   * location the player chose.
+   * of the flat dip: it always crosses to another water body, either from the
+   * title or from a travel card in the round.
    *
    * The wave always starts where the player clicked: a corner card passes its
-   * own centre, the picker hands over from the middle of the frame. It is a
-   * radial grid, never a flat wall, so the cells pop in one by one instead of
-   * one edge crossing the frame.
+   * own centre, anything without a pointer passes the middle of the frame. It
+   * is a radial grid, never a flat wall, so the cells pop in one by one instead
+   * of one edge crossing the frame.
    */
   startGame(areaId?: AreaId, origin: WipePoint = CENTRE): void {
-    if (areaId && areaId !== this.areaId) {
-      this.progress.setArea(areaId);
+    // A closed location is not a destination: a stale travel card, a host call
+    // with an id that has just been blocked, or the saved selection all land on
+    // the first water body that is still open instead of on a locked shore.
+    const target =
+      areaId && !this.isAreaLocked(areaId) ? areaId : this.firstOpenAreaId();
+    if (target !== this.areaId) {
+      this.progress.setArea(target);
     }
     void this.progress.flush();
     this.screens.show(new GameScreen(this, this.area), "wipe", origin);
-    this.devPanel?.refresh();
+    this.skyPanel?.refresh();
+  }
+
+  /**
+   * Reacts to a host that opened or closed water bodies mid-session. The round
+   * never stays on a shore that has just been taken away, and the title's
+   * backdrop follows the water body the player will actually start on.
+   */
+  protected refreshLocations(): void {
+    const active = this.screens.active;
+    if (active instanceof GameScreen && this.isAreaLocked(this.area.id)) {
+      this.startGame();
+    } else if (active instanceof MenuScreen && active.areaId !== this.areaId) {
+      this.showMenu();
+    }
   }
 
   exit(): void {

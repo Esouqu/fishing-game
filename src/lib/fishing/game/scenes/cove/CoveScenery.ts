@@ -1,7 +1,14 @@
 import { Container, Graphics, Sprite } from "pixi.js";
 import { C, VIEW } from "../../../config";
 import { drawGrassTuft } from "../grass";
-import { drawBucket, drawShoreStone, drawSnowDrift } from "../props";
+import {
+  SPRITE_PAD,
+  drawBucket,
+  drawContactShadow,
+  drawShoreStone,
+  drawSnowDrift,
+  paintContactShadow,
+} from "../props";
 import { mixColor, winterWaterAt } from "../../../world";
 import { CoveShore } from "./CoveShore";
 import { DOCK, MOORED_BOAT, SHORE_X, type ScenerySpot } from "./geometry";
@@ -30,10 +37,22 @@ export class CoveScenery extends CoveShore {
       { x: 29, y: 78, scale: 1.1, flip: false },
       { x: 26, y: 172, scale: 0.95, flip: true },
       { x: 32, y: 266, scale: 1.15, flip: false },
-      { x: 46, y: 58, scale: 0.85, flip: true },
+      // The upper spruce of the pair stood at (46, 58): its right side hung a
+      // good eight pixels over the shoreline, so the canopy read as growing out
+      // of the ice rim. It now stands up the bank in the top-left corner, left
+      // of the bigger tree and clear of the water.
+      { x: 16, y: 46, scale: 0.8, flip: true },
     ];
     treeSpots.forEach((item, index) => {
       addMound(item, item.scale);
+      // The drift is the snow the tree grew out of; the shadow is the contact
+      // it makes with that snow, in the same recipe the angler uses.
+      drawContactShadow(
+        props,
+        item.x,
+        item.y - SPRITE_PAD * item.scale,
+        6.5 * item.scale,
+      );
       const texture = this.assets.trees[index % this.assets.trees.length];
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5, 1);
@@ -51,6 +70,12 @@ export class CoveScenery extends CoveShore {
     ];
     bushSpots.forEach((item, index) => {
       addMound(item, item.scale * 0.7);
+      drawContactShadow(
+        props,
+        item.x,
+        item.y - SPRITE_PAD * item.scale,
+        5.5 * item.scale,
+      );
       const texture = this.assets.bushes[index % this.assets.bushes.length];
       const sprite = new Sprite(texture);
       sprite.anchor.set(0.5, 1);
@@ -203,6 +228,7 @@ export class CoveScenery extends CoveShore {
     sign.scale.set(1.15);
     sign.zIndex = 120;
     props.addChild(sign);
+    drawContactShadow(props, 30, 120, 6 * 1.15);
 
     for (const [x, y, flip] of [
       [24, 152, 1],
@@ -220,17 +246,20 @@ export class CoveScenery extends CoveShore {
     const x = light.x;
     const y = light.y;
     const g = new Graphics();
-    g.ellipse(x - 2, y + 1, 6, 2.5).fill({
-      color: this.palette.snowShade,
-      alpha: 0.8,
-    });
+    // The post stands in the middle of its own shadow, in the shared recipe:
+    // the pale half-ellipse that used to sit a pixel below it read as a stone.
+    paintContactShadow(g, x, y, 4.5);
+    // Glass centred on the flame row the glow is lit from, as on the other two
+    // waters: the halo used to sit low because the fixture and the light each
+    // carried their own idea of where the flame was.
+    const glassTop = Math.round(light.glowY - 2.5);
     g.rect(x - 1, y - 8, 2, 8).fill(C.brownDark);
     g.rect(x - 1, y - 8, 1, 8).fill(C.brownLight);
     g.rect(x - 4, y - 11, 8, 2).fill(C.ink);
     g.rect(x - 3, y - 12, 6, 1).fill(this.palette.snow);
-    g.rect(x - 3, y - 9, 6, 5).fill({ color: C.ink, alpha: 0.92 });
-    g.rect(x - 2, y - 8, 4, 3).fill({ color: 0x34321f, alpha: 0.95 });
-    g.rect(x - 3, y - 4, 6, 1).fill(C.brownDark);
+    g.rect(x - 3, glassTop, 6, 5).fill({ color: C.ink, alpha: 0.92 });
+    g.rect(x - 2, glassTop + 1, 4, 3).fill({ color: 0x34321f, alpha: 0.95 });
+    g.rect(x - 3, glassTop + 5, 6, 1).fill(C.brownDark);
     g.zIndex = y;
     props.addChild(g);
   }

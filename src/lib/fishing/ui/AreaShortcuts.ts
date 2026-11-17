@@ -3,10 +3,12 @@ import type { GameContext } from "../GameContext";
 import { AREAS, type AreaDef } from "../areas";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";
+import { TEXT } from "../texts";
 import type { AreaId, WeatherId } from "../types";
 import type { WipePoint } from "./GridWipe";
 import { easeOutCubic, lerp } from "../utils";
 import { UI } from "./palette";
+import { drawLockMark } from "./lockMark";
 import { drawPanel, drawWeatherIcon, makeText } from "./theme";
 import { anchorInk } from "./textInk";
 
@@ -24,6 +26,8 @@ const WEATHER_BADGE = 14;
 const SLIDE = 26;
 /** How long that slide takes, in seconds. */
 const SLIDE_TIME = 0.3;
+/** Dimming of a card whose water body the host keeps closed. */
+const LOCKED_ALPHA = 0.8;
 
 /**
  * Two travel cards in the bottom corners: the water bodies either side of the
@@ -37,6 +41,10 @@ const SLIDE_TIME = 0.3;
  * the old table order the two cards simply swapped names: from the lake, two
  * clicks to the right bounced between two water bodies and the third was never
  * reachable that way.
+ *
+ * A water body the host closed still gets its corner — the player has to see
+ * that the place exists, or the world looks like it has two lakes — but the
+ * card is sealed: no still, a padlock where the sky would be, and no way out.
  */
 export class AreaShortcuts extends Container {
   private readonly cards: ShortcutCard[] = [];
@@ -98,7 +106,9 @@ export class AreaShortcuts extends Container {
     const eased = easeOutCubic(t);
     for (const arrival of this.arrivals) {
       arrival.card.x = lerp(arrival.fromX, arrival.targetX, eased);
-      arrival.card.alpha = eased;
+      // The arrival must not launder a sealed card into a normal one: its own
+      // dimming multiplies the slide's fade instead of being overwritten by it.
+      arrival.card.alpha = eased * (arrival.card.locked ? LOCKED_ALPHA : 1);
     }
   }
 
@@ -121,6 +131,8 @@ export class AreaShortcuts extends Container {
 class ShortcutCard extends Container {
   private readonly game: GameContext;
   private readonly areaId: AreaId;
+  /** True while the host keeps this water body closed. */
+  readonly locked: boolean;
   private readonly hoverLayer = new Graphics();
   private readonly weatherPlate = new Graphics();
   private readonly weatherArt = new Graphics();
@@ -131,8 +143,9 @@ class ShortcutCard extends Container {
     super();
     this.game = game;
     this.areaId = area.id;
+    this.locked = game.isAreaLocked(area.id);
     const texture = game.previewFor(area.id);
-    const label = area.name;
+    const label = this.locked ? TEXT.areas.closed : area.name;
 
     const frame = new Graphics();
     drawPanel(frame, 0, 0, CARD.width, CARD.height, {
@@ -147,34 +160,43 @@ class ShortcutCard extends Container {
     // the middle band, which is the water the player recognises.
     const viewWidth = CARD.width - THUMB_PAD * 2;
     const viewHeight = CARD.height - FOOTER - THUMB_PAD;
-    const thumb = new Sprite(texture);
-    const scale = Math.max(
-      viewWidth / Math.max(1, texture.width),
-      viewHeight / Math.max(1, texture.height),
-    );
-    thumb.scale.set(scale);
-    thumb.position.set(
-      THUMB_PAD + viewWidth / 2 - (texture.width * scale) / 2,
-      THUMB_PAD + viewHeight / 2 - (texture.height * scale) / 2,
-    );
-    this.addChild(thumb);
+    if (this.locked) {
+      this.paintSealedThumb(viewWidth, viewHeight);
+    } else {
+      const thumb = new Sprite(texture);
+      const scale = Math.max(
+        viewWidth / Math.max(1, texture.width),
+        viewHeight / Math.max(1, texture.height),
+      );
+      thumb.scale.set(scale);
+      thumb.position.set(
+        THUMB_PAD + viewWidth / 2 - (texture.width * scale) / 2,
+        THUMB_PAD + viewHeight / 2 - (texture.height * scale) / 2,
+      );
+      this.addChild(thumb);
 
-    const mask = new Graphics();
-    mask.rect(THUMB_PAD, THUMB_PAD, viewWidth, viewHeight).fill(0xffffff);
-    this.addChild(mask);
-    thumb.mask = mask;
+      const mask = new Graphics();
+      mask.rect(THUMB_PAD, THUMB_PAD, viewWidth, viewHeight).fill(0xffffff);
+      this.addChild(mask);
+      thumb.mask = mask;
+    }
 
     // Weather badge in the top-right corner: one square of the front's own
     // colour with the dark glyph inside, the same frame size for every front.
     // The old full-width band hid a third of the still and its label had to be
     // read; a corner badge says the same thing without covering the picture.
-    const badgeX = CARD.width - THUMB_PAD - WEATHER_BADGE - 2;
-    const badgeY = THUMB_PAD + 2;
-    this.weatherPlate.position.set(badgeX, badgeY);
-    this.addChild(this.weatherPlate);
-    this.weatherArt.position.set(badgeX + 2, badgeY + 2);
-    this.weatherArt.scale.set(0.83);
-    this.addChild(this.weatherArt);
+    //
+    // A closed location has no forecast at all: the badge is not drawn, so the
+    // card carries no sky, no weather and no promise of one.
+    if (!this.locked) {
+      const badgeX = CARD.width - THUMB_PAD - WEATHER_BADGE - 2;
+      const badgeY = THUMB_PAD + 2;
+      this.weatherPlate.position.set(badgeX, badgeY);
+      this.addChild(this.weatherPlate);
+      this.weatherArt.position.set(badgeX + 2, badgeY + 2);
+      this.weatherArt.scale.set(0.83);
+      this.addChild(this.weatherArt);
+    }
 
     // Name strip: the label has to stay readable over bright snow, so it gets
     // its own dark band instead of sitting straight on the still.
@@ -187,7 +209,7 @@ class ShortcutCard extends Container {
     const name = makeText(label, {
       size: 5.5,
       weight: 800,
-      color: UI.text,
+      color: this.locked ? UI.textMuted : UI.text,
       align: "center",
       letterSpacing: 0.2,
     });
@@ -213,10 +235,52 @@ class ShortcutCard extends Container {
       onClick();
     });
     this.update();
+    // A card for water the host keeps closed is never a way out of the round:
+    // it shows the door, sealed, instead of the sky over that shore.
+    if (this.locked) {
+      this.available = false;
+      this.alpha = LOCKED_ALPHA;
+      this.eventMode = "none";
+      this.cursor = CURSORS.default;
+    }
+  }
+
+  /**
+   * The still of a closed location is replaced by a sealed plate: a dark field
+   * with a woven dither and one padlock. The player still sees that the corner
+   * is a place, but nothing of the water it hides.
+   */
+  private paintSealedThumb(viewWidth: number, viewHeight: number): void {
+    const plate = new Graphics();
+    plate
+      .rect(THUMB_PAD, THUMB_PAD, viewWidth, viewHeight)
+      .fill({ color: UI.ink, alpha: 0.94 });
+    for (let row = 0; row < viewHeight; row += 3) {
+      const offset = (row / 3) % 2 === 0 ? 0 : 2;
+      for (let col = offset; col < viewWidth; col += 5) {
+        plate
+          .rect(THUMB_PAD + col, THUMB_PAD + row, 2, 1)
+          .fill({ color: UI.periwinkle, alpha: 0.14 });
+      }
+    }
+    const scale = 2;
+    const lockWidth = 7 * scale;
+    const lockHeight = 9 * scale;
+    drawLockMark(
+      plate,
+      Math.round(THUMB_PAD + (viewWidth - lockWidth) / 2),
+      Math.round(THUMB_PAD + (viewHeight - lockHeight) / 2),
+      scale,
+      UI.periwinkle,
+      UI.ink,
+    );
+    this.addChild(plate);
   }
 
   /** Keeps the weather badge in step with the sky over that water body. */
   update(): void {
+    // Nothing to keep in step: a closed location has no badge to fill.
+    if (this.locked) return;
     const weather = this.game.clock.weatherFor(this.areaId);
     if (weather === this.weather) return;
     this.weather = weather;
@@ -245,12 +309,15 @@ class ShortcutCard extends Container {
   }
 
   setAvailable(available: boolean): void {
-    if (this.available === available) return;
-    this.available = available;
-    this.alpha = available ? 1 : 0.4;
-    this.eventMode = available ? "static" : "none";
-    this.cursor = available ? CURSORS.pointer : CURSORS.default;
-    if (!available) this.setHovered(false);
+    // A closed location stays closed whatever the round is doing: the fight
+    // dimming and the host's lock are two different reasons to refuse a click.
+    const next = available && !this.locked;
+    if (this.available === next) return;
+    this.available = next;
+    this.alpha = next ? 1 : this.locked ? LOCKED_ALPHA : 0.4;
+    this.eventMode = next ? "static" : "none";
+    this.cursor = next ? CURSORS.pointer : CURSORS.default;
+    if (!next) this.setHovered(false);
   }
 
   private setHovered(hovered: boolean): void {

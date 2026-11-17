@@ -59,7 +59,11 @@ export abstract class GameScreenCore extends Screen {
     this.game = game;
     this.area = area;
 
-    this.castHint = new CastHint(area.layout.hint.x, area.layout.hint.y);
+    this.castHint = new CastHint(
+      area.layout.hint.x,
+      area.layout.hint.y,
+      game.assets.mouse,
+    );
     this.scene = createFishingScene(area, game.assets);
     this.addChild(this.playfield);
     this.playfield.addChild(this.scene);
@@ -67,7 +71,7 @@ export abstract class GameScreenCore extends Screen {
     this.atmosphere.setMood(area.mood);
     this.atmosphere.setLight(
       area.layout.light?.x ?? null,
-      area.layout.light?.y ?? null,
+      area.layout.light?.glowY ?? null,
     );
     // Fog closes in on the water the angler is fishing, not just on his boots:
     // the clear pocket sits between him and the float band, so the float stays

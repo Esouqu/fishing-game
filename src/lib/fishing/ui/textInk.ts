@@ -132,6 +132,17 @@ export function inkAnchorTopY(text: Text): number {
   return Math.max(0, capTop) / height;
 }
 
+/**
+ * Distance from the top of a text box to the top of its capitals, in virtual
+ * pixels. {@link inkAnchorTopY} can only aim the *first* line of a wrapped
+ * label: a label whose anchor is not 0 shifts its whole box, so copy that wraps
+ * to a different number of lines needs this offset added to its position
+ * instead.
+ */
+export function inkTopInset(text: Text): number {
+  return Math.max(0, inkBox(text.style).capTop);
+}
+
 export type InkAlign = "left" | "center" | "right";
 
 /** How a label is anchored horizontally, so a text change can re-aim it. */
@@ -249,6 +260,22 @@ export function inkAnchorX(text: Text, align: InkAlign): number {
   const anchor =
     align === "center" ? (left + right) / 2 : align === "right" ? right : left;
   return anchor / boxWidth;
+}
+
+/**
+ * Width of the glyphs of a single-line label, in virtual pixels.
+ *
+ * The box is the advance run, and this font leaves a good deal of empty advance
+ * after the last glyph (about 5 px on a nine-letter caption at size 7). Laying
+ * something out against `text.width` — the keycap next to a prompt, the centring
+ * of a prompt block — therefore leaves a phantom gap that grows with the copy.
+ * This is the measurement to use when the next object has to touch the letters.
+ */
+export function inkWidth(text: Text): number {
+  if (text.width <= 0 || text.text.includes("\n") || text.style.wordWrap) {
+    return text.width;
+  }
+  return strokeWidthOf(text.style) + inkSpan(text).width;
 }
 
 /**

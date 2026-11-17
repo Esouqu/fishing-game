@@ -1,17 +1,17 @@
 import { Application, Container, Graphics, Texture } from "pixi.js";
 import type { AreaDef } from "./areas";
-import { AREA_BY_ID, DEFAULT_AREA_ID } from "./areas";
+import { AREAS, AREA_BY_ID, DEFAULT_AREA_ID } from "./areas";
 import { setUiSoundHandler } from "./ui/Button";
 import { CursorOverlay } from "./ui/CursorOverlay";
 import { AudioMixPanel } from "./ui/AudioMixPanel";
-import { DevWeatherPanel } from "./ui/DevWeatherPanel";
+import { DevSkyPanel } from "./ui/DevSkyPanel";
 import { ScreenManager } from "./ui/ScreenManager";
 import { ProgressTracker } from "./progress";
 import type { SettingsStore } from "./storage";
 import type { WorldClock } from "./world";
 import type { AudioKit } from "./audio";
 import type { AssetBag } from "./assets";
-import type { AreaId, NormalizedOptions } from "./types";
+import type { AreaId, AreaLocations, NormalizedOptions } from "./types";
 import { VIEW } from "./config";
 
 export abstract class GameBase {
@@ -28,6 +28,16 @@ export abstract class GameBase {
   protected readonly previews: Partial<Record<AreaId, Texture>> = {};
   /** Gradient stand-ins for previews that are not rendered yet. */
   protected readonly fallbackPreviews = new Map<AreaId, Texture>();
+  /**
+   * Which water bodies the host lets the player visit. A locked location keeps
+   * its place in the picker — the card still shows, sealed — so the player can
+   * see that it exists instead of wondering where the third water went.
+   */
+  protected readonly locationAccess: Record<AreaId, boolean> = {
+    cove: true,
+    deep: true,
+    rapids: true,
+  };
 
   protected bootLayer: Container | null = null;
   protected bootFill: Graphics | null = null;
@@ -36,8 +46,8 @@ export abstract class GameBase {
   protected cursorY = 0;
   /** Dev audio balance panel, built the first time it is opened. */
   protected audioPanel: AudioMixPanel | null = null;
-  /** Dev weather picker, built the first time it is opened. */
-  protected devPanel: DevWeatherPanel | null = null;
+  /** Dev sky inspector (front and hour), built the first time `F3` opens it. */
+  protected skyPanel: DevSkyPanel | null = null;
 
   /** Clips all game content to the 480×270 frame inside the letterbox. */
   protected readonly worldMask = new Graphics();
@@ -47,8 +57,8 @@ export abstract class GameBase {
   protected readonly resizeObserver: ResizeObserver;
   protected readonly onKeyDown = (event: KeyboardEvent): void => {
     if (this.destroyed || !this.isEngaged() || this.assetBag === null) return;
-    // The audio mixer and the weather picker are authoring tools, not cheats
-    // for the shipped game: in a production build they do nothing.
+    // The audio mixer and the sky inspector are authoring tools, not cheats for
+    // the shipped game: in a production build they do nothing.
     if (event.code === "F2" || event.code === "F3") {
       if (!import.meta.env.DEV) return;
       event.preventDefault();
@@ -62,7 +72,7 @@ export abstract class GameBase {
       event.preventDefault();
       return;
     }
-    if (this.devPanel?.handleKey(event)) {
+    if (this.skyPanel?.handleKey(event)) {
       event.preventDefault();
       return;
     }
@@ -103,6 +113,9 @@ export abstract class GameBase {
   protected constructor(app: Application, options: NormalizedOptions) {
     this.app = app;
     this.options = options;
+    for (const area of AREAS) {
+      this.locationAccess[area.id] = options.locations[area.id] !== false;
+    }
     this.world.eventMode = "static";
     this.app.stage.addChild(this.world);
 
@@ -172,11 +185,46 @@ export abstract class GameBase {
   /**
    * The selected water body, falling back to the default one. A saved or
    * hand-passed id that no longer exists (a renamed area, a stale session) used
-   * to reach the screen as `undefined` and crash on `area.layout`.
+   * to reach the screen as `undefined` and crash on `area.layout`. A location
+   * the host has closed is treated the same way: the game never opens on water
+   * the player is not allowed to fish.
    */
   get areaId(): AreaId {
     const saved = this.progressTracker?.snapshot.selectedArea;
-    return saved && saved in AREA_BY_ID ? saved : DEFAULT_AREA_ID;
+    const area = saved && saved in AREA_BY_ID ? saved : DEFAULT_AREA_ID;
+    return this.isAreaLocked(area) ? this.firstOpenAreaId() : area;
+  }
+
+  /** True while the host keeps this water body closed. */
+  isAreaLocked(areaId: AreaId): boolean {
+    return this.locationAccess[areaId] === false;
+  }
+
+  /**
+   * First water body still open, in table order. Falls back to the default one
+   * when the host closed everything: a game with no playable water is a host
+   * bug, and the picker still has to draw something.
+   */
+  protected firstOpenAreaId(): AreaId {
+    return (
+      AREAS.find((area) => !this.isAreaLocked(area.id))?.id ?? DEFAULT_AREA_ID
+    );
+  }
+
+  /**
+   * Applies a new availability set. Called before the screens render it, so a
+   * location that just closed cannot be entered on the way out. The saved
+   * selection moves off a shore the host has just taken away.
+   */
+  protected applyLocations(locations: AreaLocations): void {
+    for (const area of AREAS) {
+      const open = locations[area.id];
+      if (typeof open === "boolean") this.locationAccess[area.id] = open;
+    }
+    const saved = this.progressTracker?.snapshot.selectedArea;
+    if (saved && this.isAreaLocked(saved)) {
+      this.progressTracker?.setArea(this.firstOpenAreaId());
+    }
   }
 
   get muted(): boolean {
@@ -185,10 +233,17 @@ export abstract class GameBase {
 
   protected tick = (): void => {
     if (this.destroyed) return;
-    const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.05);
+    // A 10 fps frame still moves the round in real time; the fight catches up
+    // in fixed 1/60 s steps of its own. Below that the round slows down instead
+    // of letting one delta jump a whole telegraph or bite window.
+    const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.1);
     if (this.bootLayer) {
       return;
     }
+    // The sky follows the wall clock, so it advances on every screen and even
+    // after the tab was hidden: `update` touches the save only when a front
+    // actually changed.
+    if (this.worldClock?.update()) this.worldClock.persist();
     this.screens.update(dt);
     this.updateCursor();
   };

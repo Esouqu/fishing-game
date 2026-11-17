@@ -1,4 +1,4 @@
-import type { FishTier, Temperament, WaterKind, WeatherId } from "./types";
+import type { FishTier, WaterKind, WeatherId } from "./types";
 
 export interface FishText {
   name: string;
@@ -198,13 +198,6 @@ export const WATER_LABEL: Record<WaterKind, string> = {
   river: "РЕКА",
 };
 
-/** Feminine adjective used in the codex sentence: «озерная рыба». */
-export const WATER_ADJ: Record<WaterKind, string> = {
-  lake: "озерная",
-  sea: "морская",
-  river: "речная",
-};
-
 /** Rarity label used by badges and the codex tooltip. */
 export const TIER_LABEL: Record<FishTier, string> = {
   common: "ОБЫЧНАЯ",
@@ -212,70 +205,56 @@ export const TIER_LABEL: Record<FishTier, string> = {
   legendary: "ЛЕГЕНДАРНАЯ",
 };
 
-/** Fixed species temperament, shown in the codex. */
-export const TEMPERAMENT_LABEL: Record<Temperament, string> = {
-  calm: "СПОКОЙНАЯ",
-  aggressive: "АГРЕССИВНАЯ",
-  skittish: "ПУГЛИВАЯ",
-  stubborn: "УПРЯМАЯ",
-};
-
 export interface HelpPage {
   id: HelpPageId;
   title: string;
   lines: readonly string[];
-  caption: string;
 }
 
 export type HelpPageId = "cast" | "fight" | "counter" | "land";
 
-/** Paged fishing manual: one short lesson and one preview per page. */
+/**
+ * The manual, as four short lessons: one step of a round each, three lines of
+ * copy and one still of the real UI. The copy is deliberately terse — a popup
+ * the player opens mid-session is read, not studied — but every line carries a
+ * rule the game actually enforces.
+ */
 export const HELP_PAGES: readonly HelpPage[] = [
   {
     id: "cast",
     title: "ЗАБРОС",
     lines: [
-      "Зажми ЛКМ или ПРОБЕЛ.",
-      "Отпусти в зеленой зоне.",
-      "Зеленая зона немного повышает\nшанс редкой рыбы.",
-      "На «!» жми сразу.",
+      "Зажми ЛКМ и отпусти в зеленой зоне.",
+      "Зеленая зона повышает шанс редкой рыбы.",
+      "На «!» подсекай сразу — иначе сорвется.",
     ],
-    caption: "ШКАЛА СИЛЫ И ПОКЛЕВКА",
   },
   {
     id: "fight",
     title: "БОРЬБА",
     lines: [
-      "Держи рыбу внутри круга.",
-      "Тяни против ее хода.",
-      "Зеленая полоса — выносливость рыбы.",
-      "Синяя полоса — ваша хватка.\nЭто запас сил: держишь — тратится.\nОтпустишь — восстановится.",
+      "Держи рыбу внутри круга: зажми и веди против ее хода.",
+      "Зеленая полоса — силы рыбы.",
+      "Синяя полоса — твоя хватка: держишь — тратится.",
     ],
-    caption: "КРУГ, РЫБА И ПОЛОСЫ",
   },
   {
     id: "counter",
     title: "КОНТРРЫВОК",
     lines: [
-      "На рывке отпусти.",
-      "Затем тяни в обратную.",
-      "У некоторых рыб финт:\nстрелка врет, жди разворота.",
-      "Фиолетовая стрелка — финт,\nкрасная — честный рывок.",
-      "Контр блокирует рывок.",
+      "Сектор вспыхнул — зажми его и потяни к центру.",
+      "Красная стрелка — рывок, фиолетовая — обманка.",
+      "Вовремя зажатый контр гасит рывок.",
     ],
-    caption: "ПРЕДУПРЕЖДЕНИЕ О РЫВКЕ",
   },
   {
     id: "land",
     title: "ПОИМКА",
     lines: [
-      "Золотой круг — рыба готова к поимке.",
-      "Можно выловить сразу:\nПКМ или F (мышь),\nтап по рыбе — на сенсорном.",
-      "Или дождаться 0 — тогда сама.",
-      "Вес виден после поимки.",
-      "У каждого водоема свои рыбы,\nвремя и погода.",
+      "Золотой круг — рыба готова: ПКМ или F.",
+      "Или дождись нуля — поймается сама.",
+      "Вес и вид записываются в справочник (C).",
     ],
-    caption: "ГОТОВО К ПОИМКЕ",
   },
 ];
 
@@ -307,8 +286,7 @@ export const TEXT = {
     title: "ЗИМНЯЯ РЫБАЛКА",
   },
   game: {
-    biteMark: "!",
-    readyToCast: "ЗАБРОС",
+    readyToCast: "ЗАБРОСИТЬ",
     castKey: "ЛКМ",
     earlyHook: "РАНО!",
     lostFish: "СОРВАЛАСЬ…",
@@ -318,11 +296,10 @@ export const TEXT = {
     catchFeedback: (name: string, weight: string): string =>
       `${name.toUpperCase()}\n${weight} ${KG}`,
   },
+  /** Labels of the travel cards between water bodies. */
   areas: {
-    title: "ВЫБЕРИТЕ ВОДОЕМ",
-    back: "НАЗАД",
-    fish: "К РЫБАЛКЕ",
-    selected: "ВЫБРАН",
+    /** Stands in for the name of a water body the host has closed. */
+    closed: "НЕДОСТУПНО",
   },
   /** Sky rail at the bottom of the round: the live front's caption. */
   forecast: {
@@ -345,19 +322,26 @@ export const TEXT = {
   },
   help: {
     title: "КАК ИГРАТЬ",
-    prev: "ПРЕД.",
-    next: "ДАЛЕЕ",
-    page: (index: number, total: number): string => `${index} / ${total}`,
   },
-  fight: {
-    stamina: "СИЛА",
-  },
-  /** Dev-only audio balance panel (`F2`) and weather picker (`F3`). */
+  /** Dev-only audio balance panel (`F2`) and the sky inspector (`F3`). */
   devtools: {
     title: "ЗВУК: БАЛАНС",
     hint: "КНОПКА У НАЗВАНИЯ — ПОСЛУШАТЬ · F2 / ESC — ЗАКРЫТЬ · «В КОД» ПИШЕТ audioMix.ts",
-    weather: "ПОГОДА · DEV",
-    weatherHint: "F3 / ESC — ЗАКРЫТЬ",
+    /** One window for the front, the hour and the water. */
+    sky: "НЕБО · ВОДА · DEV",
+    skyHint: "F3 / ESC — ЗАКРЫТЬ",
+    weatherRow: "ПОГОДА",
+    timeRow: "ВРЕМЯ",
+    /** Header of the water knobs under the sky rows. */
+    waterRow: "ВОДА",
+    timeAuto: "СЕЙЧАС",
+    /** Presets of the sky inspector, each pinned to a representative hour. */
+    timePresets: {
+      night: "НОЧЬ",
+      morning: "УТРО",
+      day: "ДЕНЬ",
+      evening: "ВЕЧЕР",
+    },
     reset: "СБРОС",
     copy: "КОПИЯ",
     save: "В КОД",

@@ -120,13 +120,11 @@ const sounds = [
   ["Miscellaneous/water_scoop1.wav", "water-scoop.wav"],
   ["Miscellaneous/bob.wav", "bob.wav"],
   ["Characters/fishBite.wav", "bite.wav"],
-  // The strike that sets the hook: the pack's hit cue. The jingle that stood in
-  // for it belonged to the catch fanfare, not to the rod answering a bite.
+  // The strike that sets the hook: the pack's hit cue.
   ["Characters/FishHit.wav", "fish-hit.wav"],
   ["Characters/fishEscape.wav", "escape.wav"],
   ["Miscellaneous/slowReel.wav", "reel.wav"],
   ["Miscellaneous/water_lap2.wav", "water-lap.wav"],
-  ["Interface/achievement.wav", "achievement.wav"],
   ["Miscellaneous/reward.wav", "reward.wav"],
   // Answered dash: the rod snapping the line taut. A quarter-second, very
   // bright swipe sits under the eye's "the pull connected" beat; the metallic
@@ -134,8 +132,6 @@ const sounds = [
   ["Miscellaneous/daggerswipe.wav", "line-snap.wav"],
   ["Miscellaneous/shiny4.wav", "shiny.wav"],
   ["Miscellaneous/crit.wav", "crit.wav"],
-  // The perfect-catch jingle: a short reply that lands just after the fanfare.
-  ["Miscellaneous/jingle1.wav", "jingle1.wav"],
   // The cast that lands in the luck zone: a short "objective complete" chime,
   // played over the throw instead of ticking while the meter crosses the band.
   ["Interface/objectiveComplete.wav", "objective-complete.wav"],

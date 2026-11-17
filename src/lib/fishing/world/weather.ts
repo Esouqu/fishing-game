@@ -1,12 +1,16 @@
 import type { WeatherId } from "../types";
 
 /**
- * How long a weather front lasts, in real seconds. Weather is deliberately
- * faster than the real sky: a session has to see a few fronts, or a rare fish
- * that needs a storm would be unreachable.
+ * How long a weather front lasts, in real seconds: four to six minutes.
+ *
+ * A front used to turn over every 75–150 seconds, which made the sky — and the
+ * forecast rail under it — feel like a slot machine while the player was still
+ * reading the water. Four to six minutes is long enough to settle into a front,
+ * plan a cast around it and see the rail's next period arrive, and still short
+ * enough that a rare fish needing a storm shows up inside one sitting.
  */
-export const WEATHER_MIN = 75;
-export const WEATHER_MAX = 150;
+export const WEATHER_MIN = 240;
+export const WEATHER_MAX = 360;
 
 /**
  * How many fronts the clock keeps rolled ahead of the live one. The rail shows
@@ -14,12 +18,6 @@ export const WEATHER_MAX = 150;
  * does not change, so the queue is deeper than the number of columns.
  */
 export const FORECAST_QUEUE = 6;
-
-/** A front that has not arrived yet, with the length it will run. */
-export interface QueuedFront {
-  id: WeatherId;
-  duration: number;
-}
 
 /** One column of the forecast: a front and when it takes over. */
 export interface ForecastStep {

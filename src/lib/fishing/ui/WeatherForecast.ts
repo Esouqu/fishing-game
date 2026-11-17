@@ -9,9 +9,8 @@ import { WeatherRail } from "./weatherRail";
 import {
   RAIL_HEIGHT,
   RAIL_SLOTS,
-  railPeriods,
+  railSteps,
   railWidth,
-  type RailPeriod,
 } from "./weatherRailLayout";
 
 /**
@@ -19,20 +18,18 @@ import {
  * the bottom of the round.
  *
  * It reads like a compact forecast strip: one panel holding a row of cards, each
- * one row tall with the weather glyph and its caption centred together (the live
- * one says В«РЎР•Р™Р§РђРЎВ», the rest carry the clock time they take over). The panel is
- * deliberately half the height of the corner travel cards: it is a readout, so it
- * must not compete with the pictures next to it. The row is always
- * {@link RAIL_SLOTS} slots wide, so the widget never reflows while the player is
- * reading it; consecutive fronts of the same sky fold into one card that spans
- * one slot per front with no divider between, so the rail never shows three
- * identical suns in a row and never gets narrower either.
+ * one carrying the weather glyph beside two captions — the clock (or «СЕЙЧАС»
+ * for the live period) over the name of the sky. The panel is deliberately half
+ * the height of the corner travel cards: it is a readout, so it must not compete
+ * with the pictures next to it. The row is always {@link RAIL_SLOTS} cards wide
+ * and shows the next four fronts, one each, so the widget never reflows while
+ * the player is reading it and a run of one sky never hides the fronts behind
+ * it.
  *
  * The row itself lives in {@link WeatherRail}: when a front expires it rolls one
- * place left instead of blinking вЂ” the card that becomes В«nowВ» crossfades its
+ * place left instead of blinking — the card that becomes «now» crossfades its
  * clock time into the live caption, and the front that just entered the forecast
- * slides in from the right edge. A change that re-shapes the cards is a soft
- * fade instead, because a card cannot slide while it changes width.
+ * slides in from the right edge.
  */
 const HEIGHT = RAIL_HEIGHT;
 /** Sits on the same bottom line as the travel cards in the corners. */
@@ -109,75 +106,59 @@ export class WeatherForecast extends Container {
    */
   private refresh(animate: boolean): void {
     const clock = this.game.clock;
-    // Enough raw fronts to fill all four slots after the repeats fold together:
-    // a run of three clear fronts is one period across three slots, not three
-    // cards, so the queue is asked for more than four steps.
-    const periods = railPeriods(clock.forecastFor(this.areaId, RAIL_SLOTS + 4));
-    if (periods.length === 0) return;
+    // Exactly the fronts the rail draws: one card each, no folding.
+    const steps = railSteps(clock.forecastFor(this.areaId, RAIL_SLOTS));
+    if (steps.length === 0) return;
 
-    // The slot count is part of the signature: the same skies can re-shape the
-    // row when a run grows or splits, and that is a visible change.
-    const signature = periods
-      .map(
-        (period) =>
-          `${period.weather}:${period.slots}:${Math.round(period.length)}`,
-      )
+    // The length is part of the signature: the same sky can stay for a shorter
+    // or longer front, and the rail's clock caption has to follow it.
+    const signature = steps
+      .map((step) => `${step.weather}:${Math.round(step.length)}`)
       .join(",");
     if (signature === this.painted) return;
     this.painted = signature;
     const minutes = clock.minutes;
 
     if (!animate || this.rail.weathers().length === 0) {
-      this.rail.rebuild(periods, minutes, animate);
+      this.rail.rebuild(steps, minutes, animate);
       return;
     }
 
-    // Same skies in the same shape: a same-sky successor was folded into the
-    // live period, or the queue was re-rolled under an identical row. Only the
-    // captions can have moved, so refresh them in place without a blink.
+    // Same skies in the same order: the queue was re-rolled under an identical
+    // row. Only the captions can have moved, so refresh them in place without a
+    // blink.
     const old = this.rail.weathers();
-    const oldSlots = this.rail.slots();
     if (
-      old.length === periods.length &&
-      periods.every(
-        (period, index) =>
-          period.weather === old[index] && period.slots === oldSlots[index],
-      )
+      old.length === steps.length &&
+      steps.every((step, index) => step.weather === old[index])
     ) {
-      this.rail.retime(periods, minutes);
+      this.rail.retime(steps, minutes);
       return;
     }
 
-    // One front expired and the row simply rolls left. Roll only when the new
-    // row is the old row minus its head *and* the cards keep their widths: a
-    // card cannot slide while it is changing shape.
-    const removed = this.slideSize(old, oldSlots, periods);
+    // One front expired and the row simply rolls left: the new row is the old
+    // row minus its head, with the front that entered the forecast appended.
+    const removed = this.slideSize(old, steps);
     if (removed > 0) {
-      this.rail.roll(periods, minutes, removed);
+      this.rail.roll(steps, minutes, removed);
       return;
     }
-    this.rail.rebuild(periods, minutes, true);
+    this.rail.rebuild(steps, minutes, true);
   }
 
   /**
    * How many cards left the head of the row, when the rest of it is the same
-   * sequence with the same widths. Returns 0 when the new row cannot be reached
-   * by a plain slide.
+   * sequence. Returns 0 when the new row cannot be reached by a plain slide.
    */
   private slideSize(
     old: readonly WeatherId[],
-    oldSlots: readonly number[],
-    periods: readonly RailPeriod[],
+    steps: readonly { weather: WeatherId }[],
   ): number {
-    if (periods.length !== old.length) return 0;
+    if (steps.length !== old.length) return 0;
     for (let removed = 1; removed < old.length; removed += 1) {
       let matches = true;
       for (let i = removed; i < old.length; i += 1) {
-        if (old[i] !== periods[i - removed].weather) {
-          matches = false;
-          break;
-        }
-        if (oldSlots[i] !== periods[i - removed].slots) {
+        if (old[i] !== steps[i - removed].weather) {
           matches = false;
           break;
         }

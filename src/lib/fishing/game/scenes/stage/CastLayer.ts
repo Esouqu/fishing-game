@@ -1,8 +1,10 @@
 import { C, TIMING } from "../../../config";
-import { clamp, easeOutCubic, lerp, randRange } from "../../../utils";
+import { clamp, easeOutCubic, lerp } from "../../../utils";
+import { mixColor } from "../../../world";
 import { castAway, layoutBounds, safeCastSpot } from "../../castSafety";
+import { aimCast } from "../../castAim";
 import { AnglerLayer } from "./AnglerLayer";
-import { drawFishStamina } from "./staminaArc";
+import { drawFishStamina, drawStaminaThreshold } from "./staminaArc";
 import { BITE_SINK, NIBBLE_DIP, nibbleDip } from "./setup";
 
 export abstract class CastLayer extends AnglerLayer {
@@ -23,55 +25,39 @@ export abstract class CastLayer extends AnglerLayer {
   /** Repaints the endurance stub on the float, or hides it outside a fight. */
   protected drawStaminaArc(): void {
     const g = this.staminaArc;
+    const notch = this.staminaThreshold;
     if (this.phase !== "fight") {
       g.visible = false;
+      notch.visible = false;
       return;
     }
     g.visible = true;
-    drawFishStamina(g, this.fishStamina, this.time);
+    notch.visible = true;
+    drawFishStamina(g, this.fishStamina);
+    drawStaminaThreshold(notch);
   }
-  playCast(power: number): void {
+  /**
+   * Launches the float toward `aim` — the cursor at the moment of release —
+   * with the charge deciding how far along that line it lands. Without an aim
+   * the cast still goes out along the water's own axis, which is what the
+   * scripted casts and the dev hooks rely on.
+   */
+  playCast(power: number, aim?: { x: number; y: number }): void {
     this.previewG.clear();
     this.pulling = false;
-    // A fresh cast starts with a rested fish: the previous round's fatigue never
-    // carries over onto the new float.
+    // A fresh cast starts with a rested fish: no fatigue carries over.
     this.escapeMeter = 0;
     this.fishStamina = 1;
     this.drawStaminaArc();
     this.castPower = clamp(power);
-    const zone = this.layout.bobber;
-    const spread = zone.spreadBase + this.castPower * zone.spreadPower;
-    let targetX: number;
-    let targetY: number;
-    if (zone.axis === "y") {
-      // Casting away from the angler: power controls how far up the frame the
-      // float lands, while the sideways spread stays random.
-      const center = (zone.minX + zone.maxX) / 2;
-      targetX = clamp(
-        center + randRange(-spread, spread),
-        zone.minX,
-        zone.maxX,
-      );
-      targetY = clamp(
-        lerp(zone.maxY, zone.minY, this.castPower) + randRange(-4, 4),
-        zone.minY,
-        zone.maxY,
-      );
-    } else {
-      // The power axis is always clamped to the band: a sideways jitter that
-      // pushed the float past the near edge would drag the ring onto the bank.
-      targetX = clamp(
-        lerp(zone.minX, zone.maxX, this.castPower) + randRange(-6, 6),
-        zone.minX,
-        zone.maxX,
-      );
-      // A sideways cast may be aimed at a band further out than the angler
-      // (the river puts it mid-channel instead of on the near shelf).
-      const aimY = zone.centerY ?? this.layout.angler.y;
-      targetY = clamp(aimY + randRange(-spread, spread), zone.minY, zone.maxY);
-    }
+    const cast = aimCast({
+      from: { x: this.rodTip.x, y: this.rodTip.y },
+      aim: aim ?? { x: this.rodTip.x, y: this.rodTip.y },
+      layout: this.layout,
+      power: this.castPower,
+    });
 
-    const spot = this.settleCast(targetX, targetY);
+    const spot = this.settleCast(cast.x, cast.y, cast.away);
     this.bobberBaseX = spot.x;
     this.bobberBaseY = spot.y;
     this.bobber.position.set(this.rodTip.x - 1, this.rodTip.y - 2);
@@ -94,6 +80,7 @@ export abstract class CastLayer extends AnglerLayer {
   protected settleCast(
     x: number,
     y: number,
+    away = castAway(this.layout),
   ): { x: number; y: number; moved: number; safe: boolean } {
     const isWater = (px: number, py: number): boolean =>
       this.renderer.isWater(px, py);
@@ -101,7 +88,7 @@ export abstract class CastLayer extends AnglerLayer {
       point: { x, y },
       isWater,
       angler: this.layout.angler,
-      away: castAway(this.layout),
+      away,
       bounds: layoutBounds(this.layout),
     });
     if (import.meta.env.DEV && !spot.safe) {
@@ -358,14 +345,17 @@ export abstract class CastLayer extends AnglerLayer {
       /** Looking down at the water: rings are circles cut by the surface. */
       const surface = 0.72;
       const pulse = (Math.sin(this.time * 2.4) + 1) / 2;
-      // Dragged by the fish the footprint grows, the way a float being pulled
-      // sideways opens a wider ring around itself. The growth stays inside the
-      // float's gauges, so the water never swallows the arcs.
-      const resting = 4.6 + pulse * 1.4 + tension * 2.5;
+      // The waterline of a float being dragged down: the deeper the body sits
+      // under the surface, the wider the ring it pushes out and the warmer it
+      // runs — ice at rest, red when the float is close to drowning. The shape
+      // is the same water it always was; only the water's answer to the float
+      // changes, so the escape cue lives on the float instead of in a gauge.
+      const sink = this.phase === "fight" ? clamp(this.bobberBody.y / 6) : 0;
+      const resting = 4.6 + pulse * 1.4 + sink * 3.2;
       this.bobberRipple.ellipse(0, 0, resting, resting * surface).stroke({
         width: 1,
-        color: this.palette.ice,
-        alpha: 0.42 + pulse * 0.18 + tension * 0.2,
+        color: mixColor(this.palette.ice, C.red, sink),
+        alpha: 0.42 + pulse * 0.18 + sink * 0.22,
       });
       // A tug on the bait also pushes the surface: the ellipse spreads with the
       // dip and fades as the float settles back.
