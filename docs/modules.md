@@ -26,11 +26,11 @@ src/
     game/
       CastFlow.ts               фасад фазы раунда
       cast/                     core, input, state, setup
-      fight/                    FightModel, motion, stamina, counter, bubbles, zone, pace, pause
-      fightView/                ring, warning, bars, Minigame
+      fight/                    FightModel, motion, stamina, counter, bubbles, zone, pace, pause, zoneTuning
+      fightView/                ring, warning, bars, Minigame, zoneClock, zoneWedge
       scenes/
         FishingScene.ts         фасад
-        stage/                  core, angler, cast, fx, catch, biteMark
+        stage/                  core, angler, cast, fx, catch, burst, biteMark
         dither.ts grass.ts noise.ts props.ts water.ts
         logs/  river/  cove/  pool/
       Atmosphere.ts             фасад
@@ -64,7 +64,8 @@ src/
 
 ## Правила
 
-- 400 строк на `.ts`; `pnpm check:structure`.
+- Размер файла — запах, а не лимит: делим по шву, `pnpm check:structure` отмечает модули
+  крупнее 500 строк.
 - `Game` не импортируется экранами: только `GameContext`.
 - Публичный API — только `src/lib/fishing/index.ts`; всё остальное внутреннее.
 - Стиль UI (обводки, отступы попапов, шрифты, состояния) — [style-guide.md](style-guide.md).

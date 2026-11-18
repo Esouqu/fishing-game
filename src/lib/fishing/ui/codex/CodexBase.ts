@@ -6,13 +6,13 @@ import type { AreaId } from "../../types";
 import { Button } from "../Button";
 import { FocusGroup } from "../FocusGroup";
 import { UI } from "../palette";
-import { drawPanel, makeText } from "../theme";
+import { drawCloseIcon, drawPanel, makeText } from "../theme";
 import { anchorInk, inkTopInset } from "../textInk";
 import { CodexTabs } from "./CodexTabs";
 import { SelectionRing } from "./selectionRing";
 import { CONTENT, DETAILS, GRID, PANEL, TABS, TITLE, type Cell } from "./setup";
 
-/** Side of the square «Х» button in the title row. */
+/** Side of the square close button in the title row. */
 const CLOSE_SIZE = 18;
 
 export abstract class CodexBase extends Container {
@@ -99,21 +99,21 @@ export abstract class CodexBase extends Container {
     });
     // The wordmark and the close button are one row, so the title is centred on
     // the button's middle (not on the top of the font's line box, which put the
-    // capitals a few pixels lower than the «Х»).
+    // capitals a few pixels lower than the close cross).
     anchorInk(title, "left", "center");
     title.position.set(TITLE.x, TITLE.y + CLOSE_SIZE / 2);
     this.addChild(title);
 
-    // Standard secondary button with a big uppercase «Х»: the codex used to end
-    // with a full ice-white «ЗАКРЫТЬ» bar, which competed with the title for the
-    // eye. The letter is a text glyph from the pixel font, so it stays crisp.
+    // Standard secondary button with the drawn close cross: the codex used to
+    // end with a full ice-white «ЗАКРЫТЬ» bar, which competed with the title for
+    // the eye, and then with the letter «Х» from the pixel font, which carried
+    // softer edges than every other mark on the frame. The cross is a 10 px
+    // pixel glyph now — see `drawCloseIcon`.
     const close = new Button({
-      label: "Х",
       width: CLOSE_SIZE,
       height: CLOSE_SIZE,
-      size: 15,
       variant: "secondary",
-      marks: false,
+      icon: (graphics) => drawCloseIcon(graphics),
       onClick: () => this.onClose(),
     });
     close.position.set(CONTENT.right - CLOSE_SIZE, TITLE.y);

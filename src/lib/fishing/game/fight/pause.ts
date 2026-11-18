@@ -1,7 +1,7 @@
-import { FIGHT } from "../../config";
 import type { FightCounter } from "./counter";
 import type { FightMotion } from "./motion";
 import type { FightState } from "./state";
+import { zoneTuning } from "./zoneTuning";
 
 /**
  * Resolve the dash that was live when the round went into the pause menu.
@@ -13,6 +13,11 @@ import type { FightState } from "./state";
  * its counter window is already spent. A pause during the calm part of the
  * fight costs nothing, and the landing window is not touched — the final pull
  * is a single deliberate button, not a timed window.
+ *
+ * The window is opened here on purpose: the player paused, so the dash that was
+ * on screen has to be answerable for exactly as long as its zone would have been
+ * painted, and `consumeUnanswered` right after charges the miss as if the
+ * telegraph had played out.
  */
 export function resumeFightAfterPause(
   state: FightState,
@@ -22,15 +27,15 @@ export function resumeFightAfterPause(
   if (!state.running) return;
   if (state.warnTime > 0) {
     if (motion.resolveTelegraph()) {
-      counter.openWindow();
+      counter.openWindow(zoneTuning.truthTime);
     } else {
       // A paused feint resolves fully: the false lunge and then the turn.
       motion.resolveFeintTurn();
-      counter.openWindow(FIGHT.feintWindow);
+      counter.openWindow(zoneTuning.truthTime);
     }
   } else if (state.feintTimer > 0) {
     motion.resolveFeintTurn();
-    counter.openWindow(FIGHT.feintWindow);
+    counter.openWindow(zoneTuning.truthTime);
   }
   counter.consumeUnanswered();
 }

@@ -22,11 +22,19 @@ export abstract class MinigameCore extends Container {
    * The landing ring rides here too, for the same reason.
    */
   readonly pointers = new Container();
+  /**
+   * The padlock of a landed counter, on a container of its own.
+   *
+   * It belongs to the float, so the stage re-parents it onto the float's layer
+   * *after* the float and the pointers: the mark has to sit on top of the bobber,
+   * not behind the sprite it is sealing. Until then it simply rides in the fight
+   * layer, which keeps a bare `Minigame` (tests, the F8 preview) complete.
+   */
+  readonly lockMark = new Container();
   /** The closing landing-window ring around the tired fish. */
   protected readonly landRing = new Graphics();
   protected readonly directionG = new Graphics();
   protected readonly cueG = new Graphics();
-  /** The padlock of a landed counter; above the float, like the pointers. */
   protected readonly lockG = new Graphics();
   protected readonly barG = new Graphics();
   protected readonly warnG = new Graphics();
@@ -86,12 +94,17 @@ export abstract class MinigameCore extends Container {
 
     this.pointers.addChild(this.landRing);
     this.pointers.addChild(this.directionG);
-    this.pointers.addChild(this.lockG);
     this.pointers.addChild(this.warnG);
     this.pointers.eventMode = "none";
+    this.lockMark.addChild(this.lockG);
+    this.lockMark.eventMode = "none";
+    this.addChild(this.lockMark);
     this.addChild(this.cueG);
     this.model.onFinish = (result) => this.onFinish?.(result);
-    this.update(0);
+    // No `this.update(0)` here: it is a virtual call from a base constructor, so
+    // it would run before the subclass fields exist (`WarningView`'s two zone
+    // clocks among them) and crash on the first hook. `FightStage` paints the
+    // opening frame right after the view is built instead.
   }
 
   get isSteering(): boolean {

@@ -150,6 +150,7 @@ export abstract class GameScreenCore extends Screen {
 
     this.hud = new GameHud(area, {
       onPause: () => this.openPause(),
+      onCodex: () => this.openCodex(),
     });
     this.hud.addChild(this.castHint);
     this.addChild(this.hud);
@@ -170,7 +171,6 @@ export abstract class GameScreenCore extends Screen {
 
     this.pauseMenu = new PauseMenu(game, {
       onResume: () => this.closePause(true),
-      onCodex: () => this.openCodex(),
     });
     this.addChild(this.pauseMenu);
 

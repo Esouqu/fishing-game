@@ -11,11 +11,17 @@ export const SILHOUETTE = 0x05080b;
 /** The warning only lifts the shadow to a cold slate; the arrow carries the cue. */
 export const SILHOUETTE_WARN = 0x1b2830;
 /**
+ * The tone of a blocked jerk: the dash cone drains to it and the fish's shadow
+ * lifts to it, so "this jerk is cancelled" is one colour wherever it shows —
+ * the cone, the shadow and the padlock all read as the same receipt.
+ */
+export const COUNTER_TONE = 0x5d7f92;
+/**
  * The countered fish: the same shadow, lifted towards the ice of the lock that
  * sits on it. The whole "this jerk is cancelled" marker is the fish plus the
  * padlock, so the fish takes the cue's colour instead of wearing a ring.
  */
-export const SILHOUETTE_COUNTER = 0x5d7f92;
+export const SILHOUETTE_COUNTER = COUNTER_TONE;
 /** Opacity of that shadow; low enough that the water reads through the fish. */
 export const SILHOUETTE_ALPHA = 0.55;
 export const TAU = Math.PI * 2;

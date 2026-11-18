@@ -5,6 +5,7 @@ import { setUiSoundHandler } from "./ui/Button";
 import { CursorOverlay } from "./ui/CursorOverlay";
 import { AudioMixPanel } from "./ui/AudioMixPanel";
 import { DevSkyPanel } from "./ui/DevSkyPanel";
+import { ZonePanel } from "./ui/ZonePanel";
 import { ScreenManager } from "./ui/ScreenManager";
 import { ProgressTracker } from "./progress";
 import type { SettingsStore } from "./storage";
@@ -48,6 +49,8 @@ export abstract class GameBase {
   protected audioPanel: AudioMixPanel | null = null;
   /** Dev sky inspector (front and hour), built the first time `F3` opens it. */
   protected skyPanel: DevSkyPanel | null = null;
+  /** Dev dash-zone tuner, built the first time `F8` opens it. */
+  protected zonePanel: ZonePanel | null = null;
 
   /** Clips all game content to the 480×270 frame inside the letterbox. */
   protected readonly worldMask = new Graphics();
@@ -57,24 +60,34 @@ export abstract class GameBase {
   protected readonly resizeObserver: ResizeObserver;
   protected readonly onKeyDown = (event: KeyboardEvent): void => {
     if (this.destroyed || !this.isEngaged() || this.assetBag === null) return;
-    // The audio mixer and the sky inspector are authoring tools, not cheats for
-    // the shipped game: in a production build they do nothing.
-    if (event.code === "F2" || event.code === "F3") {
-      if (!import.meta.env.DEV) return;
-      event.preventDefault();
-      if (event.code === "F2") this.toggleAudioPanel();
-      else this.toggleDevPanel();
-      return;
-    }
-    if (this.audioPanel?.isOpen) {
-      // The panel owns the keyboard while it is up: no cast, no pause menu.
-      this.audioPanel.handleKey(event);
-      event.preventDefault();
-      return;
-    }
-    if (this.skyPanel?.handleKey(event)) {
-      event.preventDefault();
-      return;
+    // The authoring panels ride on dead keys in a shipped game: F2/F3/F8 open
+    // the mixer, the sky inspector and the zone tuner, and while one of them is
+    // up it owns the keyboard. A player gets none of that, so the whole branch —
+    // the key codes included — lives inside the DEV flag and is compiled out of
+    // a production build instead of being compared on every keystroke. It also
+    // keeps F8 (devtools' step key) off the shipped page.
+    if (import.meta.env.DEV) {
+      if (event.code === "F2" || event.code === "F3" || event.code === "F8") {
+        event.preventDefault();
+        if (event.code === "F2") this.toggleAudioPanel();
+        else if (event.code === "F3") this.toggleDevPanel();
+        else this.toggleZonePanel();
+        return;
+      }
+      if (this.audioPanel?.isOpen) {
+        // The panel owns the keyboard while it is up: no cast, no pause menu.
+        this.audioPanel.handleKey(event);
+        event.preventDefault();
+        return;
+      }
+      if (this.zonePanel?.handleKey(event)) {
+        event.preventDefault();
+        return;
+      }
+      if (this.skyPanel?.handleKey(event)) {
+        event.preventDefault();
+        return;
+      }
     }
     if (
       event.code === "Space" ||
@@ -296,4 +309,5 @@ export abstract class GameBase {
   protected abstract updateCursor(): void;
   protected abstract toggleAudioPanel(): void;
   protected abstract toggleDevPanel(): void;
+  protected abstract toggleZonePanel(): void;
 }

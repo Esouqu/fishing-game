@@ -106,6 +106,11 @@ export abstract class CastFlowInput extends CastFlowCore {
       this.pressed = true;
       this.scene.setPulling(true);
       this.fight.setHold(true);
+    } else if (this.phaseValue === "resolve") {
+      // The catch display ends on the same press that would have cast: once the
+      // fish has landed, a click (or Space) skips the hold instead of waiting
+      // out the full three seconds.
+      this.skipCatch();
     }
   }
 

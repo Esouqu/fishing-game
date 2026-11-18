@@ -4,7 +4,6 @@ import { drawGrassTuft } from "../grass";
 import { drawFloatingLog } from "../logs";
 import {
   SPRITE_PAD,
-  drawBucket,
   drawContactShadow,
   drawReedClump,
   drawShoreStone,
@@ -143,7 +142,7 @@ export class RiverScenery extends RiverBanks {
     this.drawDriftwood(props, 246, this.nearAt(246) + 20);
     this.drawDriftwood(props, 360, this.nearAt(360) + 30);
 
-    // A signpost and the angler's bucket.
+    // A signpost on the bank, at the waterline.
     const sign = new Sprite(this.assets.sign);
     sign.anchor.set(0.5, 1);
     sign.position.set(176, this.nearAt(176) + 12);
@@ -152,8 +151,6 @@ export class RiverScenery extends RiverBanks {
     sign.zIndex = this.nearAt(176) + 12;
     props.addChild(sign);
     drawContactShadow(props, 176, this.nearAt(176) + 12, 6);
-
-    drawBucket(props, 124, 214);
   }
 
   protected drawDriftwood(props: Container, x: number, y: number): void {
@@ -218,12 +215,11 @@ export class RiverScenery extends RiverBanks {
     g.zIndex = anglerY - 0.6;
     props.addChild(g);
 
-    // A couple of stones and a reed tuft on the point.
+    // One pale stone on the point. There used to be a second, dark one at
+    // `anglerX + 26`: a flat grey ellipse, shadow-shaped by accident, which read
+    // as a loose shadow lying on the snow. The pale one at his other side is a
+    // snow-capped pebble, not a smudge.
     const stones = new Graphics();
-    stones.ellipse(anglerX + 26, this.nearAt(anglerX + 26) + 1, 4, 1.6).fill({
-      color: 0x64767d,
-      alpha: 0.9,
-    });
     stones.ellipse(anglerX - 24, this.nearAt(anglerX - 24) + 2, 5, 1.8).fill({
       color: this.palette.snowLight,
       alpha: 0.8,

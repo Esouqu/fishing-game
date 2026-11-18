@@ -1,17 +1,64 @@
 import { Graphics } from "pixi.js";
-import {
-  COUNTER_ARROW_REACH,
-  COUNTER_GRAB_ARC,
-  COUNTER_GRAB_INNER,
-  COUNTER_GRAB_OUTER,
-} from "../fight/counter";
 import { FIGHT_RADIUS } from "../fight";
+import { zoneTuning } from "../fight/zoneTuning";
 import { UI } from "../../ui/palette";
 import { clamp } from "../../utils";
 import { RingView } from "./RingView";
+import { counterLockPoint, drawCounterLock } from "./counterLock";
 import { INTRO_DURATION } from "./setup";
+import { ZoneClock } from "./zoneClock";
+import { drawZoneWedge } from "./zoneWedge";
 
 export abstract class WarningView extends RingView {
+  /**
+   * The real zone's life: it fades in when the dash starts, and — on a feint —
+   * only after `zoneTuning.delay`, so the truth arrives once the lie has been
+   * read. Shared with the `F8` panel's preview through {@link ZoneClock}, so the
+   * panel shows the same motion the fight plays.
+   */
+  protected readonly truthZone = new ZoneClock();
+  /** The false side of a feint: its own life, so it fades out on its own. */
+  protected readonly lieZone = new ZoneClock();
+  /** Heading the real zone is drawn at; held while it fades out. */
+  protected coneHeading = 0;
+  /** The feint's false heading, drawn violet; null while the dash is honest. */
+  protected coneLie: number | null = null;
+
+  /**
+   * Advances the zones' clocks. The geometry is deliberately *not* eased: the
+   * zone is drawn from the very wedge the model tests a press against, so its
+   * opacity may trail the rule but the shape must not. Called once per frame
+   * with the fight's own `dt`, before {@link drawWarning}.
+   */
+  protected updateJerkZone(dt: number): void {
+    const model = this.model;
+    const open = model.counterOpen > 0;
+    const warn = model.warn > 0;
+    // A caught counter keeps the zone on screen while the padlock is up, and
+    // drains it to the blocked grey instead of leaving it rose.
+    const blocked = model.counterFlashValue > 0;
+    const lie = warn && model.isFeint;
+
+    // The truth is painted exactly as long as the model keeps its grab open —
+    // the window and the paint are one span — and the lie for its own time from
+    // the telegraph.
+    this.truthZone.update(dt, open, blocked, zoneTuning.truthTime);
+    this.lieZone.update(dt, lie, blocked, zoneTuning.lieTime);
+
+    if (open || warn) {
+      // The rose zone marks the heading the fish will really take. On a feint's
+      // telegraph that is `counterHeading`, not the `warnHeading` the violet zone
+      // shows: drawing both from `warnHeading` stacks the lie on itself and the
+      // true zone disappears under it.
+      this.coneHeading =
+        open || model.isFeint ? model.counterHeading : model.warnHeading;
+    }
+    // The lie keeps its heading until its own fade-out is over, so it does not
+    // pop off the screen in the frame the telegraph ends.
+    if (lie) this.coneLie = model.warnHeading;
+    else if (this.lieZone.alpha() <= 0) this.coneLie = null;
+  }
+
   protected drawWarning(): void {
     const g = this.warnG;
     g.clear();
@@ -32,96 +79,49 @@ export abstract class WarningView extends RingView {
         },
       );
     }
-    const pulse = (Math.sin(this.model.time * 3.2) + 1) / 2;
-    const open = this.model.counterOpen;
 
-    // One cone per direction, always drawn the same way: a filled band with a
-    // thin outline. An honest dash gets one rose cone; a feint gets two — rose
-    // for the heading it will really take, violet for the heading it pretends
-    // to take — so the pair can be compared like two arrows of the same kind.
-    if (open > 0) {
-      const heading = this.model.counterHeading;
-      this.drawGrabWedge(g, heading, pulse, 1);
-      this.drawGrabRing(g, heading);
-    } else if (this.model.warn > 0) {
-      if (this.model.isFeint) {
-        this.drawGrabWedge(g, this.model.counterHeading, pulse, 0.8);
-        this.drawGrabWedge(g, this.model.warnHeading, pulse, 0.8, UI.violet);
-      } else {
-        this.drawGrabWedge(g, this.model.warnHeading, pulse, 0.8);
-      }
+    // One zone per direction: an honest dash gets the rose one, a feint gets the
+    // rose truth and the violet lie. The lie is painted from the telegraph for
+    // `lieTime`; the truth from the moment the model opens its grab, for
+    // `truthTime` — the same span the press is accepted over. A spent grip dims
+    // the truth: the band is still the band, but the hand that would use it has
+    // nothing left, and the grip gauge next to it is already wearing its padlock.
+    const usable = this.model.isGripLocked ? 0.4 : 1;
+    this.drawGrabWedge(
+      g,
+      this.coneHeading,
+      this.truthZone.alpha() * usable,
+      this.truthZone.tone(UI.rose),
+    );
+    if (this.coneLie !== null) {
+      this.drawGrabWedge(
+        g,
+        this.coneLie,
+        this.lieZone.alpha(),
+        this.lieZone.tone(UI.violet),
+      );
     }
-
-    // The cone alone carries the dash: it is drawn from the very arc the model
-    // tests a press against, so it says where a grab lands without a pointer
-    // drawn over it. The arrowheads that used to sit on the rim are gone — on a
-    // feint the pair stacked two pointers of the same weight in the same band,
-    // and the violet cone already says which heading is the lie.
   }
 
   /**
-   * A cone of the ring: the side a press can come from.
-   *
-   * Drawn from the very constants the model tests against
-   * ({@link COUNTER_GRAB_ARC} / `_INNER` / `_OUTER`), so the highlight *is* the
-   * rule and not an illustration of it: a press anywhere in the rose cone is a
-   * valid grab. It is a wash of water rather than a panel — the fish and the
-   * float stay readable over it — but opaque enough to be found at a glance.
-   *
-   * Every cone is drawn with the same fill and stroke; the colour is the only
-   * difference, so an honest dash and a feint read as the same object: rose is
-   * a heading the fish will really take, violet is a lie.
+   * One zone of the ring, drawn around the fight's centre. The shape and the
+   * recipe live in {@link drawZoneWedge}, shared with the `F8` panel's preview:
+   * what the panel shows is the drawing the fight does, not a lookalike.
    */
   protected drawGrabWedge(
     g: Graphics,
     heading: number,
-    pulse: number,
-    strength: number,
-    color: number = UI.rose,
+    alpha: number,
+    color: number,
   ): void {
-    const from = heading - COUNTER_GRAB_ARC;
-    const to = heading + COUNTER_GRAB_ARC;
-    const steps = 12;
-    const at = (angle: number, radius: number): [number, number] => [
-      this.model.centerX + Math.cos(angle) * radius,
-      this.model.centerY + Math.sin(angle) * radius,
-    ];
-
-    const points: number[] = [];
-    for (let i = 0; i <= steps; i += 1) {
-      points.push(...at(from + ((to - from) * i) / steps, COUNTER_GRAB_OUTER));
-    }
-    for (let i = steps; i >= 0; i -= 1) {
-      points.push(...at(from + ((to - from) * i) / steps, COUNTER_GRAB_INNER));
-    }
-
-    // The zone is a band of water the player presses through, so it stays a
-    // wash rather than a panel — but at seven percent it was almost invisible
-    // over the bright part of the ring, and the one cue the counter depends on
-    // has to be read at a glance. The fill roughly doubled and the rim carries
-    // the rest of the contrast.
-    g.poly(points).fill({ color, alpha: (0.16 + pulse * 0.1) * strength });
-    g.poly(points).stroke({
-      width: 1,
+    drawZoneWedge(
+      g,
+      this.model.centerX,
+      this.model.centerY,
+      heading,
+      alpha,
       color,
-      alpha: (0.5 + pulse * 0.3) * strength,
-    });
-  }
-
-  /**
-   * The grab window, marked by a small core on the arrow tip.
-   *
-   * It used to be a ring that breathed around that tip, then a shield opening
-   * off the float. Both were a second circle in a frame that already carries the
-   * fight ring, the telegraph cone and the fish's own arc; at the speed of a
-   * counter that read as noise rather than as "press here". A dot is enough: the
-   * cone says the side, the dot says the point.
-   */
-  protected drawGrabRing(g: Graphics, heading: number): void {
-    const glow = (Math.sin(this.model.time * 12) + 1) / 2;
-    const dotX = this.model.centerX + Math.cos(heading) * COUNTER_ARROW_REACH;
-    const dotY = this.model.centerY + Math.sin(heading) * COUNTER_ARROW_REACH;
-    g.circle(dotX, dotY, 3).fill({ color: UI.ice, alpha: 0.3 + glow * 0.5 });
+    );
   }
 
   protected drawCounterFlash(): void {
@@ -132,34 +132,22 @@ export abstract class WarningView extends RingView {
       this.lockG.clear();
       return;
     }
-    // A landed counter is one mark: the padlock on the fish. It says "this jerk
-    // is cancelled" and sits where the jerk was. No shockwave rings — the fight
-    // already draws its own ring, the float its waterline and the counter cone
-    // flashes in the same instant, so every extra circle turned a clear "blocked"
-    // into a burst of them.
+    // A landed counter is one mark: the padlock, hanging on the float the player
+    // is already watching (or on the fish, if the panel says so). It says "this
+    // jerk is cancelled" and sits where the jerk was. No shockwave rings — the
+    // fight already draws its own ring, the float its waterline and the counter
+    // cone flashes in the same instant, so every extra circle turned a clear
+    // "blocked" into a burst of them.
     const lock = this.lockG;
     lock.clear();
-    const point = this.model.fishPoint;
-    const flash = clamp(this.model.counterFlashValue * 4);
-
-    lock.ellipse(point.x, point.y + 1, 8, 5).fill({
-      color: UI.ink,
-      alpha: 0.45 * flash,
+    const point = counterLockPoint({
+      float: this.floatPoint,
+      fish: this.model.fishPoint,
     });
-
-    // Padlock: a dark body with a light shackle, drawn in whole pixels so it
-    // stays crisp at the fight's own scale.
-    const x = Math.round(point.x);
-    const y = Math.round(point.y) - 4;
-    lock.rect(x - 3, y, 6, 5).fill({ color: UI.ink, alpha: 0.9 * flash });
-    lock.rect(x - 2, y + 1, 4, 3).fill({ color: UI.ice, alpha: 0.95 * flash });
-    lock.rect(x - 1, y + 2, 2, 1).fill({ color: UI.ink, alpha: 0.95 * flash });
-    lock
-      .moveTo(x - 2, y)
-      .lineTo(x - 2, y - 2)
-      .lineTo(x + 1, y - 2)
-      .lineTo(x + 1, y)
-      .stroke({ width: 1, color: UI.ice, alpha: 0.95 * flash });
+    const lit = clamp(
+      this.model.counterFlashValue / Math.max(0.05, zoneTuning.lockTime),
+    );
+    drawCounterLock(lock, point.x, point.y, lit);
   }
 
   /**

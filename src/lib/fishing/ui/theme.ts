@@ -17,6 +17,21 @@ export const SCREEN_INSET = 12;
 /** Padding between a panel's frame and its content, on all four sides. */
 export const PANEL_PAD = 16;
 
+/**
+ * Ink contour around every outlined label, in virtual pixels.
+ *
+ * One width for the whole interface: the wordmark, the boot title, the cast
+ * prompt and the floating catch tags used to pick their own — 3, 3, 2.5 and 2 —
+ * so the same pixel font read as four different type styles depending on where
+ * it stood. Two is the width a pixel outline wants: Canvas strokes the glyph
+ * path from its middle, so 2 paints exactly 1 px of ink outside the letter and
+ * 1 px inside, and the outside edge of the contour lands on a whole pixel the
+ * way every frame in this UI does. A non-integer width (the prompt's 2.5) left a
+ * half-pixel fringe, and at 7 px its 1.25 px inside band swallowed the stems it
+ * was supposed to protect.
+ */
+export const TEXT_OUTLINE = 2;
+
 export interface TextOptions {
   size?: number;
   color?: number;
@@ -27,6 +42,18 @@ export interface TextOptions {
   lineHeight?: number;
   /** Wrap long copy at this width (virtual pixels). */
   wordWrapWidth?: number;
+  /**
+   * Outlines the label with {@link TEXT_OUTLINE} pixels of ink.
+   *
+   * It is an option of `makeText` rather than a `stroke` applied by the caller
+   * so the contour exists before the label is measured: `inkWidth`,
+   * `inkAnchorX` and `inkBox` all read the stroke out of the style, and a
+   * caller that added it afterwards got a label whose box, ink anchor and
+   * baseline were all computed for stroke-less text. That is why an outlined
+   * word sat half a contour off its own anchor and a pixel lower than its
+   * caption line.
+   */
+  outline?: boolean;
 }
 
 export function makeText(value: string, options: TextOptions = {}): Text {
@@ -52,6 +79,11 @@ export function makeText(value: string, options: TextOptions = {}): Text {
   text.resolution = 4;
   text.roundPixels = true;
   text.alpha = options.alpha ?? 1;
+  // Before the anchors: both the horizontal and the vertical one measure the
+  // ink box, and the contour is part of that box.
+  if (options.outline) {
+    text.style.stroke = { color: UI.ink, width: TEXT_OUTLINE };
+  }
   // Horizontal anchors line up with the glyphs, not with the advance box; the
   // vertical anchor is left alone, the caller decides how the label sits.
   alignInkX(text, options.align ?? "left");
@@ -254,15 +286,75 @@ export function drawPanel(
   }
 }
 
-export function drawPauseIcon(g: Graphics, color: number = UI.text): void {
+/**
+ * Pause bars: two framed bars, a little shorter than the codex mark beside them
+ * in the HUD corner. Full height made the pair read as two equal actions; the
+ * pause is the smaller one.
+ *
+ * They are drawn in the book's own language — ice paper inside an ink contour —
+ * because the two controls are one pair: solid dark bars next to a light,
+ * outlined book read as two different icon sets. For the same reason the bars
+ * are 3 px wide with a 1 px slot, not 4 px with 2 px of paper: a frame drawn
+ * around a narrow hole still reads as a 4 px block, and beside the book's 1 px
+ * contour the pause looked half again as bold. At 3 px the two marks carry the
+ * same amount of ink and the pair reads as one set.
+ */
+export function drawPauseIcon(g: Graphics, ink: number = UI.ink): void {
   g.clear();
-  g.rect(4, 3, 3, 10).fill(color);
-  g.rect(9, 3, 3, 10).fill(color);
+  // Frame of each bar, then the lit interior one pixel in. The two bars sit in
+  // the middle of the book's ten columns: 4..6 and 9..11, two columns apart.
+  for (const x of [4, 9] as const) {
+    g.rect(x, 4, 3, 8).fill(ink);
+    g.rect(x + 1, 5, 1, 6).fill(UI.primary);
+  }
 }
 
 export function drawPlayIcon(g: Graphics, color: number = UI.text): void {
   g.clear();
   g.moveTo(5, 3).lineTo(12, 8).lineTo(5, 13).closePath().fill(color);
+}
+
+/**
+ * Close cross of the windows' title row: the «Х» that used to be a text glyph
+ * from the pixel font.
+ *
+ * The letter was the last icon in the interface drawn by the font rather than
+ * by hand, and it showed: two 45° canvas strokes gave it soft, anti-aliased
+ * edges where every other mark on the frame is a whole pixel, and its weight
+ * changed with the font size. It is drawn now in the language of the pair in the
+ * HUD corner — ink contour, ice-paper interior (`drawPauseIcon`,
+ * `drawCodexMark`) — because the close button is the same kind of control.
+ *
+ * Ten columns and ten rows (x 3..12, y 3..12), the box the codex mark uses, so
+ * the cross fills an 18 px button without touching its frame. Each arm is three
+ * cells across with one cell of paper down the middle, exactly the pause bar's
+ * ink-paper-ink section; the tips stay solid ink so the paper lines stop short
+ * of the ends instead of poking out of the silhouette.
+ */
+export function drawCloseIcon(g: Graphics): void {
+  g.clear();
+  const left = 3;
+  const right = 12;
+  const top = 3;
+  // Rows are mirrored: step 0 is the top tip, step 9 the bottom one, and the two
+  // arms meet at steps 4–5.
+  for (let step = 0; step <= right - left; step += 1) {
+    const y = top + step;
+    // The two arms of the row: one falling right from the left edge, one falling
+    // left from the right edge.
+    const falls = [left + step, right - step] as const;
+    for (const x of falls) {
+      g.rect(x, y, 1, 1).fill(UI.ink);
+      // The rails beside the paper line, clipped by the box at the outer edges.
+      if (x > left) g.rect(x - 1, y, 1, 1).fill(UI.ink);
+      if (x < right) g.rect(x + 1, y, 1, 1).fill(UI.ink);
+    }
+    // Paper: the middle cell of each arm. Drawn over the rails, because on the
+    // crossing rows the two arms share those cells.
+    if (step > 0 && step < right - left) {
+      for (const x of falls) g.rect(x, y, 1, 1).fill(UI.primary);
+    }
+  }
 }
 
 /** Small pixel fish silhouette used as a decorative bullet. */

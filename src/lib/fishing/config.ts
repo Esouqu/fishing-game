@@ -18,22 +18,23 @@ export const FIGHT = {
   /** Endurance the fish regains while it is not being pulled. */
   recoveryBase: 0.04,
   recoveryScale: 0.04,
-  /** Hardcore counter window after a burst. */
-  counterWindow: 0.2,
+  /**
+   * How long the counter stays restable. The window itself is the zone's own
+   * paint time (`zoneTuning.truthTime`): a press counts while the band is drawn.
+   */
   counterRest: 0.15,
   /**
    * The counter is a gesture, not a second aim: the player presses on the dash
-   * side of the ring and drags toward the middle of it. `counterGrab` is how far
-   * past the arrow tip the grab wedge reaches — the wedge itself and its angles
-   * live in `game/fight/counter.ts` (`COUNTER_GRAB_*`), because the view draws
-   * the same shape the model tests. `counterDrag` is how far the drag has to
-   * travel before it counts.
+   * side of the ring and drags toward the middle of it. The wedge's shape and
+   * its half-angle live in `game/fight/zoneTuning.ts`, because the view draws
+   * the very same numbers the model tests. `counterDrag` is how far the drag has
+   * to travel before it counts.
    *
    * Aiming against the run with the button already held is not a gesture: the
    * press has to land on the dash side, which is what makes the move read as
    * "catch the dash by its tail" instead of "always pull the other way". The
-   * press may be prepared during the telegraph: a button put down in the wedge
-   * before the burst already arms the window.
+   * press may be prepared while the zone is up: a button put down in the wedge
+   * before the window already arms the grab.
    */
   counterGrab: 10,
   counterDrag: 9,
@@ -48,14 +49,11 @@ export const FIGHT = {
   tireScale: 0.3,
   /**
    * A feinting strong dash first lunges toward the false warning for this long,
-   * then reverses toward the true heading. The counter window opens only after
-   * the reversal, so the player has to read the turn instead of the arrow.
+   * then reverses toward the true heading.
    */
   feintDelay: 0.16,
   /** Power of the false lunge before the reversal. */
   feintPower: 0.55,
-  /** Counter window after a feint has revealed the true heading. */
-  feintWindow: 0.3,
   /** The false warning points this far off the true heading, in radians. */
   feintAngleMin: 1.1,
   feintAngleMax: 1.5,

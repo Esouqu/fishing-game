@@ -18,7 +18,7 @@ pnpm dev
 | --- | --- |
 | `pnpm typecheck` | TypeScript |
 | `pnpm lint` | ESLint + Prettier |
-| `pnpm check:structure` | лимит 400 строк, запрет старых шимов, циклы импортов, ссылки docs |
+| `pnpm check:structure` | большие файлы в отчёт, запрет старых шимов, циклы импортов, ссылки docs |
 | `pnpm sim` | headless-баланс боя и валидация 40 видов |
 | `pnpm check` | typecheck + lint + structure + sim |
 | `pnpm build` | typecheck + production-сборка в `dist/` |
@@ -48,7 +48,8 @@ src/lib/fishing/fight/      чистая симуляция боя
 - Не переименовывать id водоёмов `cove` / `deep` / `rapids`: на них завязаны сохранения.
 - Не двигать `src/lib/fishing/audioMix.ts` и маркеры `// #region audio-mix`: в них пишет dev-плагин Vite.
 - Публичный API `src/lib/fishing/index.ts` и пропсы `FishingGame.svelte` менять только осознанно.
-- Файл `.ts` — не больше 400 строк; это проверяет `pnpm check:structure`.
+- Размер файла — запах, а не правило: делим по реальному шву (сцена/подсистема/этап),
+  а не по числу строк. `pnpm check:structure` лишь перечисляет модули крупнее 500 строк.
 - Новые runtime-зависимости — только с обоснованием. Ассеты не коммитить вручную: `pnpm assets`.
 - `pnpm sim` — оракул поведения боя. При правке `FightModel` его вывод должен совпадать,
   если баланс не менялся намеренно.

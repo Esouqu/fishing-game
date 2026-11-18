@@ -1,42 +1,22 @@
 import { FIGHT } from "../../config";
 import { angleDelta } from "./angles";
-import { FIGHT_RADIUS } from "./constants";
 import type { FightState } from "./state";
+import { zoneArc, zoneInner, zoneOuter, zoneTuning } from "./zoneTuning";
 import { depositMissShare, relieveEscape } from "./zone";
 
 /**
- * How far past the rim the warning arrow reaches, in pixels.
+ * Is `(x, y)` inside the grab wedge centred on `heading`?
  *
- * The view draws it as two chevrons at `FIGHT_RADIUS + 6` and `+ 12`, so the
- * grab target sits between them: the player grabs the arrow, not the water in
- * front of the fish.
- */
-export const COUNTER_ARROW_REACH = FIGHT_RADIUS + 9;
-
-/**
- * The grab wedge: the dash side of the ring, where a press starts a counter.
- *
- * It used to be a disc around the arrow tip, which meant "press this pixel".
- * The press is a direction, not a pixel: the player reads "the fish will bolt
- * that way" and puts the button down on that side, then pulls to the middle of
- * the ring. A wedge from the ring out to just past the arrow is the same
- * gesture with room for the hand, and the view highlights exactly this shape,
- * so the spot the player sees and the spot the model accepts cannot disagree.
+ * The wedge is the band the whole counter is built on: the press is a direction,
+ * not a pixel вЂ” the player reads "the fish will bolt that way" and puts the
+ * button down on that side, then pulls to the middle of the ring. Its half-angle
+ * and its depth are the panel's (`zoneTuning`), and the view draws the very same
+ * band, so the spot the player sees and the spot the model accepts cannot
+ * disagree.
  *
  * It is deliberately a band, not the whole side of the water: the press has to
  * be aimed at the dash, so the float and the open middle stay out of it.
- *
- * `COUNTER_GRAB_ARC` is the half-angle around the dash heading, in radians;
- * the radii bound the muscle of the ring, so the middle (where the player aims
- * during ordinary pulling) stays outside the grab.
  */
-export const COUNTER_GRAB_ARC = 0.5;
-/** Inner radius of the wedge, in pixels: no grabbing over the float. */
-export const COUNTER_GRAB_INNER = FIGHT_RADIUS * 0.8;
-/** Outer radius: past the arrow tip by `counterGrab`. */
-export const COUNTER_GRAB_OUTER = COUNTER_ARROW_REACH + FIGHT.counterGrab;
-
-/** Is `(x, y)` inside the grab wedge centred on `heading`? */
 export function inGrabWedge(
   state: FightState,
   x: number,
@@ -46,8 +26,8 @@ export function inGrabWedge(
   const dx = x - state.centerX;
   const dy = y - state.centerY;
   const radius = Math.hypot(dx, dy);
-  if (radius < COUNTER_GRAB_INNER || radius > COUNTER_GRAB_OUTER) return false;
-  return Math.abs(angleDelta(Math.atan2(dy, dx), heading)) <= COUNTER_GRAB_ARC;
+  if (radius < zoneInner() || radius > zoneOuter()) return false;
+  return Math.abs(angleDelta(Math.atan2(dy, dx), heading)) <= zoneArc();
 }
 
 /** Where the button went down: inside the wedge of the dash? */
@@ -61,7 +41,7 @@ function pressInWedge(state: FightState, heading: number): boolean {
  *
  * The counter used to be an aim: hold the line and point the pull against the
  * dash, and the burst was cancelled if the angle was close enough. That made
- * every dash the same reflex — pull the other way — and it fought with the aim
+ * every dash the same reflex вЂ” pull the other way вЂ” and it fought with the aim
  * the player was already using to drag the fish back into the ring, so a
  * perfectly normal pull could spend the counter without meaning to.
  *
@@ -78,7 +58,7 @@ export function counterGesture(state: FightState): boolean {
   const dragX = s.pointerX - s.pressX!;
   const dragY = s.pointerY - s.pressY!;
   const drag = Math.hypot(dragX, dragY);
-  if (drag < FIGHT.counterDrag) return false;
+  if (drag < zoneTuning.counterDrag) return false;
 
   // Toward the middle: the drag has to point at the ring's centre, within a
   // generous cone. A drag that circles the ring is not a pull on the line.
@@ -94,16 +74,27 @@ export function counterGesture(state: FightState): boolean {
 export class FightCounter {
   constructor(private readonly state: FightState) {}
 
-  openWindow(window: number = FIGHT.counterWindow): void {
+  /**
+   * Open the grab for this dash.
+   *
+   * `delay` is how long the real zone waits before it appears (a feint hides
+   * behind its lie first), `window` how long it then stays on screen. The window
+   * *is* the zone's lifetime: a press inside the band counts while the band is
+   * painted, and the miss is charged when the paint ends.
+   */
+  openWindow(window: number, delay = 0): void {
     const s = this.state;
-    s.counterWindow = window;
+    s.counterWindow = 0;
+    s.counterDelay = delay;
+    s.counterSpan = window;
     s.counterAngle = s.escapeAngle;
-    // Resting through the telegraph is one way into the window; the other is a
-    // press prepared on the dash side, which `notePress` latched.
-    s.counterArmed = s.warnRest >= FIGHT.counterRest;
+    // Resting through the telegraph is one way in; the other is a press prepared
+    // on the dash side, which `notePress` latched.
+    s.counterArmed = s.warnRest >= zoneTuning.counterRest;
     s.preBurstAngle = s.lastSteerAngle;
     s.counterUsed = false;
-    s.counterPending = true;
+    s.counterPending = delay <= 0;
+    if (delay <= 0) s.counterWindow = window;
   }
 
   /**
@@ -124,27 +115,52 @@ export class FightCounter {
    */
   consumeUnanswered(): void {
     const s = this.state;
-    if (!s.counterPending) return;
+    const armed = s.counterPending || s.counterDelay > 0;
+    if (s.counterUsed || !armed) return;
     s.counterPending = false;
+    s.counterDelay = 0;
     s.counterWindow = 0;
     s.counterUsed = true;
     s.escapeLock = FIGHT.escapeLockTime;
     depositMissShare(s, FIGHT.uncounteredBurst * s.escapeHold);
   }
 
-  update(step: number, pull: { x: number; y: number } | null): void {
+  /**
+   * `held` is the button, not the pull: the grab is a hand movement on the rod,
+   * so the gesture is read from the pointer and not from the reel.
+   *
+   * A spent grip is the exception. The lockout takes the counter with the line
+   * and the last pull: no strength, no grab. The grip gauge wears a padlock for
+   * exactly that window, so the refusal is something the player can see.
+   */
+  update(step: number, held: boolean): void {
     const s = this.state;
+    if (s.counterDelay > 0) {
+      s.counterDelay = Math.max(0, s.counterDelay - step);
+      if (s.counterDelay === 0) {
+        s.counterWindow = s.counterSpan;
+        s.counterPending = true;
+      }
+    }
     if (s.counterPending) {
       s.counterWindow = Math.max(0, s.counterWindow - step);
       if (s.counterWindow <= 0) {
         s.counterPending = false;
+        s.counterUsed = true;
         // A strong dash that was not answered pushes the fish closer to
         // tearing free; holding the button alone does not count as an answer.
         s.escapeLock = FIGHT.escapeLockTime;
         depositMissShare(s, FIGHT.uncounteredBurst * s.escapeHold);
+      } else if (s.warnRest >= zoneTuning.counterRest) {
+        // The window now covers the telegraph, so a player who rested into it
+        // arms the grab as the rest accumulates, not only on the frame it opens.
+        s.counterArmed = true;
       }
     }
-    if (s.counterWindow <= 0 || s.counterUsed || !pull) return;
+    if (s.counterWindow <= 0 || s.counterUsed || !held) return;
+    // No grip, no grab: the window still burns down (and charges its miss), but
+    // the hand on the rod cannot answer.
+    if (s.gripLock > 0 || s.grip <= 0) return;
     // The burst is still ablaze: its heading can be read on the same frame the
     // gesture lands, so the arrow and the grab cannot disagree.
     s.counterAngle = s.escapeAngle;
@@ -164,11 +180,11 @@ export class FightCounter {
     // The lock cue lasts exactly as long as the stun: while it is on screen the
     // fish hangs still, so the player never sees a padlock on a fish that is
     // already jerking away again.
-    s.counterFlash = FIGHT.counterStun;
+    s.counterFlash = zoneTuning.counterStun;
     s.vx = 0;
     s.vy = 0;
     if (s.current) s.moveTime = s.current.dur;
-    s.stun = FIGHT.counterStun;
+    s.stun = zoneTuning.counterStun;
     s.onCounter?.();
   }
 }

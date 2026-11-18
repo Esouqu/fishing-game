@@ -4,8 +4,8 @@ import { ditherNoise } from "./dither";
 
 /**
  * Small pieces of the bank that every scene needs: the drift a tree stands in,
- * the contact shadow a bare prop leaves, the stones lying on the snow, the
- * reeds on the shore and the angler's pail.
+ * the contact shadow a bare prop leaves, the stones lying on the snow and the
+ * reeds on the shore.
  *
  * The stone used to be a recoloured asset-pack sprite; its pointed facets read
  * as a bomb with spikes. It is drawn the way the rest of the scenery is lit — a
@@ -20,7 +20,7 @@ function noise(a: number, b: number): number {
   return (ditherNoise(a, b) + 1) / 2;
 }
 
-/** Ink blue the props shade the snow with; the angler and the pail use it too. */
+/** Ink blue the props shade the snow with; the angler uses it too. */
 const CONTACT = 0x0a1c2a;
 /**
  * Transparent row every sprite sheet keeps under a trunk or a bush, in texture
@@ -29,12 +29,6 @@ const CONTACT = 0x0a1c2a;
  * anchor.
  */
 export const SPRITE_PAD = 1;
-
-/**
- * Scale the pail is drawn at. It is a background prop: big enough to read as a
- * bucket beside the boat, small enough that it never competes with the float.
- */
-const BUCKET_SCALE = 1;
 
 /**
  * A snowdrift, ~26 × 7 px at `scale` 1, sitting on `(x, y)`.
@@ -271,77 +265,6 @@ export function drawShoreStone(
   ]).fill({ color: palette.snow, alpha: 0.92 });
 
   g.poly(body).stroke({ width: 1, color: 0x2b323a, alpha: 0.85 });
-  g.zIndex = y;
-  props.addChild(g);
-}
-
-/**
- * The angler's pail, standing on `(x, y)` with its foot at `y`.
- *
- * The 16 px asset-pack sprite that used to stand here was a dark blue box with
- * stray pixels: at this size no amount of scaling made it read as a bucket next
- * to the drawn stones, reeds and drifts. It is drawn instead, the way the rest
- * of the bank is — an ink outline, a lit left side falling into a shaded right,
- * a pale steel rim and a blue lid of water inside, with one bright glint on the
- * metal. That is also what the reference art shows: a metal pail with water in
- * it, not a wooden barrel.
- */
-export function drawBucket(
-  props: Container,
-  x: number,
-  y: number,
-  scale = BUCKET_SCALE,
-): void {
-  const g = new Graphics();
-  /** Half width at the rim, at the foot, and the body height. */
-  const w = 4.6 * scale;
-  const foot = 3.6 * scale;
-  const h = 8.4 * scale;
-  const rim = 1.4 * scale;
-  const top = y - h;
-
-  // Contact shadow in the shared recipe, centred on the foot.
-  paintContactShadow(g, x, y, w * 1.05);
-
-  // Body: a tapered pail, lit on the left, shaded on the right.
-  const body = [x - foot, y, x + foot, y, x + w, top, x - w, top];
-  g.poly(body).fill(0x7e8b99);
-  g.poly([x - foot, y, x - foot * 0.2, y, x - w * 0.42, top, x - w, top]).fill(
-    0xb2bcc6,
-  );
-  g.poly([x + foot * 0.3, y, x + foot, y, x + w, top, x + w * 0.35, top]).fill(
-    0x58626f,
-  );
-  // One glint down the lit side, tapered so it reads as a reflection rather
-  // than as a white stripe painted on.
-  g.poly([
-    x - w * 0.58,
-    top + h * 0.12,
-    x - w * 0.4,
-    top + h * 0.12,
-    x - w * 0.24,
-    top + h * 0.58,
-    x - w * 0.38,
-    top + h * 0.58,
-  ]).fill({ color: 0xf5ffe8, alpha: 0.55 });
-  // The body's outline goes on before the rim: drawn after, its top edge
-  // crossed the rim and left a heavy dark double band around the opening.
-  g.poly(body).stroke({ width: 1, color: 0x14182e, alpha: 0.9 });
-
-  // Pale steel rim holding a lid of water. This edge is what makes the shape
-  // read as a bucket seen from above, so it is drawn last and stays crisp.
-  g.ellipse(x, top + rim * 0.3, w, rim).fill(0xa3a7c2);
-  g.ellipse(x, top + rim * 0.26, w * 0.72, rim * 0.6).fill(0x1b6fb5);
-  g.ellipse(x - w * 0.24, top + rim * 0.05, w * 0.28, rim * 0.28).fill({
-    color: 0x2ce8f5,
-    alpha: 0.7,
-  });
-  g.ellipse(x, top + rim * 0.3, w, rim).stroke({
-    width: 1,
-    color: 0x14182e,
-    alpha: 0.85,
-  });
-
   g.zIndex = y;
   props.addChild(g);
 }

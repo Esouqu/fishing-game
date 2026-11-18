@@ -7,7 +7,7 @@ import { Scrim } from "../ui/Scrim";
 import { Button } from "../ui/Button";
 import { FocusGroup } from "../ui/FocusGroup";
 import { UI } from "../ui/palette";
-import { drawPanel, makeText } from "../ui/theme";
+import { drawCloseIcon, drawPanel, makeText } from "../ui/theme";
 import { anchorInk } from "../ui/textInk";
 import { CodexTabs } from "../ui/codex/CodexTabs";
 import { HELP_PAGES, TEXT, type HelpPage } from "../texts";
@@ -24,7 +24,7 @@ const LEFT = PANEL.x + 16;
 const RIGHT = PANEL.x + PANEL.width - 16;
 /** Header row, 16 px inside the frame like the codex's title row. */
 const TOP = PANEL.y + 16;
-/** Side of the square «Х» button in the title row, same as the codex. */
+/** Side of the square close button in the title row, same as the codex. */
 const CLOSE_SIZE = 18;
 /**
  * Lesson switcher: one segmented bar, the lessons as its segments. It keeps the
@@ -115,12 +115,10 @@ export class HelpScreen extends Screen {
     this.card.addChild(title);
 
     const close = new Button({
-      label: "Х",
       width: CLOSE_SIZE,
       height: CLOSE_SIZE,
-      size: 15,
       variant: "secondary",
-      marks: false,
+      icon: (graphics) => drawCloseIcon(graphics),
       onClick: () => this.close(),
     });
     close.position.set(RIGHT - CLOSE_SIZE, TOP);

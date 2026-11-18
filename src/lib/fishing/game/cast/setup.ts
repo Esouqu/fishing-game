@@ -30,8 +30,14 @@ export const PRIMARY_KEYS = new Set([
   "ArrowUp",
 ]);
 
-/** Gap between the top edge of the landed fish and its name tag. */
-export const CATCH_LABEL_GAP = 3;
+/**
+ * Gap between the top of the landed catch and its name tag.
+ *
+ * "Top of the catch" is the top of the sunburst around the fish, not the top of
+ * the sprite: the tag is taller than the fish is wide, and pinned to the sprite
+ * it sat down inside the rays.
+ */
+export const CATCH_LABEL_GAP = 4;
 
 /**
  * Camera knock of the hook strike, by rarity.

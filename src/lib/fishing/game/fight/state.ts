@@ -53,6 +53,13 @@ export interface FightState {
   gripLock: number;
   advantage: number;
   counterWindow: number;
+  /**
+   * Seconds until the real zone of this dash appears, i.e. until the counter
+   * window opens. A feint waits out its lie first; an honest dash is at zero.
+   */
+  counterDelay: number;
+  /** Length of the window that opens once `counterDelay` runs out, in seconds. */
+  counterSpan: number;
   counterAngle: number;
   counterArmed: boolean;
   /**

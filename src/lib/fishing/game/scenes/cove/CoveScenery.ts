@@ -3,7 +3,6 @@ import { C, VIEW } from "../../../config";
 import { drawGrassTuft } from "../grass";
 import {
   SPRITE_PAD,
-  drawBucket,
   drawContactShadow,
   drawShoreStone,
   drawSnowDrift,
@@ -17,7 +16,7 @@ export class CoveScenery extends CoveShore {
   drawScenery(props: Container): void {
     // The pier is a prop so the water surface, the shoal and the weather rings
     // all stay behind it. Its zIndex is the deck's top edge: everything that
-    // stands on the pier (angler, bucket, moored boat) sorts above it by y.
+    // stands on the pier (angler, moored boat) sorts above it by y.
     const dock = new Graphics();
     this.drawDock(dock);
     dock.zIndex = DOCK.y;
@@ -106,8 +105,6 @@ export class CoveScenery extends CoveShore {
         this.palette,
       );
     });
-
-    drawBucket(props, 134, 148);
 
     this.drawMooredBoat(props);
     this.drawCoveExtras(props);

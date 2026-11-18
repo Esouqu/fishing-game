@@ -33,6 +33,7 @@ export class Minigame extends BarsView {
 
     this.model.update(dt);
     if (!this.model.isRunning) return;
+    this.updateJerkZone(dt);
     this.updateLandRing(dt);
     this.draw();
     this.syncFishVisual();

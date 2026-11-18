@@ -72,8 +72,9 @@ export class GameScreen extends GameOverlays {
       return true;
     }
     if (event.code === "KeyC") {
+      // The same control the HUD carries: the codex freezes the round itself,
+      // so the pause dialog is not part of the path (see `openCodex`).
       this.game.audio.click();
-      this.openPause();
       this.openCodex();
       return true;
     }

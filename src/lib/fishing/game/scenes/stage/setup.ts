@@ -39,9 +39,16 @@ export interface Jump {
 }
 
 /**
- * Gap between the angler's hat and the bottom edge of a landed fish, in scene
- * pixels. The fish is centred on the angler and its name is drawn right above
- * it, so the catch reads as one group instead of three loose pieces.
+ * Gap between the angler's hat and the bottom edge of a landed catch, in scene
+ * pixels.
+ *
+ * The catch is a small sprite inside a wide sunburst, so the edge that matters
+ * is the bottom of the *light*, not the bottom of the fish: measured from the
+ * sprite alone, the lower wedges came down over the hat and the burst read as
+ * something the fisherman was wearing. It stays small on purpose — the group
+ * hangs over the angler rather than floating away from him — but the burst has
+ * to clear the hat by a few pixels at every rotation, which is what the number
+ * buys.
  */
 export const CATCH_CLEARANCE = 26;
 

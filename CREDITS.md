@@ -37,5 +37,5 @@
 
 - All game code, UI layout, procedural Web Audio effects and Russian copy were written for this project.
 - The frost veil ships as `public/assets/ice-480.webp` (99 KB), baked from the original 2560×1440 cut-out in `assets-src/ice.png` by `scripts/bake-veil.mjs`; the Canvas downscale keeps the alpha silhouette bit-for-bit, and `src/lib/fishing/ui/IceVeil.ts` only re-shapes the alpha at runtime.
-- The winter trees, bush and rocks in `src/assets/fishing/` are procedurally generated pixel art. `scripts/make-nature-assets.py` rebuilds them from the project's earlier procedural sprites (kept in `scripts/nature-originals/`) with restored crowns and snow caps.
+- The winter trees and bush in `src/assets/fishing/` are procedurally generated pixel art. `scripts/make-nature-assets.py` rebuilds the bush from the project's earlier procedural sprite (kept in `scripts/nature-originals/`) with a restored crown and a snow cap; `scripts/make-spruce-assets.py` draws the two trees from scratch. Shore stones are painted at runtime (`drawShoreStone`), so they have no sprite files.
 - The DTF article “13 базовых принципов геймдизайна” was used as a design reference; no text from the article is reproduced.

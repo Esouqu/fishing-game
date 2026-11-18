@@ -4,6 +4,7 @@ import { LUCK_BAND, VIEW } from "../config";
 import { Button } from "./Button";
 import { UI } from "./palette";
 import { SCREEN_INSET, drawFishGlyph, drawPauseIcon } from "./theme";
+import { drawCodexMark } from "./codexMark";
 
 /** Live values of the cast power meter; `null` hides the meter. */
 export interface PowerMeterState {
@@ -13,6 +14,7 @@ export interface PowerMeterState {
 
 export interface GameHudHandlers {
   onPause(): void;
+  onCodex(): void;
 }
 
 /**
@@ -28,11 +30,16 @@ const POWER_BAR = { width: 60, height: 7 } as const;
 /** Pixels above the angler's feet; matches the hint's line. */
 const POWER_LIFT = 35;
 
-const PAUSE_SIZE = 16;
+/** Side of the two square controls in the top-right corner. */
+const CONTROL_SIZE = 16;
+/** Air between those two controls: they are one pair, not one wide bar. */
+const CONTROL_GAP = 4;
+/** Right edge of the pair, before the frame inset. */
+const CONTROL_RIGHT = VIEW.width - SCREEN_INSET;
 
 /**
- * In-game HUD: the cast power meter over the angler and a bare pause control in
- * the top-right corner.
+ * In-game HUD: the cast power meter over the angler and two bare controls —
+ * the codex and the pause — in the top-right corner.
  *
  * It used to be two cards — weather plus the queued front on the left, the
  * clock and a pause control on the right. Both of those now have a better home:
@@ -40,7 +47,7 @@ const PAUSE_SIZE = 16;
  * `WeatherForecast`), and the clock turned out to be decoration in a game that
  * runs on the player's own wall clock and never shows a deadline. A plate in
  * the corner held two pieces of information nobody was reading; the corner now
- * holds the one control that leaves the round.
+ * holds the two controls the round actually needs, one click each.
  */
 export class GameHud extends Container {
   private readonly powerBar = new Graphics();
@@ -56,21 +63,35 @@ export class GameHud extends Container {
     this.powerX = Math.round(area.layout.angler.x - POWER_BAR.width / 2);
     this.powerY = Math.round(area.layout.angler.y - POWER_LIFT);
 
-    // The pause control always shows its frame instead of appearing only under
-    // the pointer: a button that is invisible until hovered reads as part of
-    // the scenery and hides the one control that leaves the round.
+    // Both controls always show their frame instead of appearing only under the
+    // pointer: a button that is invisible until hovered reads as part of the
+    // scenery and hides the way into the reference and out of the round.
     const pauseButton = new Button({
-      width: PAUSE_SIZE,
-      height: PAUSE_SIZE,
+      width: CONTROL_SIZE,
+      height: CONTROL_SIZE,
       variant: "secondary",
-      icon: (g) => drawPauseIcon(g, UI.textOnBright),
+      icon: (g) => drawPauseIcon(g),
       onClick: handlers.onPause,
     });
-    pauseButton.position.set(
-      VIEW.width - SCREEN_INSET - PAUSE_SIZE,
+    pauseButton.position.set(CONTROL_RIGHT - CONTROL_SIZE, SCREEN_INSET);
+    this.addChild(pauseButton);
+
+    // The codex sits to the left of the pause, at the same size and in the same
+    // frame: the reference used to be an entry inside the pause dialog, which
+    // meant stopping the round to read it. Its mark is the only multi-colour
+    // glyph in the HUD — an open book, because a frame read as a panel.
+    const codexButton = new Button({
+      width: CONTROL_SIZE,
+      height: CONTROL_SIZE,
+      variant: "secondary",
+      icon: (g) => drawCodexMark(g),
+      onClick: handlers.onCodex,
+    });
+    codexButton.position.set(
+      CONTROL_RIGHT - CONTROL_SIZE * 2 - CONTROL_GAP,
       SCREEN_INSET,
     );
-    this.addChild(pauseButton);
+    this.addChild(codexButton);
 
     this.powerBar.position.set(this.powerX, this.powerY);
     this.powerBar.eventMode = "none";

@@ -16,6 +16,8 @@ export abstract class CastFlowCore {
   protected abstract earlyHook(): void;
   protected abstract hookFish(): void;
   protected abstract doCast(): void;
+  /** Cuts the catch display short, once the landed fish has settled. */
+  protected abstract skipCatch(): void;
 
   protected readonly game: GameContext;
   protected readonly area: AreaDef;

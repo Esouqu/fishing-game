@@ -301,6 +301,28 @@ export class CastFlowState extends CastFlowInput {
     this.chargeSoundTimer = 0;
     this.nibblePlayed = false;
     this.phaseValue = "idle";
+    // The catch's name tag belongs to the catch: when the display is skipped it
+    // would otherwise outlive the round and hang over the next cast's water.
+    this.floaters.clear();
+  }
+
+  /**
+   * Cuts the catch display short on the player's click.
+   *
+   * The round's payoff is the fish arcing out of the water into the angler's
+   * hands, so the jump is not skippable: a click while it is still flying would
+   * throw away the one shot the whole cast was for. What can be cut is the hold
+   * after the landing, and only down to the crossfade that ends the round — the
+   * fish still dissolves instead of blinking out of the fisherman's hands.
+   */
+  protected skipCatch(): void {
+    if (this.phaseValue !== "resolve" || !this.catchShown) return;
+    const landed = TIMING.resultHold - TIMING.catchJump;
+    if (this.resolveTimer > landed) return;
+    this.resolveTimer = Math.min(this.resolveTimer, TIMING.catchCrossfade);
+    // The name tag fades out with the fish instead of staying at full strength
+    // until the round changes under it.
+    this.floaters.fadeOut(TIMING.catchCrossfade);
   }
 
   // ------------------------------------------------------------------- FX
@@ -313,9 +335,10 @@ export class CastFlowState extends CastFlowInput {
   }
 
   /**
-   * Name tag for the landed fish. It is anchored to the fish itself (not to a
-   * per-area point), so it always hugs the top of the catch and stays centred
-   * over the angler.
+   * Name tag for the landed fish. It is anchored to the catch itself (not to a
+   * per-area point), so it always hugs the top of the light around the fish and
+   * stays centred over the angler. `catchTop` is the top of that light rather
+   * than the top of the sprite, which keeps the tag out of the rays.
    */
   protected showCatchFeedback(
     fish: FishSpecies,

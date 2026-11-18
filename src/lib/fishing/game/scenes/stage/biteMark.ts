@@ -36,7 +36,7 @@ export function drawBiteMark(g: Graphics): void {
   g.poly(DOT).stroke({ width: 1, color: C.ink, alignment: 0 });
 
   // Lit edge on the left of the bar and one bright pixel on the dot: the same
-  // light direction the boat, the pail and the float are drawn with.
+  // light direction the boat and the float are drawn with.
   g.rect(-1, -14, 1, 6).fill({ color: C.yellow, alpha: 0.85 });
   g.rect(-1, -2, 1, 1).fill({ color: C.yellow, alpha: 0.9 });
 }

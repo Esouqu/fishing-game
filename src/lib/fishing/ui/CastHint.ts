@@ -10,27 +10,31 @@ import { TEXT } from "../texts";
  * Four read as two separate things that happened to stand next to each other;
  * flush to zero read as one block with a seam. Two is the seam a prompt needs:
  * the outlined word and the pictogram are one unit, and the badge is still
- * clearly its own mark.
+ * clearly its own mark. Three left the pictogram floating a pixel off the word's
+ * contour, which the outline makes visible: the two marks are read as one caption
+ * or not at all.
  *
  * The gap is measured from the *ink* of the word (see {@link inkWidth}), not
  * from its advance box: the pixel font leaves about five empty pixels after the
  * last glyph at this size, which used to be added on top of this gap and made
  * the badge look pushed away from the prompt.
  */
-const GAP = 3;
+const GAP = 2;
 const LABEL_SIZE = 7;
 /** Height of the idle float above and below the anchor, in scene pixels. */
 const FLOAT_RISE = 2.2;
 /** Radians per second of that float: a full rise-and-fall takes ~4 s. */
 const FLOAT_RATE = 1.55;
-/** Outline width: the prompt sits straight on the water, so it needs its own edge. */
-const OUTLINE = 2.5;
 /**
- * The badge is drawn at three quarters of its 16 px tile: at 1:1 it stood taller
- * than two lines of the prompt's capitals and pulled the eye off the word it is
- * captioning, while a smaller step (a half) lost the lit button.
+ * Side of the badge, in virtual pixels: eleven sixteenths of its 16 px tile.
+ *
+ * At 1:1 it stood taller than two lines of the prompt's capitals and pulled the
+ * eye off the word it is captioning, while a half lost the lit button. Eleven is
+ * the step down from the old 12: a pictogram beside a 7 px caption should not
+ * reach the full height of the block the caption sits in, and the shorter badge
+ * also lets the pair close up without the mouse touching the word.
  */
-const BADGE_SCALE = 0.75;
+const BADGE_SIZE = 11;
 
 let labelInk = 0;
 
@@ -42,6 +46,7 @@ function labelWidth(): number {
     weight: 800,
     color: UI.text,
     letterSpacing: 0.6,
+    outline: true,
   });
   labelInk = inkWidth(label);
   label.destroy();
@@ -69,17 +74,19 @@ export class CastHint extends Container {
     this.interactiveChildren = false;
 
     const ink = labelWidth();
-    const width = ink + GAP + icon.width * BADGE_SCALE;
+    const width = ink + GAP + BADGE_SIZE;
     const label = makeText(TEXT.game.readyToCast, {
       size: LABEL_SIZE,
       weight: 800,
       color: UI.text,
       letterSpacing: 0.6,
+      // The outline is what replaces the plate: it keeps the words legible over
+      // both the bright snow bank and the dark water. It is the interface's one
+      // contour (`TEXT_OUTLINE`), so the prompt carries the same edge as the
+      // catch tags it shares the water with.
+      outline: true,
     });
     anchorInk(label, "left");
-    // The outline is what replaces the plate: it keeps the words legible over
-    // both the bright snow bank and the dark water.
-    label.style.stroke = { color: UI.ink, width: OUTLINE };
 
     const left = -width / 2;
     label.position.set(left, 0);
@@ -87,12 +94,11 @@ export class CastHint extends Container {
 
     // The badge is anchored on its left edge and its middle, so it sits against
     // the word's ink with exactly {@link GAP} between them, on the label's
-    // centre line. The art is one pixel-grid glyph drawn at 75%: on the water,
-    // at the text's own size, a full 16 px badge read as big as the prompt's
-    // capitals twice over. Nearest sampling keeps the pixels square.
+    // centre line. It is drawn at the size the layout already used, so the art
+    // and the block can never disagree. Nearest sampling keeps the pixels square.
     const mouse = new Sprite(icon);
     mouse.anchor.set(0, 0.5);
-    mouse.scale.set(BADGE_SCALE);
+    mouse.scale.set(BADGE_SIZE / icon.width);
     mouse.position.set(left + ink + GAP, 0);
     this.inner.addChild(mouse);
 

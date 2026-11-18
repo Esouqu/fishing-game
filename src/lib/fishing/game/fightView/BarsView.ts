@@ -1,8 +1,10 @@
 import { FIGHT } from "../../config";
 import { UI } from "../../ui/palette";
+import { drawLockMark } from "../../ui/lockMark";
 import { mixColor } from "../../world";
 import { clamp } from "../../utils";
 import { GAUGE } from "./setup";
+import { zoneTuning } from "../fight/zoneTuning";
 import { WarningView } from "./WarningView";
 
 /**
@@ -13,7 +15,7 @@ import { WarningView } from "./WarningView";
  * frosted glass tube with rounded ends, a lit liquid, a bright meniscus at the
  * level, frost pixels on the glass and a notch cut into the fill where the
  * reserve turns amber. The tube read as a different art style from everything
- * else in the scene (the bank, the pier and the pail are all hard pixel shapes),
+ * else in the scene (the bank and the pier are all hard pixel shapes),
  * and the marks sitting *inside* the fill broke the one reading that matters
  * mid-fight: how much is left.
  *
@@ -29,26 +31,34 @@ const WALL = 1;
 const MARK_GAP = 4;
 /** Height of that base mark; it overhangs the gauge by a pixel at each end. */
 const MARK_OVERHANG = 1;
+/** Width of the padlock glyph, so it can be centred on the gauge. */
+const LOCK_WIDTH = 7;
 
 export abstract class BarsView extends WarningView {
+  /**
+   * The counter's receipt: one ice ring, on the float, expanding and fading.
+   *
+   * It used to be two static circles around the fish, which said "this fish is
+   * stunned" in the one place the player is not looking and in a shape that read
+   * as a second arena. The float is what the player tracks, so the pulse lives
+   * there: it appears at `cueSize`, runs out to `cueSize + cueGrow` over the
+   * stun, and is lit only while it moves (the sine brings it in and takes it out),
+   * so a counter reads as one breath and nothing stays behind.
+   */
   protected drawCue(): void {
     const g = this.cueG;
     g.clear();
-    const pulse = (Math.sin(this.model.time * 6) + 1) / 2;
+    if (this.model.stunValue <= 0) return;
 
-    if (this.model.stunValue > 0) {
-      const point = this.model.fishPoint;
-      g.circle(point.x, point.y, 13 + pulse * 2).stroke({
-        width: 1.5,
-        color: UI.ice,
-        alpha: 0.7,
-      });
-      g.circle(point.x, point.y, 19 + pulse * 3).stroke({
-        width: 1,
-        color: UI.ice,
-        alpha: 0.3,
-      });
-    }
+    const total = Math.max(0.05, zoneTuning.counterStun);
+    const progress = clamp(1 - this.model.stunValue / total);
+    const radius = zoneTuning.cueSize + zoneTuning.cueGrow * progress;
+    const point = this.floatPoint;
+    g.circle(point.x, point.y, radius).stroke({
+      width: 1.5,
+      color: UI.ice,
+      alpha: Math.sin(Math.PI * progress) * 0.75,
+    });
   }
 
   /** The angler's stamina: a flat gauge filled from the left. */
@@ -106,5 +116,22 @@ export abstract class BarsView extends WarningView {
       color: rim,
       alpha: locked ? 0.55 + pulse * 0.45 : 0.6,
     });
+
+    // The lockout is the one state where a hold does nothing while the gauge
+    // can still be full: the reserve comes back during the lock, but the pull is
+    // refused until it expires. A colour alone read as "stamina I am not using",
+    // so the gauge borrows the game's own padlock — the mark that closes a
+    // water body — and the level stops promising a pull the model will not take.
+    //
+    // It sits in the middle of the scale, not beside it: at the left edge it
+    // hung off the gauge like a stray prop, while the caption that explains it
+    // («нет сил») already rises out of the centre. Centred, it also has to stay
+    // readable on whatever is under it — red liquid on one side of the level,
+    // dark glass on the other — so it is drawn in ice white with an ink contour
+    // behind it instead of the rose it used to share with the bar.
+    if (locked) {
+      const lockX = Math.round(x + width / 2 - (LOCK_WIDTH - 1) / 2);
+      drawLockMark(g, lockX, Math.round(y), 1, UI.primary, UI.ink, UI.ink);
+    }
   }
 }

@@ -1,7 +1,6 @@
 import { Container, Text } from "pixi.js";
 import { VIEW } from "../config";
 import { clamp } from "../utils";
-import { UI } from "./palette";
 import { makeText } from "./theme";
 import { inkAnchorBottomY } from "./textInk";
 
@@ -12,6 +11,12 @@ interface Floater {
   vy: number;
   /** Seconds to wait before the label appears; it does not age while hidden. */
   delay: number;
+  /**
+   * Seconds over which the label fades out, or `null` for the layer's own tail.
+   * A tag that is being cut short with the round (`fadeOut`) fades over the
+   * whole of its remaining life instead of holding at full strength first.
+   */
+  fade: number | null;
 }
 
 /**
@@ -44,6 +49,9 @@ export class FloaterLayer extends Container {
       color,
       align: anchorX === 0 ? "left" : "center",
       lineHeight: size + 1,
+      // The one contour of the interface (`TEXT_OUTLINE`): a tag has to read
+      // over water and over the bright snow bank alike.
+      outline: true,
     });
     text.anchor.y = inkAnchorBottomY(text);
     // A centred tag over an angler near the shore would otherwise run off the
@@ -52,11 +60,14 @@ export class FloaterLayer extends Container {
       anchorX === 0
         ? x
         : clamp(x, text.width / 2 + 4, VIEW.width - text.width / 2 - 4);
-    text.position.set(safeX, y);
-    text.style.stroke = { color: UI.ink, width: 2 };
+    // The same for the top edge, which the catch tag reaches for: it hangs off
+    // the top of the light, and a legendary burst on the high pier lifts a
+    // three-line tag most of the way to the frame.
+    const safeY = Math.max(y, text.height + 2);
+    text.position.set(safeX, safeY);
     text.visible = delay <= 0;
     this.addChild(text);
-    this.floaters.push({ text, life, maxLife: life, vy, delay });
+    this.floaters.push({ text, life, maxLife: life, vy, delay, fade: null });
   }
 
   update(dt: number): void {
@@ -72,7 +83,10 @@ export class FloaterLayer extends Container {
       }
       floater.life -= dt;
       floater.text.y += floater.vy * dt;
-      const fadeTime = Math.min(0.4, floater.maxLife * 0.45);
+      // Normally a tag holds at full strength and fades in its own tail. A tag
+      // cut with the round carries its fade window instead, so its alpha falls
+      // on the same curve as the thing it belongs to.
+      const fadeTime = floater.fade ?? Math.min(0.4, floater.maxLife * 0.45);
       floater.text.alpha =
         floater.life < fadeTime ? Math.max(0, floater.life / fadeTime) : 1;
       if (floater.life <= 0) {
@@ -81,5 +95,43 @@ export class FloaterLayer extends Container {
         this.floaters.splice(i, 1);
       }
     }
+  }
+
+  /**
+   * Shortens every label's remaining life, so a caption that belongs to a round
+   * being cut short goes with it instead of popping off the screen when the
+   * layer is cleared. Labels still waiting for their cue are left alone: they
+   * are cleared with the rest when the round changes.
+   *
+   * The shortened labels fade across that whole window. They used to keep the
+   * layer's normal tail (55 % of the life at full strength, then a fade), which
+   * left the catch's name tag hanging at full opacity while the fish and its
+   * rays had already begun to dissolve — the caption outlived the thing it
+   * named.
+   */
+  fadeOut(seconds: number): void {
+    for (const floater of this.floaters) {
+      if (floater.life > seconds) {
+        floater.life = seconds;
+        floater.maxLife = seconds;
+        floater.fade = seconds;
+      }
+    }
+  }
+
+  /**
+   * Drops every label at once.
+   *
+   * A caption belongs to the round that raised it, so when the round is cut
+   * short — a skipped catch, a cancelled cast — its tags go with it instead of
+   * hanging over the water the next round is played on. In the normal flow a
+   * tag's life already ends with the round, so this only bites on a cut.
+   */
+  clear(): void {
+    for (const floater of this.floaters) {
+      this.removeChild(floater.text);
+      floater.text.destroy();
+    }
+    this.floaters.length = 0;
   }
 }

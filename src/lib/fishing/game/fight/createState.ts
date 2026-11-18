@@ -65,6 +65,8 @@ export function createFightState(
     gripLock: 0,
     advantage: 0,
     counterWindow: 0,
+    counterDelay: 0,
+    counterSpan: 0,
     counterAngle: 0,
     counterArmed: false,
     counterPrepared: false,

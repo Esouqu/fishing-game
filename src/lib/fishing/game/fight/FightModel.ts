@@ -13,19 +13,18 @@ import { updateZone } from "./zone";
 import { FightMotion } from "./motion";
 import { FightStamina } from "./stamina";
 import type { FightState } from "./state";
+import { zoneTuning } from "./zoneTuning";
 import type { Bubble, MinigameOptions, MinigameResult } from "./types";
 
 /**
- * The whole ring-fight simulation, with no rendering attached.
+ * The ring-fight simulation, with no rendering attached.
  *
- * Holding the pull button tires the fish and spends grip; releasing the button
- * rests the fish and restores grip. Aim with the cursor or a direction key.
- * Bubbles warn about a burst; resting first and then pulling against it lands a
- * counter-pull. When the fish is tired and inside the circle, a separate final
- * pull lands it.
- *
- * The model is deliberately pure so the same rules can be replayed headlessly
- * by `scripts/simulate-fight.ts` without a browser or a Pixi renderer.
+ * Holding the button tires the fish and spends grip; releasing rests both. Aim
+ * with the cursor or a direction key. Bubbles warn about a burst, and resting
+ * first then pulling against it lands the counter; a tired fish inside the
+ * circle is landed by a separate final pull. A spent grip refuses all three
+ * until the lockout ends. The model is pure, so `simulate-fight.ts` replays the
+ * same rules headlessly.
  */
 export class FightModel {
   private readonly state: FightState;
@@ -42,6 +41,9 @@ export class FightModel {
     this.motion = new FightMotion(state, this.bubbleField);
     this.stamina = new FightStamina(state);
     this.counter = new FightCounter(state);
+    // The grab is open for exactly as long as the zone is painted.
+    this.motion.onZoneStart = (delay) =>
+      this.counter.openWindow(zoneTuning.truthTime, delay);
 
     state.lastAngle = Math.random() * TAU;
     state.escapeAngle = state.lastAngle;
@@ -110,6 +112,15 @@ export class FightModel {
     return this.state.gripLock > 0;
   }
 
+  /**
+   * True while the angler still has strength to act on the line: a spent grip
+   * takes the reel, the grab and the last pull for the whole lockout. The gauge
+   * wears a padlock for that window, so the refusal is visible.
+   */
+  get canAct(): boolean {
+    return this.state.gripLock <= 0 && this.state.grip > 0;
+  }
+
   get hasAdvantage(): boolean {
     return this.state.advantage > 0;
   }
@@ -150,12 +161,11 @@ export class FightModel {
     return this.state.feintHasRevealed;
   }
 
-  /** The heading the counter should oppose; true heading after a feint. */
+  /** The heading the counter should oppose, and the feint's own flash heading. */
   get counterHeading(): number {
     return this.state.escapeAngle;
   }
 
-  /** True heading of the last feint, for the short turn flash. */
   get turnHeading(): number {
     return this.state.escapeAngle;
   }
@@ -203,7 +213,7 @@ export class FightModel {
   /** Separate final pull: RMB/F, or a tap on the tired fish. */
   finalPull(): void {
     const s = this.state;
-    if (!s.running || s.finalCooldown > 0) return;
+    if (!s.running || s.finalCooldown > 0 || !this.canAct) return;
     s.finalCooldown = FIGHT.resistCooldown;
 
     const inside = Math.hypot(s.fishX, s.fishY) <= FIGHT_RADIUS;
@@ -231,10 +241,9 @@ export class FightModel {
   }
 
   /**
-   * Advance the fight by `dt` seconds of real time in fixed slices. At 60 fps
-   * this is exactly one tick, so the headless oracle sees the same sequence as
-   * before; a slow frame is caught up in 1/60 s steps instead of handing the
-   * whole delta to the integrator.
+   * Advance the fight by `dt` in fixed 1/60 s slices: the headless oracle sees
+   * the same sequence as the browser, and a slow frame is caught up in steps
+   * instead of handing the whole delta to the integrator.
    */
   update(dt: number): void {
     if (!this.state.running || !(dt > 0)) return;
@@ -254,12 +263,11 @@ export class FightModel {
 
     s.finalCooldown = Math.max(0, s.finalCooldown - step);
 
-    const canPull = s.gripLock <= 0;
+    const canPull = this.canAct;
     const pull = s.hold && canPull ? pullVector(s) : null;
     s.steeringNow = pull !== null;
     // An un-pulled fish is not content to circle the middle of the ring: the
-    // longer the player leaves it alone, the further out it aims. A held line
-    // unwinds the clock slowly, so one tapped frame cannot fake a rest.
+    // longer the player leaves it alone, the further out it aims.
     s.neglect = pull
       ? Math.max(0, s.neglect - FIGHT.neglectRecover * step)
       : s.neglect + step;
@@ -296,7 +304,6 @@ export class FightModel {
       s.warnTime = Math.max(0, s.warnTime - step);
       // Rest means releasing the pull button, as in the mod.
       s.warnRest = s.hold ? 0 : s.warnRest + step;
-      // The fish holds still and shivers while the warning is shown.
       s.vx *= Math.max(0, 1 - 7 * step);
       s.vy *= Math.max(0, 1 - 7 * step);
       s.bubbleTimer -= step;
@@ -304,21 +311,16 @@ export class FightModel {
         s.bubbleTimer = 0.04;
         this.bubbleField.spawn(false);
       }
-      if (s.warnTime === 0 && this.motion.resolveTelegraph()) {
-        this.counter.openWindow();
-      }
+      if (s.warnTime === 0) this.motion.resolveTelegraph();
     } else if (s.feintTimer > 0) {
       s.warnRest = s.hold ? 0 : s.warnRest + step;
       s.feintTimer = Math.max(0, s.feintTimer - step);
-      if (s.feintTimer === 0) {
-        // The turn: kill the false velocity and strike along the true heading.
-        this.motion.resolveFeintTurn();
-        this.counter.openWindow(FIGHT.feintWindow);
-      }
+      // The turn: kill the false velocity and strike along the true heading.
+      if (s.feintTimer === 0) this.motion.resolveFeintTurn();
     } else {
       if (s.stun > 0) {
-        // A countered dash is cancelled: the fish hangs in place and cannot
-        // start a new move until the stun expires.
+        // A countered dash is cancelled: the fish hangs in place until the stun
+        // expires and cannot start a new move before it does.
         s.vx *= Math.max(0, 1 - 12 * step);
         s.vy *= Math.max(0, 1 - 12 * step);
       } else {
@@ -328,10 +330,9 @@ export class FightModel {
       }
     }
 
-    // Latched after the dash state moved: a press on the warning is the grab,
-    // and one landing on a new move's first frame belongs to that move.
+    // Latched after the dash state moved: a press on the warning is the grab.
     if (s.freshPress) this.counter.notePress();
-    this.counter.update(step, pull);
+    this.counter.update(step, s.hold); // The button, not the line: see counter.ts
     // The press edge is spent: a counter that skips the rest needs a new one.
     s.freshPress = false;
 
@@ -373,7 +374,7 @@ export class FightModel {
 
     // Two and a half radii (85 px): no pull brings the fish back in time from
     // there, so the hook is simply gone. Scripts aim no further than 1.75R, so
-    // only a throw — a burst plus a wrong-way pull — lands here.
+    // only a throw вЂ” a burst plus a wrong-way pull вЂ” lands here.
     if (Math.hypot(s.fishX, s.fishY) > FIGHT_RADIUS * 2.5) {
       this.finish(false);
     }

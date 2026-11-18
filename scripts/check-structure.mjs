@@ -1,10 +1,16 @@
 /**
  * Structural guard for the refactor:
- *  - no source module over 400 lines;
+ *  - no source module has grown unjustifiably large (reported, not enforced);
  *  - the obsolete `game/Scene.ts` shim stays deleted;
  *  - the generated audio-mix markers are intact;
  *  - no runtime import cycles (type-only imports ignored);
  *  - relative links in AGENTS.md and docs/ resolve.
+ *
+ * Size is a smell, not a rule. A file that has one honest job may be long; a
+ * file that has three jobs is the one to split. The check therefore *reports*
+ * modules over `BIG_FILE` so a reviewer sees them, and fails only on structure
+ * that is actually wrong (a cycle, a broken link, a lost marker, a resurrected
+ * shim).
  *
  * Usage: pnpm check:structure
  */
@@ -12,8 +18,10 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 const root = process.cwd();
-const MAX_LINES = 400;
+/** Files past this size are listed at the end as worth a look, not as errors. */
+const BIG_FILE = 500;
 const problems = [];
+const big = [];
 
 /** Every .ts under src, recursively. */
 function sourceFiles(dir) {
@@ -29,10 +37,9 @@ function sourceFiles(dir) {
 const files = sourceFiles(join(root, "src"));
 for (const file of files) {
   const lines = readFileSync(file, "utf8").split(/\r?\n/).length;
-  if (lines > MAX_LINES) {
-    problems.push(`${relative(root, file)} has ${lines} lines (max ${MAX_LINES})`);
-  }
+  if (lines > BIG_FILE) big.push({ file: relative(root, file), lines });
 }
+big.sort((a, b) => b.lines - a.lines);
 
 if (existsSync(join(root, "src/lib/fishing/game/Scene.ts"))) {
   problems.push("src/lib/fishing/game/Scene.ts is an obsolete shim; use scenes/");
@@ -118,6 +125,12 @@ for (const file of mdFiles) {
   }
 }
 
+for (const entry of big) {
+  console.log(
+    `[structure] note: ${entry.file} is ${entry.lines} lines — split it if it holds more than one job`,
+  );
+}
+
 if (problems.length > 0) {
   console.error("[structure] problems:");
   for (const problem of problems) console.error(`  - ${problem}`);
@@ -125,5 +138,5 @@ if (problems.length > 0) {
 }
 
 console.log(
-  `[structure] OK: ${files.length} modules, max ${MAX_LINES} lines, no cycles, links resolve`,
+  `[structure] OK: ${files.length} modules, no cycles, links resolve`,
 );

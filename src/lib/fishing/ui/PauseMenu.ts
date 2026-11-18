@@ -11,17 +11,18 @@ import { PANEL_PAD, drawPanel, makeText } from "./theme";
 
 export interface PauseMenuHandlers {
   onResume(): void;
-  onCodex(): void;
 }
 
 /**
  * Centred dialog with the same inner padding on all four sides.
  *
- * It used to carry a «сменить водоем» entry under «продолжить». The two travel
- * cards in the corners of the round do that job in one click, so the pause
- * panel is down to the entries that leave or pause the round itself.
+ * It used to carry a «сменить водоем» entry under «продолжить», and later the
+ * «справочник» one. The two travel cards in the corners of the round do the
+ * first job in one click, and the codex has its own control beside the pause
+ * button in the HUD, so the panel is down to the entries that leave or pause
+ * the round itself — and its height follows the three rows that are left.
  */
-const PANEL = { x: 130, y: 39, width: 220, height: 164 };
+const PANEL = { x: 130, y: 53, width: 220, height: 137 };
 const BUTTON_W = PANEL.width - PANEL_PAD * 2;
 const BUTTON_H = 21;
 const BUTTON_GAP = 6;
@@ -33,9 +34,9 @@ const FLY_TIME = 0.24;
 const FLY_OUT_TIME = 0.2;
 
 /**
- * Pause overlay with the resume/areas/codex/sound/menu column and keyboard
- * focus navigation. The screen owns the paused state and plays the UI sounds;
- * the menu only renders the panel and tracks which button is focused.
+ * Pause overlay with the resume/sound/menu column and keyboard focus
+ * navigation. The screen owns the paused state and plays the UI sounds; the
+ * menu only renders the panel and tracks which button is focused.
  */
 export class PauseMenu extends Container {
   private readonly game: GameContext;
@@ -91,16 +92,6 @@ export class PauseMenu extends Container {
     resume.position.set(BUTTON_X, BUTTON_Y);
     this.panelLayer.addChild(resume);
 
-    const codex = new Button({
-      label: TEXT.codex.title,
-      width: BUTTON_W,
-      height: BUTTON_H,
-      size: 11,
-      onClick: handlers.onCodex,
-    });
-    codex.position.set(BUTTON_X, BUTTON_Y + BUTTON_H + BUTTON_GAP);
-    this.panelLayer.addChild(codex);
-
     this.soundButton = new Button({
       label: this.muteLabel(),
       width: BUTTON_W,
@@ -108,10 +99,7 @@ export class PauseMenu extends Container {
       size: 11,
       onClick: () => this.game.toggleMute(),
     });
-    this.soundButton.position.set(
-      BUTTON_X,
-      BUTTON_Y + (BUTTON_H + BUTTON_GAP) * 2,
-    );
+    this.soundButton.position.set(BUTTON_X, BUTTON_Y + BUTTON_H + BUTTON_GAP);
     this.panelLayer.addChild(this.soundButton);
 
     const menu = new Button({
@@ -121,10 +109,10 @@ export class PauseMenu extends Container {
       size: 11,
       onClick: () => this.game.showMenu(),
     });
-    menu.position.set(BUTTON_X, BUTTON_Y + (BUTTON_H + BUTTON_GAP) * 3);
+    menu.position.set(BUTTON_X, BUTTON_Y + (BUTTON_H + BUTTON_GAP) * 2);
     this.panelLayer.addChild(menu);
 
-    this.focus.setItems([resume, codex, this.soundButton, menu]);
+    this.focus.setItems([resume, this.soundButton, menu]);
     this.focus.onMove = () => this.game.audio.hover();
   }
 
@@ -180,6 +168,15 @@ export class PauseMenu extends Container {
   /** Drops the button highlight without hiding the panel (codex on top). */
   blur(): void {
     this.focus.blur();
+  }
+
+  /**
+   * True while the dialog is on screen, fly-in and fly-out included. The screen
+   * reads it to tell a codex opened over this dialog from one opened straight
+   * from the HUD: only the second one has to bring the round back on close.
+   */
+  get isOpen(): boolean {
+    return this.visible;
   }
 
   /** Focuses one of the panel buttons by index. */

@@ -5,19 +5,33 @@ import { GameScreenCore } from "./GameScreenCore";
 export abstract class GameOverlays extends GameScreenCore {
   protected openPause(): void {
     if (this.paused) return;
-    this.paused = true;
-    this.flow.setPaused(true);
-    // The round goes quiet under the panel: a lake bed, a reel or a landed
-    // chime still ringing would keep playing behind a frozen picture.
-    this.game.audio.setPaused(true);
-    // The flow may have cancelled the charge; clear the meter immediately
-    // instead of leaving the last frame frozen behind the pause overlay.
-    this.hud.update(0, null);
-    this.castHint.visible = false;
-    this.inputCatcher.cursor = CURSORS.default;
+    this.freezeRound();
     this.pauseMenu.open();
     // No click here: the HUD pause button is a Button and already plays one,
     // so cueing it again made every pause sound like a double press.
+  }
+
+  /**
+   * Stops the round and ducks its audio, without deciding what covers it: the
+   * pause dialog and the codex both open over a frozen frame.
+   */
+  protected freezeRound(): void {
+    this.paused = true;
+    this.flow.setPaused(true);
+    // The round goes quiet under an overlay: a lake bed, a reel or a landed
+    // chime still ringing would keep playing behind a frozen picture.
+    this.game.audio.setPaused(true);
+    // The flow may have cancelled the charge; clear the meter immediately
+    // instead of leaving the last frame frozen behind the overlay.
+    this.hud.update(0, null);
+    this.castHint.visible = false;
+    this.inputCatcher.cursor = CURSORS.default;
+  }
+
+  protected unfreezeRound(): void {
+    this.paused = false;
+    this.flow.setPaused(false);
+    this.game.audio.setPaused(false);
   }
 
   protected closePause(silent = false): void {
@@ -27,27 +41,33 @@ export abstract class GameOverlays extends GameScreenCore {
     // drops it when the animation is over (see `updateCodex`), exactly like the
     // pause panel itself.
     this.codex?.beginClose();
-    this.paused = false;
-    this.flow.setPaused(false);
-    this.game.audio.setPaused(false);
+    this.unfreezeRound();
     this.pauseMenu.close();
     if (!silent && !hadCodex) this.game.audio.back();
   }
 
   protected openCodex(): void {
-    if (!this.paused || this.codex) return;
+    if (this.codex) return;
+    // The codex is modal over a frozen round. The HUD's codex button opens it
+    // without the pause dialog, so the freeze happens here; from the dialog the
+    // round is already frozen and only the dialog has to give up the keyboard.
+    if (!this.paused) this.freezeRound();
     this.pauseMenu.blur();
     this.codex = new CodexOverlay(this.game, this.area.id, () =>
       this.closeCodex(),
     );
     this.addChild(this.codex);
-    // The pause menu's «справочник» entry is a Button and already plays the
-    // click; a second one here read as a stutter.
+    // The control that opened it is a Button and already plays the click; a
+    // second one here read as a stutter.
   }
 
   /** Starts the close; the overlay itself animates out from here. */
   protected closeCodex(): void {
     this.codex?.beginClose();
+    // Straight from the HUD the codex is the whole overlay, so the round comes
+    // back while the panel drops away. Behind the pause dialog the round stays
+    // frozen — the player asked for the manual, not for the round to resume.
+    if (this.paused && !this.pauseMenu.isOpen) this.unfreezeRound();
   }
 
   /**
@@ -61,7 +81,9 @@ export abstract class GameOverlays extends GameScreenCore {
     if (!codex.update(dt)) return;
     codex.destroy({ children: true });
     this.codex = null;
-    // The codex is the second entry (resume, codex, sound, menu).
-    this.pauseMenu.focusAt(1);
+    // A dialog may still be standing behind the codex: hand the keyboard back
+    // to its first entry, «продолжить». A codex opened from the HUD leaves no
+    // dialog to return to.
+    if (this.pauseMenu.isOpen) this.pauseMenu.focusAt(0);
   }
 }

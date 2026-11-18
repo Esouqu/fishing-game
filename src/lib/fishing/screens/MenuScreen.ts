@@ -46,9 +46,9 @@ export class MenuScreen extends Screen {
       color: UI.text,
       align: "center",
       letterSpacing: 0.5,
+      outline: true,
     });
     title.position.set(VIEW.width / 2, 34);
-    title.style.stroke = { color: UI.ink, width: 3 };
     this.addChild(title);
   }
 

@@ -17,6 +17,9 @@ lerna-debug.log*
 .tmp-assets/
 .tmp-originals/
 .tmp-esbuild/
+# Скриншоты и скрипты разбора кадра из ручных прогонов: не исходники.
+.previews/
+.tmp-previews/
 
 # Editor directories and files
 .vscode/*

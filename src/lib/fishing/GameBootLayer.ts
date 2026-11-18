@@ -238,9 +238,9 @@ export abstract class GameBootLayer extends GameBase {
       color: UI.text,
       align: "center",
       letterSpacing: 0.5,
+      outline: true,
     });
     title.position.set(VIEW.width / 2, 92);
-    title.style.stroke = { color: UI.ink, width: 3 };
     // The wordmark is anchored on its glyphs: the constant text box is almost
     // twice the cap height, and the top of that box pushed it down onto the
     // progress block.

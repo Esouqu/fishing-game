@@ -421,6 +421,28 @@ function untilTelegraph(fish: FishSpecies, seed: number): FightModel | null {
 }
 
 /**
+ * A hold-centre fight stopped at the first telegraph thrown while the angler's
+ * grip is locked out — the 1.8 s window in which holding the button does
+ * nothing at all.
+ */
+function untilLockedTelegraph(
+  fish: FishSpecies,
+  seed: number,
+): FightModel | null {
+  Math.random = makeRandom(seed);
+  const model = new FightModel(fish, { anchor: { x: 255, y: 150 } });
+  model.setPointer(model.centerX, model.centerY);
+  let time = 0;
+  while (model.isRunning && time < 20) {
+    model.setHold(true);
+    model.update(1 / 60);
+    time += 1 / 60;
+    if (model.isGripLocked && model.warn > 0) return model;
+  }
+  return null;
+}
+
+/**
  * A pause freezes the fight, so a telegraph that was live when the player
  * paused must not survive the menu: on resume the dash is spent together with
  * its counter window. A pause outside a dash must change nothing.
@@ -682,6 +704,69 @@ function preGrabCheck(): void {
 }
 
 /**
+ * A spent grip takes the grab with the line.
+ *
+ * An angler at zero grip is locked out of the reel and the last pull; the counter
+ * is the same hand on the same rod, so a dash thrown during that lockout must not
+ * be answerable either. The same press lands outside the lockout — that is
+ * `preGrabCheck`, which paints a zone the player can actually use.
+ */
+function lockGrabCheck(): void {
+  // A locked telegraph is a narrow moment (the lockout is 1.8 s and an
+  // unreading holder often loses first), so the search walks the roster until
+  // one shows up with an honest heading.
+  let model: FightModel | null = null;
+  for (let index = 0; index < FISH.length && model === null; index += 1) {
+    for (let seed = 1; seed <= 40 && model === null; seed += 1) {
+      const candidate = untilLockedTelegraph(
+        FISH[index],
+        index * 101 + seed * 23 + 5,
+      );
+      // A feint hides its true heading under the telegraph; the press is a wedge
+      // test, so this needs an honest dash.
+      if (candidate !== null && !candidate.isFeint) model = candidate;
+    }
+  }
+  if (model === null) {
+    throw new Error("no telegraph during a grip lock");
+  }
+
+  const fight = model;
+  const heading = fight.warnHeading;
+  // Press in the wedge, then drag toward the centre: the full gesture, the one
+  // that lands in `preGrabCheck`.
+  fight.setHold(false);
+  fight.setPointer(
+    fight.centerX + Math.cos(heading) * ARROW_REACH,
+    fight.centerY + Math.sin(heading) * ARROW_REACH,
+  );
+  fight.setHold(true);
+  const lockedAtPress = fight.isGripLocked;
+  fight.setPointer(
+    fight.centerX + Math.cos(heading) * (ARROW_REACH - 18),
+    fight.centerY + Math.sin(heading) * (ARROW_REACH - 18),
+  );
+
+  let guard = 0;
+  while (fight.isRunning && guard < 40) {
+    fight.setHold(true);
+    fight.update(1 / 60);
+    guard += 1;
+  }
+
+  const passed = lockedAtPress && !fight.hasAdvantage;
+  console.log(
+    `lock grab           ${passed ? "OK" : "FAIL"}  ` +
+      (passed
+        ? "a locked grip refuses the grab"
+        : "a locked grip still countered"),
+  );
+  if (!passed) {
+    throw new Error("a grip lockout did not refuse the counter");
+  }
+}
+
+/**
  * One frame of pull per 0.9 s used to keep the neglect clock at zero, so a
  * fight could be parked forever. The drift must win now: the fish leaves the
  * ring and the fight ends on its own.
@@ -737,6 +822,7 @@ missCheck();
 openingCheck();
 freeCounterCheck();
 preGrabCheck();
+lockGrabCheck();
 tapCheck();
 dtCheck();
 

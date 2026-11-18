@@ -139,9 +139,17 @@ export class FightStage {
     // stamina arc is drawn on the float, and the "ПКМ"/heading pointers must
     // never sink under it.
     this.bobberLayer.addChild(minigame.pointers);
+    // The lock goes last, on the float's own layer: it is the smallest mark on
+    // screen and it seals the float, so it must sit on top of the bobber instead
+    // of hiding behind the sprite.
+    this.bobberLayer.addChild(minigame.lockMark);
     const ring = minigame.ringCenter;
     this.focus.focusAt(ring.x, ring.y);
     minigame.onFinish = (result) => this.onFinish?.(result);
+    // The opening frame is painted here, not in the view's constructor: the base
+    // constructor cannot call an overridden `update` before its subclass fields
+    // exist, and the fight has to be drawn before the first tick.
+    minigame.update(0);
     minigame.setHold(held);
     minigame.setPointer(pointerX, pointerY);
     this.scene.setFightFish(

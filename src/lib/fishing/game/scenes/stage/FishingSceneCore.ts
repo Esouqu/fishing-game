@@ -78,7 +78,10 @@ export abstract class FishingSceneCore extends Container {
   protected jumps: Jump[] = [];
   protected heldFish: Sprite | null = null;
   protected heldFishTime = 0;
-  /** Where the landed fish is held; `top` is its upper edge. */
+  /**
+   * Where the landed fish is held; `top` is the upper edge of the whole catch —
+   * the burst's rim, not the sprite — so labels hung off it clear the light.
+   */
   protected catchSpot = { x: 0, y: 0, top: 0 };
   protected time = 0;
   /** Target overcast level, 0..1, set from the area's weather front. */

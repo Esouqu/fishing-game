@@ -3,14 +3,32 @@ import { clamp, easeInOutQuad, lerp, randRange } from "../../utils";
 import { angleDelta } from "./angles";
 import { BubbleField } from "./bubbles";
 import { FIGHT_RADIUS, TAU } from "./constants";
+import { zoneFeintOffset, zoneTuning } from "./zoneTuning";
 import type { Move } from "../behaviors";
 import type { FightState } from "./state";
+
+/**
+ * How far short of a dash target the fish starts braking, in pixels. Roughly
+ * one ring radius: long enough that the burst visibly decelerates into the
+ * target instead of arriving and rebounding, short enough that the dash still
+ * covers open water at full speed.
+ */
+const DASH_BRAKE = FIGHT_RADIUS * 0.78;
 
 /**
  * Movement half of the fight: the authored move script, warning/feint state,
  * target selection and the steering that pulls the fish toward that target.
  */
 export class FightMotion {
+  /** `elapsed` when the last dash ended, for the gap between bursts. */
+  private lastDashEnd = -Infinity;
+  /**
+   * Called when a strong dash starts its telegraph, with the delay before the
+   * real zone of that dash appears. The model owns the counter, the motion owns
+   * the script, so the two meet on this hook.
+   */
+  onZoneStart?: (delay: number) => void;
+
   constructor(
     private readonly state: FightState,
     private readonly bubbles: BubbleField,
@@ -27,7 +45,9 @@ export class FightMotion {
     const s = this.state;
     if (s.current === null) return;
     s.moveTime += dt * s.tempo;
-    if (s.moveTime >= s.current.dur) this.nextMove();
+    if (s.moveTime < s.current.dur) return;
+    if (s.current.kind === "dash") this.lastDashEnd = s.elapsed;
+    this.nextMove();
   }
 
   nextMove(): void {
@@ -48,6 +68,16 @@ export class FightMotion {
     ) {
       this.beginMove({ kind: "pause", dur: FIGHT.startGrace - s.elapsed });
       return;
+    }
+    // The same deferral for the panel's `dashGap`: a fish does not throw two
+    // bursts back to back, so a dash that comes too soon after the last one
+    // waits out the difference in a pause and keeps its place in the script.
+    if (move.kind === "dash") {
+      const quiet = s.elapsed - this.lastDashEnd;
+      if (quiet < zoneTuning.dashGap) {
+        this.beginMove({ kind: "pause", dur: zoneTuning.dashGap - quiet });
+        return;
+      }
     }
     s.moveIndex += 1;
     this.beginMove(move);
@@ -80,16 +110,24 @@ export class FightMotion {
       s.feintActive = feint;
       if (feint) {
         s.feintPending = false;
+        // The spread is measured between the *edges* of the two zones, so the
+        // panel's gap plus both half-angles is the heading offset.
         s.feintAngle =
           s.escapeAngle +
           (Math.random() < 0.5 ? -1 : 1) *
-            randRange(FIGHT.feintAngleMin, FIGHT.feintAngleMax);
+            zoneFeintOffset(
+              randRange(zoneTuning.spreadMin, zoneTuning.spreadMax),
+            );
         s.warnAngle = s.feintAngle;
       } else {
         s.warnAngle = s.escapeAngle;
       }
       s.bubbleTimer = 0;
       s.onWarn?.();
+      // The zone of a strong dash appears with its telegraph; a feint hides its
+      // truth behind the lie for `delay` seconds first. The hook opens the grab
+      // for exactly the time the zone is painted.
+      this.onZoneStart?.(feint ? zoneTuning.delay : 0);
       return;
     }
     s.warnTime = 0;
@@ -247,8 +285,17 @@ export class FightMotion {
     const dx = s.targetX - s.fishX;
     const dy = s.targetY - s.fishY;
     const distance = Math.hypot(dx, dy);
-    const desiredX = distance > 1 ? (dx / distance) * speed : 0;
-    const desiredY = distance > 1 ? (dy / distance) * speed : 0;
+    // A dash is a burst to an authored target, and it has to *arrive* there.
+    // A constant-speed pursuit overshot: the fish entered the target carrying
+    // most of its burst, so a dash aimed at 1.75R actually settled near 2.0R and
+    // with the line out of grip it went past the 2.5R tear-off line — the fish
+    // "just ran out of the circle" while the player held the button. Braking in
+    // the last `DASH_BRAKE` pixels keeps the burst, drops the overshoot, and
+    // leaves the tear-off for its documented cause: a burst plus a pull the
+    // wrong way.
+    const brake = kind === "dash" ? clamp(distance / DASH_BRAKE, 0, 1) : 1;
+    const desiredX = distance > 1 ? (dx / distance) * speed * brake : 0;
+    const desiredY = distance > 1 ? (dy / distance) * speed * brake : 0;
     const blend = Math.min(1, steer * dt);
     s.vx += (desiredX - s.vx) * blend;
     s.vy += (desiredY - s.vy) * blend;

@@ -1,8 +1,10 @@
+﻿import { Texture } from "pixi.js";
 import type { AreaId, WeatherId } from "./types";
 import { AUDIO_MIX, MIX_CHANNELS, type AudioMix } from "./audioMix";
 import { TEXT } from "./texts";
 import { AudioMixPanel } from "./ui/AudioMixPanel";
 import { DevSkyPanel } from "./ui/DevSkyPanel";
+import { ZonePanel } from "./ui/ZonePanel";
 import { copyOrDownloadMix, saveOrDownloadMix } from "./audioMixSave";
 import { GameScreen } from "./screens/GameScreen";
 import { GameInputLayer } from "./GameInputLayer";
@@ -54,6 +56,31 @@ export abstract class GameDevLayer extends GameInputLayer {
   }
 
   /**
+   * Opens or closes the dash-zone tuner (`F8`, dev only).
+   *
+   * The zone is a feel вЂ” how long it takes to appear, how much of it the truth
+   * gets during a feint, how the receipt of a counter drains to grey вЂ” and none
+   * of that can be judged from the constants. The panel plays the three beats
+   * the fight has and puts a slider under every value; the sliders write into
+   * `zoneTuning`, which the live fight reads, so the next dash is already tuned.
+   */
+  toggleZonePanel(): void {
+    if (!import.meta.env.DEV) return;
+    if (this.zonePanel?.isOpen) this.closeZonePanel();
+    else this.openZonePanel();
+  }
+
+  openZonePanel(): void {
+    if (!import.meta.env.DEV || this.assetBag === null) return;
+    const panel = this.zonePanel ?? this.mountZonePanel();
+    if (!panel.isOpen) panel.open();
+  }
+
+  closeZonePanel(): void {
+    this.zonePanel?.close();
+  }
+
+  /**
    * Pins the hour for the dev session, or returns the sky to the wall clock
    * with null. Nothing is saved: the real time is the game's, not the panel's.
    */
@@ -87,6 +114,19 @@ export abstract class GameDevLayer extends GameInputLayer {
     this.skyPanel = panel;
     // Above the screen layer, so the inspector is never clipped by the
     // letterbox and its buttons take the click before the water does.
+    this.world.addChild(panel);
+    return panel;
+  }
+
+  protected mountZonePanel(): ZonePanel {
+    const panel = new ZonePanel({
+      onClose: () => this.closeZonePanel(),
+      // The preview fights a real barracuda, so it needs that fish's sprite.
+      fish: this.assetBag?.fish.barracuda ?? Texture.WHITE,
+    });
+    this.zonePanel = panel;
+    // Above the screen layer, so the tuner is not clipped by the letterbox and
+    // its sliders take the drag before the water does.
     this.world.addChild(panel);
     return panel;
   }

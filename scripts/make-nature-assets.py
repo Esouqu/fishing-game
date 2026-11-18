@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Rebuild the bush and the rocks as padded winter versions.
+"""Rebuild the bush as a padded winter version.
 
-The original sprites were generated in code (no AI art). This script keeps the
-same silhouettes and pixel palette, restores the crowns that were clipped by
-the canvas edge, adds a transparent margin and paints snow caps on the foliage
-and rocks.
+The original sprite was generated in code (no AI art). This script keeps the
+same silhouette and pixel palette, restores the crown that was clipped by the
+canvas edge, adds a transparent margin and paints a snow cap on the foliage.
 
 The two spruces used to be rebuilt here as well, as recoloured broadleaf
 crowns. They are now drawn from scratch by `make-spruce-assets.py`, which owns
-`tree-a.png` and `tree-b.png`; this script only handles the bush and the rocks
-so regenerating nothing puts the old round crowns back. Run from the repository
-root:
+`tree-a.png` and `tree-b.png`; this script only handles the bush so
+regenerating nothing puts the old round crowns back. The shore stones stopped
+being sprites when the scenes moved to `drawShoreStone`, so their outputs and
+originals are gone rather than regenerated here. Run from the repository root:
 
     python scripts/make-nature-assets.py
 """
@@ -28,8 +28,6 @@ SNOW = (238, 246, 250, 255)
 SNOW_LIGHT = (249, 252, 254, 255)
 SNOW_SHADE = (203, 222, 233, 255)
 SNOW_BLUE = (171, 198, 216, 255)
-ICE = (190, 232, 242, 255)
-ICE_DEEP = (137, 199, 216, 255)
 
 
 def load(name: str) -> Image.Image:
@@ -61,25 +59,6 @@ BUSH_MAP = {
     (99, 171, 63): (93, 159, 117, 255),
     (143, 191, 74): (158, 201, 205, 255),
     (215, 232, 160): SNOW_SHADE,
-}
-
-ROCK_A_MAP = {
-    (104, 111, 153): (112, 124, 150, 255),
-    (34, 38, 61): (28, 38, 53, 255),
-    (76, 104, 133): (91, 117, 143, 255),
-    (163, 167, 194): (188, 208, 221, 255),
-    (223, 224, 232): SNOW_LIGHT,
-    (16, 36, 28): (54, 88, 110, 90),
-}
-
-ROCK_B_MAP = {
-    (76, 104, 133): (93, 119, 144, 255),
-    (123, 130, 158): (131, 146, 166, 255),
-    (34, 38, 61): (28, 38, 53, 255),
-    (163, 167, 194): (190, 210, 223, 255),
-    (223, 224, 232): SNOW_LIGHT,
-    (59, 125, 79): (57, 111, 92, 255),
-    (16, 36, 28): (54, 88, 110, 90),
 }
 
 
@@ -151,28 +130,8 @@ def winterize_bush() -> None:
     save("bush-a.png", canvas)
 
 
-def winterize_rock(name: str, mapping: dict) -> None:
-    source = color_map(load(name), mapping)
-    canvas = pad(source, 17, 17, 1, 1)
-    remove_specks(canvas)
-    snow_cap(canvas, 0.5, 2)
-    pixels = canvas.load()
-    for x in range(canvas.width):
-        column = [y for y in range(canvas.height) if pixels[x, y][3] > 0]
-        if not column:
-            continue
-        top_y = column[0]
-        # A thin icy rim near the ground.
-        if top_y + 8 < canvas.height and (x + top_y) % 4 == 0:
-            if pixels[x, top_y + 8][3] > 0:
-                pixels[x, top_y + 8] = ICE
-    save(name, canvas)
-
-
 def main() -> None:
     winterize_bush()
-    winterize_rock("rock-a.png", ROCK_A_MAP)
-    winterize_rock("rock-b.png", ROCK_B_MAP)
 
 
 if __name__ == "__main__":
