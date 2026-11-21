@@ -145,9 +145,12 @@ export class CodexDetails extends CodexGrid {
     this.portrait.texture = this.game.assets.pearls[cell.pearl.id];
     this.portrait.tint = revealed ? 0xffffff : UI.ink;
     this.portrait.alpha = revealed ? 1 : 0.9;
-    // A larger specimen gets a larger portrait, like the catch does.
+    // A larger specimen gets a larger portrait, like the catch does. A locked
+    // pearl is a silhouette: it takes the largest portrait scale, the same one
+    // an uncaught fish uses, so it fills the well without spilling over it and
+    // never hints at the size of a specimen that has not been found.
     this.portrait.scale.set(
-      revealed ? 0.675 + pearlScale(specimen.sizeMm) : 3.3,
+      revealed ? 0.675 + pearlScale(specimen.sizeMm) : 2.4,
     );
     this.syncPortraitShadow(revealed);
 
