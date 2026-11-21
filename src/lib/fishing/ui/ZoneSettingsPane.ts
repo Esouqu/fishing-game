@@ -1,4 +1,4 @@
-﻿import { Container } from "pixi.js";
+import { Container } from "pixi.js";
 import { zoneTuning } from "../game/fight/zoneTuning";
 import { Button } from "./Button";
 import { ScrollColumn } from "./ScrollColumn";
@@ -12,7 +12,7 @@ const ROW_PITCH = 18;
 const RIM_TOP = ZONE_ROWS.length * ROW_PITCH + 6;
 
 /**
- * The В«Р—РћРќР«В» tab: one fader under every number of the zone, and the rim's side.
+ * The «ЗОНЫ» tab: one fader under every number of the zone, and the rim's side.
  *
  * A pane of its own so the panel stays chrome: it owns its scroll column, its
  * rows and the inside/outside choice, and reports the fader under the pointer so

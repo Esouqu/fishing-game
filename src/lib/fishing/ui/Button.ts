@@ -1,9 +1,17 @@
-import { Container, Graphics, Rectangle, Text } from "pixi.js";
+import {
+  Container,
+  Graphics,
+  Rectangle,
+  Sprite,
+  Text,
+  type Texture,
+} from "pixi.js";
 import { CURSORS } from "../cursors";
 import type { Focusable } from "./FocusGroup";
 import { UI } from "./palette";
 import { makeText, setText } from "./theme";
 import { anchorInk } from "./textInk";
+import { TapGuard } from "./tapSlop";
 
 export type ButtonVariant =
   "primary" | "secondary" | "ghost" | "danger" | "card";
@@ -16,6 +24,27 @@ export interface ButtonOptions {
   onClick?: () => void;
   /** Draws a 16x16 icon centered in the button instead of a label. */
   icon?: (g: Graphics) => void;
+  /**
+   * A 16×16 icon texture, drawn instead of `icon`'s painted mark.
+   *
+   * The interface tiles keep their own pixels — a dark outline with the light
+   * glyph inside — so they are drawn as a sprite rather than traced into
+   * `Graphics`. Nearest sampling comes from the shared asset loader, and the
+   * sprite sits in the same 16 px box the painted marks use.
+   */
+  iconTexture?: Texture;
+  /**
+   * Magnification of the icon, whose art is always drawn in a 16 px box. A touch
+   * screen grows the button around its mark and passes the same factor, so the
+   * glyph fills the bigger frame instead of sitting in it. 1 on a mouse.
+   */
+  iconScale?: number;
+  /**
+   * Extra hit area around the visible frame, in pixels, on each side. A square
+   * control that grows for a finger is still smaller than a fingertip, so the
+   * press is taken a few pixels outside the chrome it paints.
+   */
+  hitPad?: number;
   /** Selected state for tabs: ice-white fill and a dark label. */
   selected?: boolean;
   /**
@@ -61,6 +90,8 @@ export class Button extends Container implements Focusable {
   private readonly markLeft: Text | null = null;
   private readonly markRight: Text | null = null;
   private readonly iconLayer = new Graphics();
+  /** Sprite form of a tile icon; null for the painted marks. */
+  private readonly iconSprite: Sprite | null = null;
   private readonly widthValue: number;
   private readonly heightValue: number;
   private readonly variant: ButtonVariant;
@@ -74,6 +105,9 @@ export class Button extends Container implements Focusable {
   private readonly quiet: boolean;
   private readonly marksEnabled: boolean;
   private readonly bare: boolean;
+  private readonly iconScale: number;
+  /** Where the press started, so a drag off the button is not a click. */
+  private readonly tap = new TapGuard();
   private onClick?: () => void;
 
   constructor(options: ButtonOptions) {
@@ -86,6 +120,7 @@ export class Button extends Container implements Focusable {
     this.quiet = options.quiet ?? false;
     this.marksEnabled = options.marks ?? true;
     this.bare = options.bare ?? false;
+    this.iconScale = options.iconScale ?? 1;
 
     if (options.label !== undefined) {
       this.labelText = makeText(options.label, {
@@ -116,10 +151,18 @@ export class Button extends Container implements Focusable {
       options.width ??
       Math.max(
         72,
-        options.icon ? 24 : Math.ceil((this.labelText?.width ?? 40) + 24),
+        options.icon || options.iconTexture
+          ? 24
+          : Math.ceil((this.labelText?.width ?? 40) + 24),
       );
 
+    if (options.iconTexture) {
+      this.iconSprite = new Sprite(options.iconTexture);
+      this.iconSprite.eventMode = "none";
+    }
+
     this.addChild(this.background);
+    if (this.iconSprite) this.addChild(this.iconSprite);
     this.addChild(this.iconLayer);
     if (this.labelText) this.addChild(this.labelText);
     if (this.markLeft) this.addChild(this.markLeft);
@@ -127,9 +170,19 @@ export class Button extends Container implements Focusable {
 
     this.eventMode = "static";
     this.cursor = CURSORS.pointer;
-    this.hitArea = new Rectangle(0, 0, this.widthValue, this.heightValue);
+    const hitPad = options.hitPad ?? 0;
+    this.hitArea = new Rectangle(
+      -hitPad,
+      -hitPad,
+      this.widthValue + hitPad * 2,
+      this.heightValue + hitPad * 2,
+    );
 
-    this.on("pointerover", () => {
+    this.on("pointerover", (event) => {
+      // A finger is not a hover: on a touch screen the browser delivers
+      // `pointerover` on every press, which played the hover cue right before
+      // the click and lit the button with no pointer to explain it.
+      if (event.pointerType === "touch") return;
       this.hovered = true;
       if (!this.quiet) soundHandler?.("hover");
       this.redraw();
@@ -139,7 +192,8 @@ export class Button extends Container implements Focusable {
       this.pressed = false;
       this.redraw();
     });
-    this.on("pointerdown", () => {
+    this.on("pointerdown", (event) => {
+      this.tap.start(event.global.x, event.global.y);
       this.pressed = true;
       this.redraw();
     });
@@ -149,13 +203,18 @@ export class Button extends Container implements Focusable {
     });
     this.on("pointerupoutside", () => {
       this.pressed = false;
+      this.tap.cancel();
       this.redraw();
     });
-    this.on("pointertap", () => {
+    this.on("pointertap", (event) => {
+      // `pointertap` fires for a drag that starts and ends on this button too.
+      // A card is wide enough that a thumb can cross it while casting, which
+      // used to change the water body instead of casting.
+      if (!this.tap.end(event.global.x, event.global.y)) return;
       this.activate();
     });
 
-    if (options.icon) {
+    if (!this.iconSprite && options.icon) {
       options.icon(this.iconLayer);
     }
 
@@ -226,8 +285,37 @@ export class Button extends Container implements Focusable {
     if (this.labelText) {
       this.labelText.position.set(this.widthValue / 2, centerY);
     }
-    if (this.iconLayer) {
-      this.iconLayer.position.set((this.widthValue - 16) / 2, centerY - 8);
+    if (this.iconSprite) {
+      // A tile fills its 16 px canvas, unlike the painted marks that live in
+      // a 10 px box, so the button's own step would overrun the frame. The
+      // sprite steps down until the canvas clears the frame — but the step is
+      // rounded, not floored: every tile carries a 1–2 px transparent margin
+      // around its drawn plate, so a whole step that passes the canvas edge
+      // still leaves the plate inside the frame. Flooring it cost a touch
+      // screen the whole second step: the HUD's painted marks grew to 2× while
+      // the close and fullscreen tiles stayed at 1× and read as half-size.
+      const fit = Math.max(
+        1,
+        Math.round((Math.min(this.widthValue, this.heightValue) - 2) / 16),
+      );
+      const scale = Math.min(this.iconScale, fit);
+      const box = 16 * scale;
+      this.iconSprite.scale.set(scale);
+      // Whole-pixel placement: the 16 px grid is the one the art was drawn
+      // on, and a half-pixel offset would resample it.
+      this.iconSprite.position.set(
+        Math.round((this.widthValue - box) / 2),
+        Math.round(centerY - box / 2),
+      );
+    } else if (this.iconLayer) {
+      // The mark is drawn in a 16 px box and the box is scaled, not redrawn:
+      // one set of icon painters serves both sizes.
+      this.iconLayer.scale.set(this.iconScale);
+      const box = 16 * this.iconScale;
+      this.iconLayer.position.set(
+        (this.widthValue - box) / 2,
+        centerY - box / 2,
+      );
     }
     this.layoutMarks();
   }
@@ -348,6 +436,9 @@ export class Button extends Container implements Focusable {
       });
     }
 
+    if (this.iconSprite) {
+      this.iconSprite.alpha = this.pressed ? 0.8 : 1;
+    }
     if (this.iconLayer) {
       this.iconLayer.alpha = this.pressed ? 0.8 : 1;
     }

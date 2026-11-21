@@ -115,9 +115,9 @@ export const AREAS: readonly AreaDef[] = [
       anglerView: "back",
       bobber: {
         // The shortest cast has to leave the whole fight ring in open water and
-        // clear of the angler: the ring is 34 px across, the angler's boat sits
-        // at y≈194 and the rod tip reaches y≈184, so the near edge of the band
-        // stops at 138. Anything lower put the bottom of the ring on the boat.
+        // clear of the angler: the ring is 34 px across, the boat sits at y≈194
+        // and the rod tip reaches y≈184, so the near edge of the band stops at
+        // 138. Anything lower put the bottom of the ring on the boat.
         minX: 206,
         maxX: 274,
         minY: 106,
@@ -244,10 +244,17 @@ export const AREAS: readonly AreaDef[] = [
         // x=172, so the near edge of the band starts at 218: the ring's left
         // rim stays on open water and 62 px away from the angler even at the
         // shortest cast, instead of hanging over the planks.
+        //
+        // The near side stops at 218, not at the bottom of the frame: the sky
+        // rail owns the strip from y=242 and the fight ring is 22 px wide from
+        // its centre, so a float dropped at 242 put the whole bottom of the
+        // zone — the fish and its escape arc — behind the panel. `castSafety`
+        // clamps every cast to that line anyway; the band says it here so the
+        // tuned area and the rule cannot disagree.
         minX: 218,
         maxX: 300,
         minY: 44,
-        maxY: 242,
+        maxY: 218,
       },
       hint: { x: 156, y: 112 },
       // The pier lamp is the shortest of the three: its glass sits 6.5 px over

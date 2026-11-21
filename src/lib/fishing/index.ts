@@ -22,12 +22,27 @@ export type { AreaDef, SceneLayout } from "./areas";
 export {
   FISH,
   FISH_BY_ID,
+  PEARLS,
+  PEARL_BANDS,
+  PEARL_BY_ID,
   fishDescription,
   fishInArea,
-  isFishActive,
+  formatFlaw,
+  formatPearlSize,
+  isFishInWindow,
+  pearlBand,
+  pearlScale,
   whenPhrase,
 } from "./fish";
-export type { FishSpecies } from "./fish";
+export type {
+  FishSpecies,
+  PearlBand,
+  PearlBandId,
+  PearlCatch,
+  PearlGrade,
+  PearlId,
+  PearlSpecies,
+} from "./fish";
 export {
   LocalProgressRepository,
   MemoryProgressRepository,
@@ -43,6 +58,9 @@ export type {
   FishingGameOptions,
   FishProgress,
   FishTier,
+  PearlCatchEvent,
+  PearlProgress,
+  PearlSpecimen,
   ProgressRepository,
   ProgressSnapshot,
   StartScreen,

@@ -1,14 +1,20 @@
 import { FIGHT } from "../../config";
 import { angleDelta } from "./angles";
 import type { FightState } from "./state";
-import { zoneArc, zoneInner, zoneOuter, zoneTuning } from "./zoneTuning";
+import {
+  zoneArc,
+  zoneInner,
+  zoneOuter,
+  zoneTuning,
+  STICK_GRAB_SLACK,
+} from "./zoneTuning";
 import { depositMissShare, relieveEscape } from "./zone";
 
 /**
  * Is `(x, y)` inside the grab wedge centred on `heading`?
  *
  * The wedge is the band the whole counter is built on: the press is a direction,
- * not a pixel вЂ” the player reads "the fish will bolt that way" and puts the
+ * not a pixel — the player reads "the fish will bolt that way" and puts the
  * button down on that side, then pulls to the middle of the ring. Its half-angle
  * and its depth are the panel's (`zoneTuning`), and the view draws the very same
  * band, so the spot the player sees and the spot the model accepts cannot
@@ -41,7 +47,7 @@ function pressInWedge(state: FightState, heading: number): boolean {
  *
  * The counter used to be an aim: hold the line and point the pull against the
  * dash, and the burst was cancelled if the angle was close enough. That made
- * every dash the same reflex вЂ” pull the other way вЂ” and it fought with the aim
+ * every dash the same reflex — pull the other way — and it fought with the aim
  * the player was already using to drag the fish back into the ring, so a
  * perfectly normal pull could spend the counter without meaning to.
  *
@@ -164,12 +170,22 @@ export class FightCounter {
     // The burst is still ablaze: its heading can be read on the same frame the
     // gesture lands, so the arrow and the grab cannot disagree.
     s.counterAngle = s.escapeAngle;
-    if (!counterGesture(s)) return;
-    // A grab that skips the rest is still a deliberate press: either it landed
-    // on the live dash (`counterPrepared`) or it is this very frame's edge. The
-    // gate only keeps a pull that was already running from turning into a
-    // counter by drag.
-    if (!s.counterArmed && !s.counterPrepared && !s.freshPress) return;
+    // A stick flick is one event: it is read here and dropped whatever comes of
+    // it, so a flick thrown at a closed window cannot answer the next dash.
+    const flick = s.stickGrabAngle;
+    s.stickGrabAngle = null;
+    const flicked =
+      flick !== null &&
+      Math.abs(angleDelta(flick, s.escapeAngle)) <=
+        zoneArc() + STICK_GRAB_SLACK;
+    if (!flicked) {
+      if (!counterGesture(s)) return;
+      // A grab that skips the rest is still a deliberate press: either it landed
+      // on the live dash (`counterPrepared`) or it is this very frame's edge. The
+      // gate only keeps a pull that was already running from turning into a
+      // counter by drag.
+      if (!s.counterArmed && !s.counterPrepared && !s.freshPress) return;
+    }
 
     s.counterUsed = true;
     s.counterPending = false;

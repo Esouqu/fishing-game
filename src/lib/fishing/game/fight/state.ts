@@ -76,6 +76,14 @@ export interface FightState {
   counterUsed: boolean;
   counterPending: boolean;
   counterFlash: number;
+  /**
+   * A stick flick into the sector, waiting for the counter to read it.
+   *
+   * On a phone the dash is answered by pushing the stick at it; the flag carries
+   * that one event from the control to the rules, which accept it on their next
+   * tick while the window is open and then clear it. A mouse never sets it.
+   */
+  stickGrabAngle: number | null;
   stun: number;
   preBurstAngle: number | null;
   lastSteerAngle: number | null;

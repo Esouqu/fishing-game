@@ -41,7 +41,7 @@ export interface CounterState {
  * with the same ring, the same `drawZoneWedge` and the same `ZoneClock` the fight
  * uses.
  *
- * The fish is not an illustration of a dash вЂ” it *is* a fight, with the authored
+ * The fish is not an illustration of a dash — it *is* a fight, with the authored
  * script of one species, so the telegraphs, the feints, the real lunge and the
  * grab window arrive when the model says they do. A press inside the band while
  * the window is open is a press on the model itself: the pointer goes to the
@@ -150,7 +150,7 @@ export class ZonePreview extends Container {
     this.draw();
   }
 
-  /** Redraw the current frame without advancing it вЂ” the panel's pause. */
+  /** Redraw the current frame without advancing it — the panel's pause. */
   redraw(): void {
     this.draw();
   }

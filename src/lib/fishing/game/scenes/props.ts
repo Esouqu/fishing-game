@@ -262,7 +262,10 @@ export function drawShoreStone(
     ...at(-0.16, 0.96),
     ...at(0.34, 0.78),
     ...at(0.02, 0.66),
-  ]).fill({ color: palette.snow, alpha: 0.92 });
+  ]).fill({
+    color: palette.snow,
+    alpha: 0.92,
+  });
 
   g.poly(body).stroke({ width: 1, color: 0x2b323a, alpha: 0.85 });
   g.zIndex = y;

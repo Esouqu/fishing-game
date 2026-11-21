@@ -29,14 +29,13 @@ pnpm dev
 ```
 src/main.ts                 страница-хост
 src/lib/fishing/index.ts    публичный API (createFishingGame)
-src/lib/fishing/Game*.ts    жизненный цикл, boot, ввод, dev-панели, экраны
+src/lib/fishing/Game*.ts    жизненный цикл, boot, ввод, dev-панели, экраны, fullscreen/inputProfile
 src/lib/fishing/screens/    меню, игра, помощь, кодекс
-src/lib/fishing/game/       CastFlow, Scene, Minigame, FightModel, Atmosphere
-src/lib/fishing/ui/         HUD, кнопки, тема, панели, кодекс
-src/lib/fishing/fish/       данные 40 видов и запросы
+src/lib/fishing/game/       CastFlow, Scene, Minigame, FightModel, Atmosphere, pearl
+src/lib/fishing/ui/         HUD, кнопки, тема, панели, кодекс, fight-контролы
+src/lib/fishing/fish/       данные 40 видов, жемчуг, ракушка, платина; запросы
 src/lib/fishing/world/      погода, палитра, WorldClock
 src/lib/fishing/audio/      Web Audio, каталог звуков, эмбиент
-src/lib/fishing/fight/      чистая симуляция боя
 ```
 
 Правило зависимостей: `screens`/`ui`/`game` знают только `GameContext`, а не класс `Game`.
@@ -46,7 +45,8 @@ src/lib/fishing/fight/      чистая симуляция боя
 
 - Виртуальный экран — 480×270; вся раскладка в этих единицах.
 - Не переименовывать id водоёмов `cove` / `deep` / `rapids`: на них завязаны сохранения.
-- Не двигать `src/lib/fishing/audioMix.ts` и маркеры `// #region audio-mix`: в них пишет dev-плагин Vite.
+- Не переименовывать id жемчуга (`fish/pearls.ts`) и `SHELL_ID`: это ключи прогресса.
+- Не двигать `src/lib/fishing/audioMix.ts` и маркеры `// #region audio-mix`: по ним `check:structure` находит сгенерированный блок.
 - Публичный API `src/lib/fishing/index.ts` и пропсы `FishingGame.svelte` менять только осознанно.
 - Размер файла — запах, а не правило: делим по реальному шву (сцена/подсистема/этап),
   а не по числу строк. `pnpm check:structure` лишь перечисляет модули крупнее 500 строк.
@@ -67,6 +67,7 @@ src/lib/fishing/fight/      чистая симуляция боя
 | Стиль, лимиты, public API | [docs/conventions.md](docs/conventions.md) |
 | Стиль UI: обводки, отступы попапов, шрифты | [docs/style-guide.md](docs/style-guide.md) |
 | Встраивание в Svelte/HTML | [docs/embedding.md](docs/embedding.md) |
+| Адаптация под телефоны: ориентация, тач, размеры, чек-лист | [docs/mobile.md](docs/mobile.md) |
 
 ## Workflow
 

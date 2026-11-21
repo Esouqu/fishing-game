@@ -28,8 +28,15 @@ body {
   position: fixed;
   inset: 0;
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
+  /* The canvas is sized from the container's client box, so this padding becomes
+     the safe margin: the notch and the home bar stay outside the HUD and the
+     bottom row, and the game letterboxes into what is left. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
   touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 canvas {

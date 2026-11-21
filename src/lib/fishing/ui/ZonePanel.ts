@@ -2,14 +2,12 @@ import { Container, Graphics, Rectangle, Text } from "pixi.js";
 import type { Texture } from "pixi.js";
 import { CURSORS } from "../cursors";
 import { TEXT } from "../texts";
-import { resetZoneTuning, zoneTuning } from "../game/fight/zoneTuning";
-import { writeZoneTuning } from "../zoneMixSave";
+import { resetZoneTuning } from "../game/fight/zoneTuning";
 import { Button } from "./Button";
 import { CounterPane } from "./CounterPane";
 import { UI } from "./palette";
 import { ZonePreview } from "./ZonePreview";
 import { ZoneSettingsPane } from "./ZoneSettingsPane";
-import { zoneMixSource } from "./zoneRows";
 import { drawPanel, makeText, setText } from "./theme";
 
 export interface ZonePanelDeps {
@@ -62,8 +60,8 @@ const IDLE_HINT = "НАВЕДИ НА ПОЛЗУНОК — РАССКАЖУ, ЧТ
  * (fades, delay, both durations, grey, the band's place and size, the feint's
  * edge gap, the pause between bursts, the paint), «КОНТР» holds the gesture's
  * live indicator and its three numbers. Everything is written into `zoneTuning`,
- * which both the fight's rules and its drawing read live; «В КОД» writes the
- * table back into `zoneTuning.ts` through the dev server.
+ * which both the fight's rules and its drawing read live; the values are for the
+ * session only — «СБРОС» returns them to the table in the source.
  */
 export class ZonePanel extends Container {
   private readonly deps: ZonePanelDeps;
@@ -275,11 +273,6 @@ export class ZonePanel extends Container {
           this.setStatus(TEXT.devtools.resetDone);
         },
       },
-      {
-        label: TEXT.devtools.save,
-        onClick: () => void this.save(),
-        primary: true,
-      },
       { label: TEXT.devtools.close, onClick: () => this.deps.onClose() },
     ];
     specs.forEach((spec, index) => {
@@ -309,17 +302,6 @@ export class ZonePanel extends Container {
   /** The pointer's row explained. */
   private setHelp(message: string | null): void {
     setText(this.help, message ?? IDLE_HINT);
-  }
-
-  /** Writes the tuned table back into `zoneTuning.ts` through the dev server. */
-  private async save(): Promise<void> {
-    this.setStatus(TEXT.devtools.working);
-    const saved = await writeZoneTuning(zoneMixSource(zoneTuning));
-    this.setStatus(
-      saved
-        ? "ЗАПИСАНО В zoneTuning.ts — СТРАНИЦА ПЕРЕЗАГРУЗИТСЯ"
-        : "СЕРВЕР НЕДОСТУПЕН — ЗНАЧЕНИЯ ЖИВУТ ДО ПЕРЕЗАГРУЗКИ",
-    );
   }
 
   private setStatus(message: string): void {

@@ -14,12 +14,24 @@ import type { AudioKit } from "./audio";
 import type { AssetBag } from "./assets";
 import type { AreaId, AreaLocations, NormalizedOptions } from "./types";
 import { VIEW } from "./config";
+import { detectInputProfile, pixelRatioCap } from "./inputProfile";
+import { applyZoneProfile } from "./game/fight/zoneTuning";
+import { applyUiMetrics, uiMetrics, type UiMetrics } from "./ui/metrics";
+import { FpsMeter } from "./ui/FpsMeter";
+import { RenderScale } from "./renderScale";
 
 export abstract class GameBase {
   readonly app: Application;
   readonly options: NormalizedOptions;
   readonly screens = new ScreenManager();
   readonly world = new Container();
+  /**
+   * A touch screen gets its own profile: no painted cursor, no hover, touch
+   * target sizes and the touch dash-zone tuning. Everything it changes is read
+   * through `touch` or `ui`, never sniffed per component.
+   */
+  readonly touch: boolean;
+  readonly ui: UiMetrics;
 
   protected assetBag: AssetBag | null = null;
   protected audioKit: AudioKit | null = null;
@@ -51,6 +63,13 @@ export abstract class GameBase {
   protected skyPanel: DevSkyPanel | null = null;
   /** Dev dash-zone tuner, built the first time `F8` opens it. */
   protected zonePanel: ZonePanel | null = null;
+  /** Frame-rate readout, only when the page asked for it with `?fps=1`. */
+  protected fpsMeter: FpsMeter | null = null;
+  /**
+   * Pixel ratio of the canvas: starts at the sharpest the device allows and
+   * steps down while the frame time stays bad (see `renderScale.ts`).
+   */
+  protected readonly renderScale: RenderScale;
 
   /** Clips all game content to the 480×270 frame inside the letterbox. */
   protected readonly worldMask = new Graphics();
@@ -114,10 +133,17 @@ export abstract class GameBase {
 
   protected readonly onVisibility = (): void => {
     if (this.destroyed) return;
+    // Coming back does NOT resume the round (see below), but the audio context
+    // does have to be re-armed: on a phone a call or the app switcher suspends
+    // it without the page ever losing it, and the next cast would be silent
+    // until the player tapped again.
+    if (!document.hidden) {
+      this.audioKit?.unlock();
+      return;
+    }
     // Leaving the tab pauses the round; coming back does NOT resume it. The
     // player left mid-fight, so the game waits for a deliberate «продолжить»
     // instead of dropping them back into a landing window they cannot see.
-    if (!document.hidden) return;
     this.worldClock?.persist();
     void this.progressTracker?.flush();
     this.screens.onHostPause(true);
@@ -126,11 +152,43 @@ export abstract class GameBase {
   protected constructor(app: Application, options: NormalizedOptions) {
     this.app = app;
     this.options = options;
+    // One profile for the whole session, taken before the first screen is
+    // built: the metrics are baked into the panels and dialogs, and a layout
+    // rebuilt mid-session would move controls under the player's hand.
+    this.touch = detectInputProfile() === "touch";
+    // A host that mounts the game before its own CSS settles reports a zero-size
+    // container; measuring the viewport instead keeps the metrics from being
+    // computed off a 1 px frame, where every control would grow to the cap.
+    const host = options.container;
+    applyUiMetrics(
+      host.clientWidth || window.innerWidth,
+      host.clientHeight || window.innerHeight,
+      this.touch,
+    );
+    this.ui = uiMetrics();
+    // The fight table is read by the model *and* the view, so the profile is
+    // swapped before the first dash instead of at the first counter.
+    applyZoneProfile(this.touch ? "touch" : "mouse");
     for (const area of AREAS) {
       this.locationAccess[area.id] = options.locations[area.id] !== false;
     }
     this.world.eventMode = "static";
     this.app.stage.addChild(this.world);
+
+    // The renderer already started at this ratio; the controller may lower it.
+    // A phone starts and stays at 1× (see `pixelRatioCap`): the phone profile is
+    // a fixed resolution, not a budget the game adapts down from.
+    this.renderScale = new RenderScale(
+      Math.min(window.devicePixelRatio || 1, pixelRatioCap(this.touch)),
+      () => this.applyResize(),
+    );
+
+    // Optional frame-rate readout: a phone has no devtools, so the only way to
+    // answer "is it stuttering?" is to print it on the frame.
+    if (FpsMeter.requested()) {
+      this.fpsMeter = new FpsMeter(() => this.renderScale.value);
+      this.app.stage.addChild(this.fpsMeter);
+    }
 
     // The canvas fills the host and the world is letterboxed inside it. A mask
     // keeps snow, particles and oversized scenery from leaking into the bars.
@@ -246,6 +304,14 @@ export abstract class GameBase {
 
   protected tick = (): void => {
     if (this.destroyed) return;
+    // The meter reads the raw frame delta, before the clamp below: a hitch that
+    // the game smooths away is exactly what it has to report.
+    const frameMs = this.app.ticker.deltaMS / 1000;
+    this.fpsMeter?.frame(frameMs);
+    // The ratio is judged on the game, not on the loading screen: the boot is a
+    // flat gradient that decodes assets, and dropping the picture for its frames
+    // would punish every phone on a cold start.
+    if (!this.bootLayer) this.renderScale.frame(frameMs);
     // A 10 fps frame still moves the round in real time; the fight catches up
     // in fixed 1/60 s steps of its own. Below that the round slows down instead
     // of letting one delta jump a whole telegraph or bite window.

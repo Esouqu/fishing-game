@@ -1,11 +1,10 @@
-﻿import { Texture } from "pixi.js";
+import { Texture } from "pixi.js";
 import type { AreaId, WeatherId } from "./types";
 import { AUDIO_MIX, MIX_CHANNELS, type AudioMix } from "./audioMix";
-import { TEXT } from "./texts";
 import { AudioMixPanel } from "./ui/AudioMixPanel";
 import { DevSkyPanel } from "./ui/DevSkyPanel";
 import { ZonePanel } from "./ui/ZonePanel";
-import { copyOrDownloadMix, saveOrDownloadMix } from "./audioMixSave";
+import { applyZoneProfile } from "./game/fight/zoneTuning";
 import { GameScreen } from "./screens/GameScreen";
 import { GameInputLayer } from "./GameInputLayer";
 
@@ -58,8 +57,8 @@ export abstract class GameDevLayer extends GameInputLayer {
   /**
    * Opens or closes the dash-zone tuner (`F8`, dev only).
    *
-   * The zone is a feel вЂ” how long it takes to appear, how much of it the truth
-   * gets during a feint, how the receipt of a counter drains to grey вЂ” and none
+   * The zone is a feel — how long it takes to appear, how much of it the truth
+   * gets during a feint, how the receipt of a counter drains to grey — and none
    * of that can be judged from the constants. The panel plays the three beats
    * the fight has and puts a slider under every value; the sliders write into
    * `zoneTuning`, which the live fight reads, so the next dash is already tuned.
@@ -73,11 +72,20 @@ export abstract class GameDevLayer extends GameInputLayer {
   openZonePanel(): void {
     if (!import.meta.env.DEV || this.assetBag === null) return;
     const panel = this.zonePanel ?? this.mountZonePanel();
-    if (!panel.isOpen) panel.open();
+    if (!panel.isOpen) {
+      // The tuner only ever edits the desktop table: its sliders read and write
+      // the numbers the shipped defaults are built from, so opening it on a
+      // phone must not turn the finger's geometry into a code change.
+      applyZoneProfile("mouse");
+      panel.open();
+    }
   }
 
   closeZonePanel(): void {
-    this.zonePanel?.close();
+    if (!this.zonePanel?.isOpen) return;
+    this.zonePanel.close();
+    // The session goes back to its own table (the touch one on a phone).
+    applyZoneProfile(this.touch ? "touch" : "mouse");
   }
 
   /**
@@ -135,14 +143,6 @@ export abstract class GameDevLayer extends GameInputLayer {
     const panel = new AudioMixPanel({
       audio: this.audio,
       onPersist: (mix) => this.persistMix(mix),
-      onSave: async (mix) => {
-        const message = await saveOrDownloadMix(mix);
-        // Once the block is in the source it *is* the code default, so the
-        // device-local overrides have to go or they would shadow it forever.
-        if (message === TEXT.devtools.savedToCode) this.settings.mix = null;
-        return message;
-      },
-      onCopy: (mix) => copyOrDownloadMix(mix),
       isMuted: () => this.muted,
       onToggleMute: () => this.toggleMute(),
       onClose: () => this.closeAudioPanel(),

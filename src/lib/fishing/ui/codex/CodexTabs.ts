@@ -3,6 +3,7 @@ import { CURSORS } from "../../cursors";
 import { UI } from "../palette";
 import { makeText } from "../theme";
 import { anchorInk } from "../textInk";
+import { TapGuard } from "../tapSlop";
 
 export interface CodexTabsOptions {
   labels: readonly string[];
@@ -10,6 +11,8 @@ export interface CodexTabsOptions {
   height: number;
   onPick: (index: number) => void;
   onHover: () => void;
+  /** Label size, in virtual pixels; the screens pass their own touch size. */
+  fontSize?: number;
 }
 
 /**
@@ -28,6 +31,7 @@ export class CodexTabs extends Container {
   private readonly heightValue: number;
   private readonly onPick: (index: number) => void;
   private readonly onHover: () => void;
+  private readonly tap = new TapGuard();
   private selected = 0;
   private hovered = -1;
 
@@ -42,7 +46,7 @@ export class CodexTabs extends Container {
     this.addChild(this.track);
     options.labels.forEach((label, index) => {
       const text = makeText(label, {
-        size: 8,
+        size: options.fontSize ?? 8,
         weight: 700,
         color: UI.textMuted,
         align: "center",
@@ -57,10 +61,26 @@ export class CodexTabs extends Container {
     this.cursor = CURSORS.pointer;
     this.hitArea = new Rectangle(0, 0, this.widthValue, this.heightValue);
     this.on("pointermove", (event) => {
+      // A finger does not hover: on touch the segment lights under the press
+      // instead, and a stale highlight here read as a stuck tab.
+      if (event.pointerType === "touch") return;
       const index = this.indexAt(event.getLocalPosition(this).x);
       if (index === this.hovered) return;
       this.hovered = index;
       this.onHover();
+      this.redraw();
+    });
+    this.on("pointerdown", (event) => {
+      this.tap.start(event.global.x, event.global.y);
+      if (event.pointerType !== "touch") return;
+      const index = this.indexAt(event.getLocalPosition(this).x);
+      if (index === this.hovered) return;
+      this.hovered = index;
+      this.redraw();
+    });
+    this.on("pointerup", (event) => {
+      if (event.pointerType !== "touch" || this.hovered < 0) return;
+      this.hovered = -1;
       this.redraw();
     });
     this.on("pointerout", () => {
@@ -68,6 +88,9 @@ export class CodexTabs extends Container {
       this.redraw();
     });
     this.on("pointertap", (event) => {
+      // Only a press that stayed on the same segment picks: dragging across the
+      // bar on the way to the roster must not switch water bodies.
+      if (!this.tap.end(event.global.x, event.global.y)) return;
       const index = this.indexAt(event.getLocalPosition(this).x);
       if (index >= 0 && index < this.labels.length) this.onPick(index);
     });

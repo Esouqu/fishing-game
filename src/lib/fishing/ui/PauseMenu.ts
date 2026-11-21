@@ -1,4 +1,4 @@
-﻿import { Container, Graphics, Rectangle } from "pixi.js";
+import { Container, Graphics, Rectangle } from "pixi.js";
 import type { GameContext } from "../GameContext";
 import { VIEW } from "../config";
 import { CURSORS } from "../cursors";
@@ -8,6 +8,7 @@ import { Button } from "./Button";
 import { FocusGroup } from "./FocusGroup";
 import { UI } from "./palette";
 import { PANEL_PAD, drawPanel, makeText } from "./theme";
+import { MAIN_TARGET, type UiMetrics } from "./metrics";
 
 export interface PauseMenuHandlers {
   onResume(): void;
@@ -22,12 +23,13 @@ export interface PauseMenuHandlers {
  * button in the HUD, so the panel is down to the entries that leave or pause
  * the round itself — and its height follows the three rows that are left.
  */
-const PANEL = { x: 130, y: 53, width: 220, height: 137 };
-const BUTTON_W = PANEL.width - PANEL_PAD * 2;
+const PANEL = { x: 130, y: 53, width: 220 };
+/** Height of the «ПАУЗА» wordmark block above the first row. */
+const TITLE_BLOCK = 22;
+/** Air between the wordmark and the first row. */
+const TITLE_GAP = 8;
 const BUTTON_H = 21;
 const BUTTON_GAP = 6;
-const BUTTON_X = PANEL.x + PANEL_PAD;
-const BUTTON_Y = PANEL.y + PANEL_PAD + 22 + 8;
 /** How far the panel rises while it flies in, in pixels. */
 const FLY_IN = 22;
 const FLY_TIME = 0.24;
@@ -53,6 +55,19 @@ export class PauseMenu extends Container {
     this.game = game;
     this.visible = false;
 
+    // The panel is as tall as the three rows it holds, so a phone gets a taller
+    // dialog instead of three cramped ones. On a fine pointer the arithmetic
+    // lands exactly on the 220×137 window it always was.
+    const ui: UiMetrics = game.ui;
+    const buttonH = ui.target(BUTTON_H, MAIN_TARGET);
+    const buttonGap = ui.pick(BUTTON_GAP, 8);
+    const buttonW = PANEL.width - PANEL_PAD * 2;
+    const buttonX = PANEL.x + PANEL_PAD;
+    const height =
+      PANEL_PAD * 2 + TITLE_BLOCK + TITLE_GAP + buttonH * 3 + buttonGap * 2;
+    const y = ui.pick(PANEL.y, Math.floor((VIEW.height - height) / 2));
+    const buttonY = y + PANEL_PAD + TITLE_BLOCK + TITLE_GAP;
+
     const blocker = new Graphics();
     blocker
       .rect(0, 0, VIEW.width, VIEW.height)
@@ -64,7 +79,7 @@ export class PauseMenu extends Container {
     this.addChild(this.panelLayer);
 
     const panel = new Graphics();
-    drawPanel(panel, PANEL.x, PANEL.y, PANEL.width, PANEL.height, {
+    drawPanel(panel, PANEL.x, y, PANEL.width, height, {
       fill: UI.panel,
       alpha: 0.98,
       shadow: true,
@@ -72,44 +87,44 @@ export class PauseMenu extends Container {
     this.panelLayer.addChild(panel);
 
     const title = makeText(TEXT.common.pause, {
-      size: 18,
+      size: ui.font(18),
       weight: 800,
       color: UI.text,
       align: "center",
       letterSpacing: 2,
     });
-    title.position.set(240, PANEL.y + PANEL_PAD);
+    title.position.set(240, y + PANEL_PAD);
     this.panelLayer.addChild(title);
 
     const resume = new Button({
       label: TEXT.common.resume,
-      width: BUTTON_W,
-      height: BUTTON_H,
+      width: buttonW,
+      height: buttonH,
       variant: "primary",
-      size: 11,
+      size: ui.font(11),
       onClick: handlers.onResume,
     });
-    resume.position.set(BUTTON_X, BUTTON_Y);
+    resume.position.set(buttonX, buttonY);
     this.panelLayer.addChild(resume);
 
     this.soundButton = new Button({
       label: this.muteLabel(),
-      width: BUTTON_W,
-      height: BUTTON_H,
-      size: 11,
+      width: buttonW,
+      height: buttonH,
+      size: ui.font(11),
       onClick: () => this.game.toggleMute(),
     });
-    this.soundButton.position.set(BUTTON_X, BUTTON_Y + BUTTON_H + BUTTON_GAP);
+    this.soundButton.position.set(buttonX, buttonY + buttonH + buttonGap);
     this.panelLayer.addChild(this.soundButton);
 
     const menu = new Button({
       label: TEXT.common.menu,
-      width: BUTTON_W,
-      height: BUTTON_H,
-      size: 11,
+      width: buttonW,
+      height: buttonH,
+      size: ui.font(11),
       onClick: () => this.game.showMenu(),
     });
-    menu.position.set(BUTTON_X, BUTTON_Y + (BUTTON_H + BUTTON_GAP) * 2);
+    menu.position.set(buttonX, buttonY + (buttonH + buttonGap) * 2);
     this.panelLayer.addChild(menu);
 
     this.focus.setItems([resume, this.soundButton, menu]);

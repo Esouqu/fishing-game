@@ -5,66 +5,43 @@ import { UI } from "./palette";
  * Book mark of the HUD's codex control: a cover, two blocks of paper with ruled
  * entries and a bookmark down the gutter.
  *
- * It is drawn two rows taller than the pause bars beside it (`drawPauseIcon`
- * spans y 4–11, this book spans y 3–12): the two controls are one pair in 16 px
- * buttons, and the reference is the one that carries text, so it gets the extra
- * rows a cover, two pages and a bookmark need. The book keeps the ten columns
- * from x 3 to x 12 and the pause's bars sit centred inside them, so the pair
- * lines up in the corner; only the book spends them on a whole object — the
- * pause is two bars.
+ * It fills the same 12×12 body as the pause bars beside it (`drawPauseIcon`
+ * spans y 2–13 too): the two controls are one pair in 16 px buttons, and the
+ * reference is the one that carries text, so it spends the body on a cover, two
+ * pages and a bookmark, while the pause spends it on two bars.
+ *
+ * The contour is the 2 px ink plate of the close and fullscreen tiles, not the
+ * 1 px frame this mark used to carry: those tiles ship with a solid 2 px plate,
+ * and side by side in the HUD the book looked printed in a lighter weight than
+ * its neighbours. The plate now wraps the whole 12×12 body, and the pale cover,
+ * the ice pages and the bookmark sit inside it, so the pair carries one weight.
  *
  * Nothing here is warm: the cover is periwinkle-pale, the paper is the
  * interface's ice white, the entries are periwinkle and the contour is ink, so
  * the only accent is the bookmark. A gold cover was the first draft and it
  * became the loudest thing on the frame, louder than the amber the landing cue
  * owns.
- *
- * The silhouette is chamfered rather than square — the top and bottom edges are
- * a pixel shorter than the sides, so the corners step — and the top edge is
- * interrupted over the gutter, where the 2 px outline cap sits one pixel lower
- * than the rest of it. Together those are what make the mark a book and not a
- * panel with a stripe: a plain rectangle in this UI reads as a window with a
- * title bar, whatever is drawn inside it.
  */
 export function drawCodexMark(g: Graphics): void {
   g.clear();
-  // Box: ten columns from x 3, ten rows from y 3 — the height the cover, the
-  // pages and the bookmark need, two rows more than the pause bars use.
-  const left = 3;
-  const right = 12;
-  const top = 3;
-  const bottom = 12;
-  // Bookmark columns, centred in the box.
-  const gutter = 7;
-  const gutterWidth = 2;
-
-  // Paper: the two pages, each a block of entries.
-  g.rect(left + 2, top + 2, 2, 5).fill(UI.primary);
-  g.rect(gutter + gutterWidth, top + 2, 2, 5).fill(UI.primary);
+  // 12×12 ink plate with its four corners cut by one pixel, two columns of air
+  // on every side of the 16 px box. The chamfer is what keeps the plate reading
+  // as a tile rather than as a window frame around the pages.
+  const left = 2;
+  const top = 2;
+  g.rect(left + 1, top, 10, 12).fill(UI.ink);
+  g.rect(left, top + 1, 12, 10).fill(UI.ink);
+  // Cover: the pale ring inside the plate, one pixel of it on every side.
+  g.rect(left + 2, top + 2, 8, 8).fill(UI.periwinklePale);
+  // Paper: two pages, each a block of entries.
+  g.rect(left + 3, top + 3, 2, 5).fill(UI.primary);
+  g.rect(left + 7, top + 3, 2, 5).fill(UI.primary);
   // Entries ruled on the pages.
-  g.rect(left + 2, top + 3, 2, 1).fill(UI.periwinkle);
-  g.rect(gutter + gutterWidth, top + 3, 2, 1).fill(UI.periwinkle);
-  g.rect(left + 2, top + 5, 2, 1).fill(UI.periwinkle);
-  g.rect(gutter + gutterWidth, top + 5, 2, 1).fill(UI.periwinkle);
-  // Cover: a pale ring around the paper, one pixel wide on every side.
-  g.rect(left + 1, top + 1, 3, 1).fill(UI.periwinklePale);
-  g.rect(gutter + gutterWidth, top + 1, 3, 1).fill(UI.periwinklePale);
-  g.rect(left + 1, bottom - 2, 3, 1).fill(UI.periwinklePale);
-  g.rect(gutter + gutterWidth, bottom - 2, 3, 1).fill(UI.periwinklePale);
-  g.rect(left + 1, top + 2, 1, 5).fill(UI.periwinklePale);
-  g.rect(right - 1, top + 2, 1, 5).fill(UI.periwinklePale);
-  // Bookmark down the gutter, one row past the bottom edge. Its last row is a
-  // single pixel on the left: a two-pixel tip read as a cut ribbon, and the
-  // right bottom pixel was the one that poked out of the book's silhouette.
-  g.rect(gutter, top + 2, gutterWidth, 7).fill(UI.danger);
-  g.rect(gutter, bottom, 1, 1).fill(UI.danger);
-  // Outline: chamfered corners, and the cap over the gutter one pixel lower
-  // than the top edge it belongs to.
-  g.rect(left + 1, top, 3, 1).fill(UI.ink);
-  g.rect(gutter + gutterWidth, top, 3, 1).fill(UI.ink);
-  g.rect(gutter, top + 1, gutterWidth, 1).fill(UI.ink);
-  g.rect(left, top + 1, 1, 7).fill(UI.ink);
-  g.rect(right, top + 1, 1, 7).fill(UI.ink);
-  g.rect(left + 1, bottom - 1, 3, 1).fill(UI.ink);
-  g.rect(gutter + gutterWidth, bottom - 1, 3, 1).fill(UI.ink);
+  for (const row of [4, 6] as const) {
+    g.rect(left + 3, top + row, 2, 1).fill(UI.periwinkle);
+    g.rect(left + 7, top + row, 2, 1).fill(UI.periwinkle);
+  }
+  // Bookmark down the gutter: two columns from the top of the pages to the
+  // cover's bottom edge, so the tabs of the pages still show above it.
+  g.rect(left + 5, top + 3, 2, 7).fill(UI.danger);
 }

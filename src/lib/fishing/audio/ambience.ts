@@ -18,6 +18,8 @@ export interface AmbienceDeps {
   getContext(): AudioContext | null;
   getBus(): AudioNode | null;
   getMix(): AudioMix;
+  /** True once a gesture has resumed the context; before that beds only queue. */
+  canPlay(): boolean;
   load(file: SoundName): Promise<AudioBuffer | null>;
 }
 
@@ -39,7 +41,7 @@ export class AmbienceBeds {
   /** Selects the looping water bed for a water body (crossfaded). */
   setWater(areaId: AreaId): void {
     this.waterWanted = areaId;
-    if (!this.deps.getContext()) return;
+    if (!this.deps.canPlay()) return;
     void this.applyWater(areaId);
   }
 
@@ -49,7 +51,7 @@ export class AmbienceBeds {
    */
   setWeather(weather: WeatherId | null): void {
     this.weatherWanted = weather;
-    if (!this.deps.getContext()) return;
+    if (!this.deps.canPlay()) return;
     void this.applyWeather(weather);
   }
 

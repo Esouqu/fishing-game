@@ -143,6 +143,21 @@ export function inkTopInset(text: Text): number {
   return Math.max(0, inkBox(text.style).capTop);
 }
 
+/**
+ * Vertical centre of the capitals of a label's *first* line, measured from the
+ * top of its box.
+ *
+ * A bullet pinned beside wrapped copy has one job: sit on the line of letters it
+ * introduces. The box top is the line box of the font, and the letters start a
+ * little below it, so a marker placed at the box top (or at its middle) hangs
+ * above the words. Returned in box units, so a caller can add it to the label's
+ * own y and stay inside the wrapped row it measured.
+ */
+export function inkCapCenterY(text: Text): number {
+  const { capTop, cap } = inkBox(text.style);
+  return capTop + cap / 2;
+}
+
 export type InkAlign = "left" | "center" | "right";
 
 /** How a label is anchored horizontally, so a text change can re-aim it. */

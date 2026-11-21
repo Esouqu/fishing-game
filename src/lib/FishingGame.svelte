@@ -11,7 +11,12 @@
   } from "./fishing";
 
   interface Props {
-    /** Base URL of the copied art/font folder. */
+    /**
+     * Root folder that holds `fishing/`, `cursors/` and `ice-480.webp`.
+     * Pass an absolute path when embedding on a nested route.
+     */
+    publicBase?: string;
+    /** Base URL of the copied art/font folder. Default: `${publicBase}/fishing`. */
     assetBase?: string;
     /** localStorage namespace, useful when embedding several games. */
     storagePrefix?: string;
@@ -25,12 +30,15 @@
     onCatch?: (event: CatchEvent) => void;
     onProgress?: (snapshot: ProgressSnapshot) => void;
     onReady?: () => void;
+    /** Called when the engine cannot start at all (no WebGL, init failure). */
+    onError?: (error: unknown) => void;
     class?: string;
   }
 
   let {
-    assetBase = `${import.meta.env.BASE_URL}assets/fishing`,
-    storagePrefix = "quiet-cove",
+    publicBase,
+    assetBase,
+    storagePrefix = "fishing-game",
     muted = false,
     startScreen = "menu",
     progress,
@@ -39,6 +47,7 @@
     onCatch,
     onProgress,
     onReady,
+    onError,
     class: className = "",
   }: Props = $props();
 
@@ -58,6 +67,7 @@
 
         const instance = await createFishingGame({
           container: host,
+          publicBase,
           assetBase,
           storagePrefix,
           muted,
@@ -76,7 +86,8 @@
         }
         game = instance;
       } catch (error) {
-        console.error("[quiet-cove] failed to initialise", error);
+        console.error("[fishing-game] failed to initialise", error);
+        if (!disposed) onError?.(error);
       }
     })();
 
@@ -136,5 +147,18 @@
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;
+  }
+
+  /* The canvas is created by the engine, so it lives outside Svelte's scope.
+     The game paints its own pixel cursor and adds `cursor-hidden` once the
+     overlay is ready. */
+  .fishing-game :global(canvas) {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  .fishing-game :global(canvas.cursor-hidden) {
+    cursor: none !important;
   }
 </style>

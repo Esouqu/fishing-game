@@ -1,4 +1,6 @@
 import type { SceneLayout } from "../areas";
+import { VIEW } from "../config";
+import { RAIL_HEIGHT } from "../ui/weatherRailLayout";
 import { FIGHT_RADIUS } from "./fight";
 
 /**
@@ -29,6 +31,22 @@ export const ANGLER_RADIUS = 22;
 export const ANGLER_LIFT = 12;
 /** Minimum gap between the ring centre and the angler's art. */
 export const ANGLER_CLEARANCE = RING_RADIUS + RING_PAD + ANGLER_RADIUS;
+/** Inset of the sky rail from the frame's bottom edge (`WeatherForecast`). */
+const RAIL_INSET = 8;
+/** Air kept between the ring's rim and the rail's frame. */
+const RAIL_AIR = 2;
+/**
+ * Lowest float centre the fight ring can sit on without reaching the sky rail.
+ *
+ * The rail is the one piece of the interface that stays on the frame for the
+ * whole round — the corner cards and the forecast step aside for the fight, the
+ * rail is dimmed but present — and it owns the bottom strip of the lake. A cast
+ * that landed under it put half the ring, the fish silhouette and the escape
+ * are behind the panel: a zone the player cannot read. The clamp is on the ring
+ * rather than on the float, because it is the ring that has to stay visible.
+ */
+export const RING_SAFE_MAX_Y =
+  VIEW.height - RAIL_INSET - RAIL_HEIGHT - (RING_RADIUS + RING_PAD) - RAIL_AIR;
 /** Step and reach of the search that pushes a landing spot off the bank. */
 const SEARCH_STEP = 2;
 const SEARCH_STEPS = 48;
@@ -61,7 +79,10 @@ export interface SafeCastOptions {
 }
 
 export interface CastSpotResult extends CastSpot {
-  /** Pixels the point had to travel away from the angler. */
+  /**
+   * Pixels the landing point had to be moved — away from the angler, or up out
+   * of the rail's strip. Zero when the aim was already playable.
+   */
   moved: number;
   /** False when no spot inside the band cleared the ring. */
   safe: boolean;
@@ -127,6 +148,16 @@ export function layoutBounds(layout: SceneLayout): CastBounds {
 }
 
 /**
+ * Band a cast may actually land in: the authored one, clipped above the sky
+ * rail. Aim previews, the touch picker and the safety search all read this, so
+ * no path can put the ring under the panel.
+ */
+export function castBand(layout: SceneLayout): CastBounds {
+  const bounds = layoutBounds(layout);
+  return { ...bounds, maxY: Math.min(bounds.maxY, RING_SAFE_MAX_Y) };
+}
+
+/**
  * Pushes a landing point along the cast until the whole ring clears the bank
  * and the angler. Points that are already fine are returned untouched, so the
  * authored bands stay the real source of the cast feel; the search only fires
@@ -134,18 +165,24 @@ export function layoutBounds(layout: SceneLayout): CastBounds {
  */
 export function safeCastSpot(options: SafeCastOptions): CastSpotResult {
   const { point, isWater, angler, away, bounds } = options;
+  // The frame's own limit, whatever band the caller passed: the ring must stay
+  // off the sky rail even if an area edit widened its water past it.
+  const minY = bounds.minY;
+  const maxY = Math.min(bounds.maxY, RING_SAFE_MAX_Y);
   const clampX = (value: number): number =>
     Math.min(bounds.maxX, Math.max(bounds.minX, value));
   const clampY = (value: number): number =>
-    Math.min(bounds.maxY, Math.max(bounds.minY, value));
+    Math.min(maxY, Math.max(minY, value));
 
-  if (isCastSpotSafe(isWater, angler, point.x, point.y)) {
-    return { x: point.x, y: point.y, moved: 0, safe: true };
+  const start = { x: clampX(point.x), y: clampY(point.y) };
+  if (isCastSpotSafe(isWater, angler, start.x, start.y)) {
+    const moved = Math.hypot(start.x - point.x, start.y - point.y);
+    return { x: start.x, y: start.y, moved, safe: true };
   }
 
   // The furthest in-water point seen on the way out: if nothing clears the
   // ring, this is still the least-bad place to drop the float.
-  let fallback: CastSpot = { x: point.x, y: point.y };
+  let fallback: CastSpot = { x: start.x, y: start.y };
   let fallbackDistance = -Infinity;
 
   for (
@@ -153,8 +190,8 @@ export function safeCastSpot(options: SafeCastOptions): CastSpotResult {
     step <= SEARCH_STEP * SEARCH_STEPS;
     step += SEARCH_STEP
   ) {
-    const x = clampX(point.x + away.x * step);
-    const y = clampY(point.y + away.y * step);
+    const x = clampX(start.x + away.x * step);
+    const y = clampY(start.y + away.y * step);
     if (!isWater(x, y)) break;
     if (isCastSpotSafe(isWater, angler, x, y)) {
       return { x, y, moved: step, safe: true };

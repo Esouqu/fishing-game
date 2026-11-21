@@ -1,9 +1,6 @@
 import { Sprite, Texture, type DestroyOptions } from "pixi.js";
 import { VIEW } from "../config";
 
-/** Public art path: `public/assets/ice-480.webp` ships beside the built page. */
-const ICE_URL = `${import.meta.env.BASE_URL}assets/ice-480.webp`;
-
 /** How far the frost reaches in from the frame border, in virtual pixels. */
 const FEATHER = 55;
 
@@ -35,10 +32,19 @@ export class IceVeil extends Sprite {
     this.eventMode = "none";
   }
 
-  static async load(url = ICE_URL): Promise<IceVeil | null> {
+  /**
+   * The veil is decoration: when the file is missing the game boots without it.
+   * `url` comes from the host's `publicBase`, so a nested route or a CDN works.
+   */
+  static async load(url: string): Promise<IceVeil | null> {
     try {
       const image = new Image();
       image.decoding = "async";
+      // The veil is baked by reading the alpha back through `getImageData`, and
+      // a cross-origin image without CORS taints the canvas. The error would be
+      // swallowed by the guard below and the frost would silently vanish on a
+      // CDN host, so the flag belongs here, next to the request.
+      image.crossOrigin = "anonymous";
       image.src = url;
       await image.decode();
       const texture = bakeIceTexture(image);

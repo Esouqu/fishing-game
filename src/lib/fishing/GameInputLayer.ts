@@ -2,11 +2,16 @@ import { VIEW } from "./config";
 import { GameBootLayer } from "./GameBootLayer";
 import { CURSORS, type CursorName } from "./cursors";
 import { CursorOverlay } from "./ui/CursorOverlay";
+import { RotateNotice } from "./ui/RotateNotice";
 import type { CursorTextures } from "./cursors";
 
 export abstract class GameInputLayer extends GameBootLayer {
   /** True while the page hides the system pointer in favour of the overlay. */
   private nativeCursorHidden = false;
+  /** Portrait stub of a touch screen; built the first time the game resizes. */
+  protected rotateNotice: RotateNotice | null = null;
+  /** Portrait state of the last resize, so the pause is asked for once. */
+  private portrait = false;
 
   protected layout(): void {
     const width = this.app.screen.width;
@@ -29,11 +34,43 @@ export abstract class GameInputLayer extends GameBootLayer {
       Math.floor(this.app.screen.height) === height
     ) {
       this.layout();
+      this.syncOrientation(width, height);
       return;
     }
-    this.app.renderer.resize(width, height);
+    this.app.renderer.resize(width, height, this.renderScale.value);
     this.layout();
+    this.syncOrientation(width, height);
   }
+
+  /**
+   * A phone held in portrait is not given a smaller game: it is asked to turn.
+   *
+   * The stub is a screen-space layer above the whole world — letterbox included
+   * — and it swallows the taps while it is up. Showing it pauses the round, the
+   * same way leaving the tab does, and turning the phone back does **not**
+   * resume: the round comes back when the player presses «продолжить», because
+   * a fight that resumes on its own drops them into a landing window they never
+   * saw open.
+   */
+  private syncOrientation(width: number, height: number): void {
+    if (!this.touch) return;
+    const portrait = height > width;
+    if (!this.rotateNotice) {
+      const notice = new RotateNotice();
+      this.rotateNotice = notice;
+      // Above the world and the mask, so it covers the black bars too.
+      this.app.stage.addChild(notice);
+    }
+    this.rotateNotice.layout(width, height);
+    if (portrait === this.portrait) return;
+    this.portrait = portrait;
+    this.rotateNotice.setShown(portrait);
+    if (portrait) {
+      this.app.canvas.classList.remove("cursor-hidden");
+      this.screens.onHostPause(true);
+    }
+  }
+
   protected updateCursor(): void {
     const overlay = this.cursorOverlay;
     if (!overlay) return;
@@ -58,6 +95,10 @@ export abstract class GameInputLayer extends GameBootLayer {
   }
 
   protected mountCursor(cursors: CursorTextures): void {
+    // A touch screen has no pointer to paint: an overlay would sit in the frame
+    // corner until the first tap and then jump under the finger. The canvas
+    // keeps its own pointer hidden too (see `setNativeCursorHidden`).
+    if (this.touch) return;
     const overlay = new CursorOverlay(cursors);
     this.cursorOverlay = overlay;
     this.app.stage.addChild(overlay);

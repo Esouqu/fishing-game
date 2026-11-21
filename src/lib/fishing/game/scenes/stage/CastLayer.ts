@@ -1,7 +1,6 @@
 import { C, TIMING } from "../../../config";
 import { clamp, easeOutCubic, lerp } from "../../../utils";
-import { mixColor } from "../../../world";
-import { castAway, layoutBounds, safeCastSpot } from "../../castSafety";
+import { castAway, castBand, safeCastSpot } from "../../castSafety";
 import { aimCast } from "../../castAim";
 import { AnglerLayer } from "./AnglerLayer";
 import { drawFishStamina, drawStaminaThreshold } from "./staminaArc";
@@ -37,13 +36,13 @@ export abstract class CastLayer extends AnglerLayer {
     drawStaminaThreshold(notch);
   }
   /**
-   * Launches the float toward `aim` — the cursor at the moment of release —
-   * with the charge deciding how far along that line it lands. Without an aim
-   * the cast still goes out along the water's own axis, which is what the
-   * scripted casts and the dev hooks rely on.
+   * Launches the float toward `aim` — the pointer at the moment of release on a
+   * mouse, the spot picked when the charge started on a phone — with the charge
+   * deciding how far along that line it lands. Without an aim the cast still
+   * goes out along the water's own axis, which is what the scripted casts and
+   * the dev hooks rely on.
    */
   playCast(power: number, aim?: { x: number; y: number }): void {
-    this.previewG.clear();
     this.pulling = false;
     // A fresh cast starts with a rested fish: no fatigue carries over.
     this.escapeMeter = 0;
@@ -76,11 +75,16 @@ export abstract class CastLayer extends AnglerLayer {
    * whole fight ring lands on water. The area bands already satisfy this at
    * every power, so the search is a guarantee rather than the tuning knob; it
    * only reports in development when a band edit broke the rule.
+   *
+   * `warn` is off for the aim preview, which runs this same search on every
+   * frame of a charge: the console message is about the authored band, and a
+   * preview would print it sixty times a second.
    */
   protected settleCast(
     x: number,
     y: number,
     away = castAway(this.layout),
+    warn = true,
   ): { x: number; y: number; moved: number; safe: boolean } {
     const isWater = (px: number, py: number): boolean =>
       this.renderer.isWater(px, py);
@@ -89,8 +93,9 @@ export abstract class CastLayer extends AnglerLayer {
       isWater,
       angler: this.layout.angler,
       away,
-      bounds: layoutBounds(this.layout),
+      bounds: castBand(this.layout),
     });
+    if (!warn) return spot;
     if (import.meta.env.DEV && !spot.safe) {
       console.warn(
         `[fishing] ${this.area.id}: no cast spot clears the fight ring ` +
@@ -98,8 +103,8 @@ export abstract class CastLayer extends AnglerLayer {
       );
     } else if (import.meta.env.DEV && spot.moved > 0) {
       console.warn(
-        `[fishing] ${this.area.id}: the cast needed ${spot.moved}px more ` +
-          `distance to clear the ring; widen the bobber band in areas.ts`,
+        `[fishing] ${this.area.id}: the cast had to be moved ${spot.moved}px ` +
+          `to clear the ring or the sky rail; check the bobber band in areas.ts`,
       );
     }
     return spot;
@@ -273,8 +278,9 @@ export abstract class CastLayer extends AnglerLayer {
         this.fightBobberY + Math.sin(this.time * 8) * 1.2 + jerk,
       );
       // Struck fish: the float pops back to the surface and only dips again as
-      // the fish tears the line away. The sink is the whole escape cue now, so
-      // it goes deeper than the old four pixels.
+      // the fish tears the line away. The sink goes deeper than the old four
+      // pixels because the float is the physical half of the escape cue — the
+      // number itself is on the срыв bar in the HUD.
       this.sinkTarget = tension * 6 - jerk * 0.8;
       this.bobberBody.rotation = Math.sin(this.time * 6) * 0.16;
       if (Math.random() < dt * 2) {
@@ -346,15 +352,17 @@ export abstract class CastLayer extends AnglerLayer {
       const surface = 0.72;
       const pulse = (Math.sin(this.time * 2.4) + 1) / 2;
       // The waterline of a float being dragged down: the deeper the body sits
-      // under the surface, the wider the ring it pushes out and the warmer it
-      // runs — ice at rest, red when the float is close to drowning. The shape
-      // is the same water it always was; only the water's answer to the float
-      // changes, so the escape cue lives on the float instead of in a gauge.
+      // under the surface, the wider the ring it pushes out. The shape is the
+      // same water it always was. It no longer warms towards red as the line
+      // nears its end: a colour spreading over the float read as decoration,
+      // so the escape clock is a scale on the HUD now (`BarsView.drawEscape`)
+      // and the float only tells what is physically happening to it — it is
+      // being pulled under.
       const sink = this.phase === "fight" ? clamp(this.bobberBody.y / 6) : 0;
       const resting = 4.6 + pulse * 1.4 + sink * 3.2;
       this.bobberRipple.ellipse(0, 0, resting, resting * surface).stroke({
         width: 1,
-        color: mixColor(this.palette.ice, C.red, sink),
+        color: this.palette.ice,
         alpha: 0.42 + pulse * 0.18 + sink * 0.22,
       });
       // A tug on the bait also pushes the surface: the ellipse spreads with the

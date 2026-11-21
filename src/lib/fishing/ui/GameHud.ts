@@ -1,10 +1,18 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, type Texture } from "pixi.js";
 import type { AreaDef } from "../areas";
 import { LUCK_BAND, VIEW } from "../config";
 import { Button } from "./Button";
 import { UI } from "./palette";
 import { SCREEN_INSET, drawFishGlyph, drawPauseIcon } from "./theme";
 import { drawCodexMark } from "./codexMark";
+import { FullscreenToggle } from "./FullscreenToggle";
+import {
+  ICON_CONTROL,
+  MAIN_TARGET,
+  iconSteps,
+  type UiMetrics,
+} from "./metrics";
+import type { UiRect } from "./rect";
 
 /** Live values of the cast power meter; `null` hides the meter. */
 export interface PowerMeterState {
@@ -30,12 +38,19 @@ const POWER_BAR = { width: 60, height: 7 } as const;
 /** Pixels above the angler's feet; matches the hint's line. */
 const POWER_LIFT = 35;
 
-/** Side of the two square controls in the top-right corner. */
-const CONTROL_SIZE = 16;
+/**
+ * Side of the two square controls in the top-right corner: the icon box plus
+ * the air the mark needs to sit inside its frame (`ICON_CONTROL`).
+ */
+const CONTROL_SIZE = ICON_CONTROL;
 /** Air between those two controls: they are one pair, not one wide bar. */
 const CONTROL_GAP = 4;
-/** Right edge of the pair, before the frame inset. */
-const CONTROL_RIGHT = VIEW.width - SCREEN_INSET;
+/**
+ * A touch screen makes the pair bigger than the air it used to leave, so the
+ * corner inset shrinks to keep them on the frame instead of pushing the control
+ * away from the edge it belongs to.
+ */
+const TOUCH_INSET = 8;
 
 /**
  * In-game HUD: the cast power meter over the angler and two bare controls —
@@ -52,13 +67,22 @@ const CONTROL_RIGHT = VIEW.width - SCREEN_INSET;
 export class GameHud extends Container {
   private readonly powerBar = new Graphics();
   private readonly rareIcon = new Graphics();
+  /** Fullscreen toggle, top-left; null when the browser has no API. */
+  private readonly fullscreen: FullscreenToggle | null;
+  /** Rects of the corner controls, in scene pixels; see `reservedRects`. */
+  private readonly occupied: UiRect[] = [];
   /** Left edge of the power bar, centred over the angler. */
   private readonly powerX: number;
   /** Top edge of the power bar, a little above the angler's hat. */
   private readonly powerY: number;
   private time = 0;
 
-  constructor(area: AreaDef, handlers: GameHudHandlers) {
+  constructor(
+    area: AreaDef,
+    ui: UiMetrics,
+    fullscreenIcon: Texture,
+    handlers: GameHudHandlers,
+  ) {
     super();
     this.powerX = Math.round(area.layout.angler.x - POWER_BAR.width / 2);
     this.powerY = Math.round(area.layout.angler.y - POWER_LIFT);
@@ -66,32 +90,67 @@ export class GameHud extends Container {
     // Both controls always show their frame instead of appearing only under the
     // pointer: a button that is invisible until hovered reads as part of the
     // scenery and hides the way into the reference and out of the round.
+    const size = ui.target(CONTROL_SIZE, MAIN_TARGET);
+    const gap = ui.pick(CONTROL_GAP, 6);
+    const inset = ui.pick(SCREEN_INSET, TOUCH_INSET);
+    const right = VIEW.width - inset;
+    const iconScale = iconSteps(size);
+    // A fingertip is bigger than the chrome: the press is taken a few pixels
+    // outside the frame it paints, short of the neighbour's own hit area.
+    const hitPad = ui.pick(0, 3);
+
+    // Fullscreen sits in the free top-left corner, the mirror of the codex and
+    // pause pair: a phone is the one place the address bar is worth losing, so
+    // the desktop keeps the menu it had and gets no extra control.
+    this.fullscreen =
+      ui.touch && FullscreenToggle.available
+        ? new FullscreenToggle(fullscreenIcon, size, iconScale, hitPad)
+        : null;
+    if (this.fullscreen) {
+      this.fullscreen.position.set(inset, inset);
+      this.addChild(this.fullscreen);
+      this.occupied.push({ x: inset, y: inset, width: size, height: size });
+    }
+
     const pauseButton = new Button({
-      width: CONTROL_SIZE,
-      height: CONTROL_SIZE,
+      width: size,
+      height: size,
       variant: "secondary",
       icon: (g) => drawPauseIcon(g),
+      iconScale,
+      hitPad,
       onClick: handlers.onPause,
     });
-    pauseButton.position.set(CONTROL_RIGHT - CONTROL_SIZE, SCREEN_INSET);
+    pauseButton.position.set(right - size, inset);
     this.addChild(pauseButton);
+    this.occupied.push({
+      x: right - size,
+      y: inset,
+      width: size,
+      height: size,
+    });
 
     // The codex sits to the left of the pause, at the same size and in the same
     // frame: the reference used to be an entry inside the pause dialog, which
     // meant stopping the round to read it. Its mark is the only multi-colour
     // glyph in the HUD — an open book, because a frame read as a panel.
     const codexButton = new Button({
-      width: CONTROL_SIZE,
-      height: CONTROL_SIZE,
+      width: size,
+      height: size,
       variant: "secondary",
       icon: (g) => drawCodexMark(g),
+      iconScale,
+      hitPad,
       onClick: handlers.onCodex,
     });
-    codexButton.position.set(
-      CONTROL_RIGHT - CONTROL_SIZE * 2 - CONTROL_GAP,
-      SCREEN_INSET,
-    );
+    codexButton.position.set(right - size * 2 - gap, inset);
     this.addChild(codexButton);
+    this.occupied.push({
+      x: right - size * 2 - gap,
+      y: inset,
+      width: size,
+      height: size,
+    });
 
     this.powerBar.position.set(this.powerX, this.powerY);
     this.powerBar.eventMode = "none";
@@ -117,6 +176,17 @@ export class GameHud extends Container {
       y >= this.powerY - 1 &&
       y <= this.powerY + POWER_BAR.height + 1
     );
+  }
+
+  /**
+   * Rects of the corner controls, in scene pixels.
+   *
+   * The lesson note is laid out around the interface, and this is the HUD's
+   * share of it: a note that covers the pause or the codex hides the two ways
+   * out of the round it is explaining.
+   */
+  reservedRects(): UiRect[] {
+    return this.occupied;
   }
 
   private drawPower(state: PowerMeterState | null): void {

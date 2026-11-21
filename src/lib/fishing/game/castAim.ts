@@ -1,6 +1,11 @@
 import type { SceneLayout } from "../areas";
 import { clamp } from "../utils";
-import { castAway, ringClearsAngler, type CastBounds } from "./castSafety";
+import {
+  castAway,
+  castBand,
+  ringClearsAngler,
+  type CastBounds,
+} from "./castSafety";
 
 /**
  * Aiming the cast at the cursor.
@@ -83,7 +88,10 @@ function rayBand(
  * float in the water.
  */
 export function aimCast({ from, aim, layout, power }: CastAimInput): CastAim {
-  const band = layout.bobber;
+  // The band the ring can be played in, not the authored one: a ray that runs
+  // into the sky rail's strip would spend its power on water the float can
+  // never be dropped on.
+  const band = castBand(layout);
   const fallback = castAway(layout);
   const dx = aim.x - from.x;
   const dy = aim.y - from.y;
@@ -129,7 +137,7 @@ function clearAim(
   layout: SceneLayout,
 ): { x: number; y: number } {
   if (ringClearsAngler(x, y, layout.angler)) return { x, y };
-  const band = layout.bobber;
+  const band = castBand(layout);
   const dx = x - layout.angler.x;
   const dy = y - layout.angler.y;
   const distance = Math.hypot(dx, dy);

@@ -23,6 +23,12 @@ export class AudioCore {
   protected world: GainNode | null = null;
   protected paused = false;
   protected muted: boolean;
+  /**
+   * True once the first gesture has resumed the context. The context itself is
+   * created earlier, on the boot screen, so the sample pack can be decoded
+   * before the player can press anything (see {@link preloadAllSounds}).
+   */
+  protected unlocked = false;
   protected readonly base: string;
   protected mix: AudioMix;
   protected readonly buffers = new Map<SoundName, AudioBuffer>();
@@ -70,31 +76,13 @@ export class AudioCore {
   }
 
   unlock(): void {
-    if (this.ctx) {
-      if (this.ctx.state === "suspended") void this.ctx.resume();
-      return;
-    }
-    const ctor: typeof AudioContext | undefined =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!ctor) return;
-    try {
-      const ctx = new ctor();
-      const master = ctx.createGain();
-      master.gain.value = this.muted ? 0 : this.mix.master;
-      master.connect(ctx.destination);
-      const world = ctx.createGain();
-      world.gain.value = this.paused ? 0 : 1;
-      world.connect(master);
-      this.ctx = ctx;
-      this.master = master;
-      this.world = world;
-      void this.preloadUi();
-      this.onUnlocked();
-    } catch {
-      this.ctx = null;
-    }
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") void ctx.resume();
+    if (this.unlocked) return;
+    this.unlocked = true;
+    void this.preloadUi();
+    this.onUnlocked();
   }
 
   /**
@@ -116,6 +104,35 @@ export class AudioCore {
     for (const name of ROUND_CUES) void this.load(name);
   }
 
+  /**
+   * Fetches and decodes the whole sample pack, so a round never waits for a
+   * file mid-cast.
+   *
+   * Browsers refuse to start audio before a gesture, but they do allow an
+   * `AudioContext` to be created (suspended) and `decodeAudioData` to run, so
+   * the buffers are ready the moment `unlock` resumes the context. `load`
+   * already deduplicates in-flight requests and caches results, which makes
+   * this safe to call alongside the UI/round warm-ups.
+   */
+  async preloadAllSounds(
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void> {
+    if (!this.ensureContext()) {
+      onProgress?.(0, 0);
+      return;
+    }
+    const names = Object.keys(SOUND_FILES) as SoundName[];
+    let done = 0;
+    onProgress?.(0, names.length);
+    await Promise.all(
+      names.map(async (name) => {
+        await this.load(name);
+        done += 1;
+        onProgress?.(done, names.length);
+      }),
+    );
+  }
+
   destroy(): void {
     if (!this.ctx) return;
     void this.ctx.close().catch(() => undefined);
@@ -125,6 +142,35 @@ export class AudioCore {
   }
 
   // ------------------------------------------------------------- internals
+
+  /**
+   * Creates the shared context without resuming it. Playback stays silent
+   * until a gesture calls `unlock`; decoding and graph setup do not need one.
+   */
+  protected ensureContext(): AudioContext | null {
+    if (this.ctx) return this.ctx;
+    const ctor: typeof AudioContext | undefined =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!ctor) return null;
+    try {
+      const ctx = new ctor();
+      const master = ctx.createGain();
+      master.gain.value = this.muted ? 0 : this.mix.master;
+      master.connect(ctx.destination);
+      const world = ctx.createGain();
+      world.gain.value = this.paused ? 0 : 1;
+      world.connect(master);
+      this.ctx = ctx;
+      this.master = master;
+      this.world = world;
+      return ctx;
+    } catch {
+      this.ctx = null;
+      return null;
+    }
+  }
 
   protected applyMaster(): void {
     if (!this.master || !this.ctx) return;

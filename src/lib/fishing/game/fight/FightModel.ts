@@ -138,6 +138,17 @@ export class FightModel {
     return clamp(this.state.outsideTimer / this.state.escapeHold, 0, 1);
   }
 
+  /**
+   * 0..1 total escape pressure: the clock that has been poured in plus the
+   * share a missed dash still owes it (`escapeFill`). The срыв bar draws the
+   * difference between the two as the incoming part, so a miss reads as a
+   * segment arriving instead of the whole bar jumping.
+   */
+  get escapeRisk(): number {
+    const s = this.state;
+    return clamp((s.outsideTimer + s.escapeFill) / s.escapeHold, 0, 1);
+  }
+
   /** Seconds of escape clock still to pour in from missed dashes. */
   get escapePending(): number {
     return this.state.escapeFill;
@@ -241,6 +252,29 @@ export class FightModel {
   }
 
   /**
+   * Where the live counter sector points, in radians, or null when no window is
+   * open. The touch stick mirrors it on its own pad, which is how the gesture is
+   * taught without a line of tutorial text.
+   */
+  get counterCue(): number | null {
+    const s = this.state;
+    if (!s.running || s.counterUsed || s.counterWindow <= 0) return null;
+    return s.counterAngle;
+  }
+
+  /**
+   * The touch answer to a dash: the stick was pushed at it.
+   *
+   * It is recorded here and read by the counter on the next tick, where the
+   * window, the grip and the heading are all known — the control cannot decide
+   * any of that, it only reports which way the thumb went.
+   */
+  counterFromStick(angle: number): void {
+    if (!this.state.running) return;
+    this.state.stickGrabAngle = angle;
+  }
+
+  /**
    * Advance the fight by `dt` in fixed 1/60 s slices: the headless oracle sees
    * the same sequence as the browser, and a slow frame is caught up in steps
    * instead of handing the whole delta to the integrator.
@@ -252,9 +286,15 @@ export class FightModel {
     });
   }
 
-  /** A pause does not bank a dash: see `resumeFightAfterPause`. */
-  resumeFromPause(): void {
-    resumeFightAfterPause(this.state, this.motion, this.counter);
+  /**
+   * A pause does not bank a dash: see `resumeFightAfterPause`.
+   *
+   * `recharge` is the manual's pause: the dash still resolves, but its counter
+   * window is opened again from the resume instead of being charged as a miss —
+   * the lesson stopped the fight to teach exactly that dash.
+   */
+  resumeFromPause(recharge = false): void {
+    resumeFightAfterPause(this.state, this.motion, this.counter, recharge);
   }
 
   private tick(step: number): void {
@@ -374,7 +414,7 @@ export class FightModel {
 
     // Two and a half radii (85 px): no pull brings the fish back in time from
     // there, so the hook is simply gone. Scripts aim no further than 1.75R, so
-    // only a throw вЂ” a burst plus a wrong-way pull вЂ” lands here.
+    // only a throw — a burst plus a wrong-way pull — lands here.
     if (Math.hypot(s.fishX, s.fishY) > FIGHT_RADIUS * 2.5) {
       this.finish(false);
     }

@@ -15,4 +15,5 @@
 | [testing.md](testing.md) | команды, sim-parity, smoke, CI, бюджет загрузки |
 | [conventions.md](conventions.md) | лимит 400 строк, стиль, public API, docs |
 | [style-guide.md](style-guide.md) | UI: обводки, отступы попапов, шрифты, состояния, анимация |
+| [mobile.md](mobile.md) | телефоны: ориентация, тач-ввод, размеры, чек-лист (план) |
 | [embedding.md](embedding.md) | `createFishingGame`, Svelte, HTTP-прогресс |

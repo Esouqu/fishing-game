@@ -287,25 +287,23 @@ export function drawPanel(
 }
 
 /**
- * Pause bars: two framed bars, a little shorter than the codex mark beside them
- * in the HUD corner. Full height made the pair read as two equal actions; the
- * pause is the smaller one.
+ * Pause bars: two plates with an ice core, the same 12×12 body as the codex
+ * mark beside them in the HUD corner.
  *
- * They are drawn in the book's own language — ice paper inside an ink contour —
- * because the two controls are one pair: solid dark bars next to a light,
- * outlined book read as two different icon sets. For the same reason the bars
- * are 3 px wide with a 1 px slot, not 4 px with 2 px of paper: a frame drawn
- * around a narrow hole still reads as a 4 px block, and beside the book's 1 px
- * contour the pause looked half again as bold. At 3 px the two marks carry the
- * same amount of ink and the pair reads as one set.
+ * The contour is 2 px, the one the close and fullscreen tiles use: those two
+ * arrive as Kenney tiles whose glyph sits on a 2 px ink plate, and the drawn
+ * marks beside them kept a 1 px frame, so the HUD's four controls read as two
+ * different icon sets. A 2 px plate needs a wider bar to keep any ice inside —
+ * at 3 px the bar was all frame — so each bar is 6×12 with a 2×8 core, which is
+ * the same proportion of light to ink as the tiles' own glyphs.
  */
 export function drawPauseIcon(g: Graphics, ink: number = UI.ink): void {
   g.clear();
-  // Frame of each bar, then the lit interior one pixel in. The two bars sit in
-  // the middle of the book's ten columns: 4..6 and 9..11, two columns apart.
-  for (const x of [4, 9] as const) {
-    g.rect(x, 4, 3, 8).fill(ink);
-    g.rect(x + 1, 5, 1, 6).fill(UI.primary);
+  // Two 6 px bars, 2 px of ink on every side of the core, 2 px between them and
+  // one column of air at each edge of the 16 px box.
+  for (const x of [1, 9] as const) {
+    g.rect(x, 2, 6, 12).fill(ink);
+    g.rect(x + 2, 4, 2, 8).fill(UI.primary);
   }
 }
 
@@ -315,46 +313,26 @@ export function drawPlayIcon(g: Graphics, color: number = UI.text): void {
 }
 
 /**
- * Close cross of the windows' title row: the «Х» that used to be a text glyph
- * from the pixel font.
+ * Tap mark: a fingertip coming down on a surface, in the same 16 px box as the
+ * mouse pictogram it replaces on a touch screen.
  *
- * The letter was the last icon in the interface drawn by the font rather than
- * by hand, and it showed: two 45° canvas strokes gave it soft, anti-aliased
- * edges where every other mark on the frame is a whole pixel, and its weight
- * changed with the font size. It is drawn now in the language of the pair in the
- * HUD corner — ink contour, ice-paper interior (`drawPauseIcon`,
- * `drawCodexMark`) — because the close button is the same kind of control.
- *
- * Ten columns and ten rows (x 3..12, y 3..12), the box the codex mark uses, so
- * the cross fills an 18 px button without touching its frame. Each arm is three
- * cells across with one cell of paper down the middle, exactly the pause bar's
- * ink-paper-ink section; the tips stay solid ink so the paper lines stop short
- * of the ends instead of poking out of the silhouette.
+ * It is drawn rather than shipped as a sprite so the prompt on a phone does not
+ * need a second image behind the boot loader: the gesture is three rectangles
+ * and a lit crown, in the interface's own ink-periwinkle-ice language.
  */
-export function drawCloseIcon(g: Graphics): void {
+export function drawTapIcon(g: Graphics): void {
   g.clear();
-  const left = 3;
-  const right = 12;
-  const top = 3;
-  // Rows are mirrored: step 0 is the top tip, step 9 the bottom one, and the two
-  // arms meet at steps 4–5.
-  for (let step = 0; step <= right - left; step += 1) {
-    const y = top + step;
-    // The two arms of the row: one falling right from the left edge, one falling
-    // left from the right edge.
-    const falls = [left + step, right - step] as const;
-    for (const x of falls) {
-      g.rect(x, y, 1, 1).fill(UI.ink);
-      // The rails beside the paper line, clipped by the box at the outer edges.
-      if (x > left) g.rect(x - 1, y, 1, 1).fill(UI.ink);
-      if (x < right) g.rect(x + 1, y, 1, 1).fill(UI.ink);
-    }
-    // Paper: the middle cell of each arm. Drawn over the rails, because on the
-    // crossing rows the two arms share those cells.
-    if (step > 0 && step < right - left) {
-      for (const x of falls) g.rect(x, y, 1, 1).fill(UI.primary);
-    }
-  }
+  // The surface being pressed: a broken line, so the mark reads as a contact
+  // and not as an underline for the finger.
+  g.rect(1, 12, 5, 1).fill({ color: UI.periwinkle, alpha: 0.9 });
+  g.rect(10, 12, 5, 1).fill({ color: UI.periwinkle, alpha: 0.9 });
+  // The finger: a wide pad on a short shaft coming down onto that line, ice
+  // paper with an ink shade down one side, like every other mark on the frame.
+  // The pad has to be this wide — a 3 px stalk read as an exclamation mark.
+  g.roundRect(4, 1, 8, 6, 2).fill(UI.text);
+  g.rect(5, 6, 6, 6).fill(UI.text);
+  g.rect(5, 6, 1, 6).fill({ color: UI.ink, alpha: 0.22 });
+  g.rect(4, 1, 8, 1).fill(UI.primary);
 }
 
 /** Small pixel fish silhouette used as a decorative bullet. */
@@ -380,6 +358,8 @@ export const WEATHER_TINT: Record<WeatherId, number> = {
   snow: UI.ice,
   blizzard: UI.ice,
   fog: UI.periwinkle,
+  // The aurora owns mint: it is the one sky whose light is green.
+  aurora: UI.mint,
 };
 
 /**
@@ -469,6 +449,23 @@ export function drawWeatherIcon(
       cloud(0);
       g.rect(1, 9, 6, 1).fill({ color: tint, alpha: 0.85 });
       g.rect(6, 11, 5, 1).fill({ color: tint, alpha: 0.6 });
+      break;
+    case "aurora":
+      // The only glyph that stands up: three hanging curtains that thin
+      // towards the bottom, over a row of stars. It carries no cloud, so the
+      // rail card cannot confuse it with fog at a glance.
+      g.rect(2, 1, 1, 4).fill(tint);
+      g.rect(3, 2, 1, 6).fill({ color: tint, alpha: 0.9 });
+      g.rect(4, 4, 1, 5).fill({ color: tint, alpha: 0.65 });
+      g.rect(6, 0, 1, 5).fill(tint);
+      g.rect(7, 2, 1, 6).fill({ color: tint, alpha: 0.85 });
+      g.rect(8, 4, 1, 4).fill({ color: tint, alpha: 0.55 });
+      g.rect(10, 1, 1, 4).fill({ color: tint, alpha: 0.8 });
+      g.rect(10, 6, 1, 3).fill({ color: tint, alpha: 0.45 });
+      g.rect(1, 9, 1, 1).fill(UI.text);
+      g.rect(4, 10, 1, 1).fill({ color: UI.text, alpha: 0.8 });
+      g.rect(7, 9, 1, 1).fill({ color: UI.text, alpha: 0.7 });
+      g.rect(9, 10, 1, 1).fill({ color: UI.text, alpha: 0.6 });
       break;
   }
 }

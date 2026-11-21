@@ -5,6 +5,7 @@ import { UI } from "./ui/palette";
 import { GameScreensLayer } from "./GameScreensLayer";
 import { setUiSoundHandler } from "./ui/Button";
 import { normalizeOptions } from "./options";
+import { detectInputProfile, pixelRatioCap } from "./inputProfile";
 import type {
   AreaLocations,
   FishingGameInstance,
@@ -17,6 +18,9 @@ export class Game extends GameScreensLayer implements FishingGameInstance {
     const host = normalized.container;
     const width = Math.max(1, Math.floor(host.clientWidth));
     const height = Math.max(1, Math.floor(host.clientHeight));
+    // Asked once here for the canvas itself and again by the host object for
+    // its layout: the same media query, so the two can never disagree.
+    const touch = detectInputProfile() === "touch";
 
     const app = new Application();
     await app.init({
@@ -25,14 +29,17 @@ export class Game extends GameScreensLayer implements FishingGameInstance {
       background: UI.night,
       antialias: false,
       autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      resolution: Math.min(window.devicePixelRatio || 1, pixelRatioCap(touch)),
       roundPixels: true,
       preference: "webgl",
     });
     app.canvas.style.display = "block";
     app.canvas.style.touchAction = "none";
     app.canvas.style.outline = "none";
-    app.canvas.style.cursor = CURSORS.default;
+    // A phone has no pointer to skin, and the pixel cursor is one of the two
+    // things the profile takes away (the other is the overlay, see
+    // `GameInputLayer.mountCursor`).
+    if (!touch) app.canvas.style.cursor = CURSORS.default;
     app.canvas.tabIndex = 0;
     app.canvas.setAttribute("role", "application");
     app.canvas.setAttribute("aria-label", TEXT.common.ariaLabel);
@@ -40,11 +47,16 @@ export class Game extends GameScreensLayer implements FishingGameInstance {
     // their own pointer/grab cursors.
     app.stage.eventMode = "static";
     app.stage.hitArea = app.screen;
-    app.stage.cursor = CURSORS.default;
+    if (!touch) app.stage.cursor = CURSORS.default;
     host.appendChild(app.canvas);
 
     const game = new Game(app, normalized);
     game.layout();
+    // Dev handle: lets a local session (or a scripted browser) ask the running
+    // game what screen it is on instead of guessing from a screenshot.
+    if (import.meta.env.DEV) {
+      (window as unknown as { __fishing?: Game }).__fishing = game;
+    }
     await game.boot();
     return game;
   }
@@ -77,6 +89,14 @@ export class Game extends GameScreensLayer implements FishingGameInstance {
     this.app.canvas.classList.remove("cursor-hidden");
     this.cursorOverlay?.destroy({ children: true });
     this.cursorOverlay = null;
+    if (this.rotateNotice) {
+      this.rotateNotice.destroy({ children: true });
+      this.rotateNotice = null;
+    }
+    if (this.fpsMeter) {
+      this.fpsMeter.destroy({ children: true });
+      this.fpsMeter = null;
+    }
     if (this.audioPanel) {
       this.audioPanel.destroy({ children: true });
       this.audioPanel = null;

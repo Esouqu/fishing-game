@@ -73,6 +73,7 @@ export function createFightState(
     counterUsed: false,
     counterPending: false,
     counterFlash: 0,
+    stickGrabAngle: null,
     stun: 0,
     preBurstAngle: null,
     lastSteerAngle: null,

@@ -31,7 +31,6 @@ interface CursorDef {
 }
 
 const CURSOR_SIZE = 24;
-const CURSOR_BASE = `${import.meta.env.BASE_URL}assets/cursors`;
 
 const CURSOR_DEFS: readonly CursorDef[] = [
   {
@@ -63,6 +62,10 @@ const CURSOR_DEFS: readonly CursorDef[] = [
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
+    // Cursor art is trimmed and re-opacified through `getImageData`, which
+    // throws on a tainted canvas: without CORS a CDN-hosted cursor would fall
+    // back to the painted placeholder instead of the real sprite.
+    image.crossOrigin = "anonymous";
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error(`cursor image failed: ${url}`));
     image.src = url;
@@ -148,8 +151,11 @@ const CROSSHAIR_SCALE = 1.5;
  * dot keeps hard pixels when the game draws it larger instead of turning into
  * a blurred smudge.
  */
-async function nativeCursor(def: CursorDef): Promise<CursorTexture> {
-  const image = await loadImage(`${CURSOR_BASE}/${def.file}`);
+async function nativeCursor(
+  def: CursorDef,
+  base: string,
+): Promise<CursorTexture> {
+  const image = await loadImage(`${base}/cursors/${def.file}`);
   const bounds = imageBounds(image);
 
   const canvas = document.createElement("canvas");
@@ -180,8 +186,11 @@ async function nativeCursor(def: CursorDef): Promise<CursorTexture> {
   };
 }
 
-async function normaliseCursor(def: CursorDef): Promise<CursorTexture> {
-  const image = await loadImage(`${CURSOR_BASE}/${def.file}`);
+async function normaliseCursor(
+  def: CursorDef,
+  base: string,
+): Promise<CursorTexture> {
+  const image = await loadImage(`${base}/cursors/${def.file}`);
   const bounds = imageBounds(image);
   const scale = CURSOR_SIZE / Math.max(bounds.width, bounds.height);
   const width = bounds.width * scale;
@@ -226,12 +235,14 @@ async function normaliseCursor(def: CursorDef): Promise<CursorTexture> {
 }
 
 /** All system cursor art is normalised to one 24×24 box with a nearest fit. */
-export async function loadCursorTextures(): Promise<CursorTextures> {
+export async function loadCursorTextures(
+  base: string,
+): Promise<CursorTextures> {
   const textures = new Map<CursorName, CursorTexture>();
   await Promise.all(
     CURSOR_DEFS.map(async (def) => {
       try {
-        textures.set(def.name, await normaliseCursor(def));
+        textures.set(def.name, await normaliseCursor(def, base));
       } catch {
         textures.set(def.name, fallbackTexture());
       }
@@ -242,13 +253,13 @@ export async function loadCursorTextures(): Promise<CursorTextures> {
     pointer: textures.get("pointer") ?? fallbackTexture(),
     grab: textures.get("grab") ?? fallbackTexture(),
     grabbing: textures.get("grabbing") ?? fallbackTexture(),
-    crosshair: await loadCrosshair(),
+    crosshair: await loadCrosshair(base),
   };
 }
 
-async function loadCrosshair(): Promise<CursorTexture> {
+async function loadCrosshair(base: string): Promise<CursorTexture> {
   try {
-    return await nativeCursor(CROSSHAIR_DEF);
+    return await nativeCursor(CROSSHAIR_DEF, base);
   } catch {
     return fallbackTexture();
   }

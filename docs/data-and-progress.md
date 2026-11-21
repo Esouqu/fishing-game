@@ -4,12 +4,15 @@
 
 `fish/species.ts` — `FishSpecies`: id, имя, вес, spawn weight, speed, resistance,
 tint, tier, area, behavior, окна, погода. Ростер разбит по водоёмам:
-`roster-lake.ts` (16), `roster-river.ts` (12), `roster-sea.ts` (12) → `roster.ts`.
+`roster-lake.ts` (12), `roster-river.ts` (12), `roster-sea.ts` (16) → `roster.ts`.
 
-- `tiers.ts` — `TIER_SHARE` и `TIER_WEIGHT`.
+- `tiers.ts` — `TIER_SHARE`, `TIER_WEIGHTS`, `TIER_SHINY` (четыре класса).
 - `temperament.ts` — фиксированный характер каждого вида.
 - `labels.ts` — окна, погода, описание для кодекса.
 - `validate.ts` — `validateFishData`; вызывается `pnpm sim` и dev-boot.
+- `pearls.ts` — двенадцать сортов жемчуга, полосы чистоты и размера, `rollPearl`.
+- `shell.ts` — `SHELL_ID`, `SHELL_SPECIES`, шанс ракушки.
+- `platinum.ts` — `PLATINUM` (100 уловов + оба конца веса + шайни) и `isPlatinum`.
 
 ## ProgressSnapshot
 
@@ -17,7 +20,16 @@ tint, tier, area, behavior, окна, погода. Ростер разбит п
 interface ProgressSnapshot {
   version: number;
   selectedArea: "cove" | "deep" | "rapids";
-  fish: Record<string, { caught: number; bestKg: number }>;
+  fish: Record<
+    string,
+    { caught: number; bestKg: number; lightestKg: number; shiny: boolean }
+  >;
+  pearls: Record<
+    string,
+    { caught: number; best: { float: number; seed: number; sizeMm: number } }
+  >;
+  areaCatches: Record<"cove" | "deep" | "rapids", number>;
+  lessons: string[];
   updatedAt: number;
 }
 ```

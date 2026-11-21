@@ -9,13 +9,15 @@ import type { WipePoint } from "./GridWipe";
 import { easeOutCubic, lerp } from "../utils";
 import { UI } from "./palette";
 import { drawLockMark } from "./lockMark";
+import type { UiRect } from "./rect";
 import { drawPanel, drawWeatherIcon, makeText } from "./theme";
 import { anchorInk } from "./textInk";
+import { TapGuard } from "./tapSlop";
 
 /** One travel card in the bottom corner. */
-const CARD = { width: 68, height: 40 } as const;
+export const TRAVEL_CARD = { width: 68, height: 40 } as const;
 /** Inset of the cards from the frame edge; matches the HUD's corner cards. */
-const MARGIN = 8;
+export const TRAVEL_MARGIN = 8;
 /** Height of the name strip along the bottom of a card. */
 const FOOTER = 11;
 /** Inner gutter of the thumbnail against the frame. */
@@ -77,15 +79,21 @@ export class AreaShortcuts extends Container {
         // The wipe starts where the click landed: the card's own centre, so the
         // grid opens from that corner instead of as a wall from the frame edge.
         onPick(area.id, {
-          x: card.x + CARD.width / 2,
-          y: card.y + CARD.height / 2,
+          x: card.x + TRAVEL_CARD.width / 2,
+          y: card.y + TRAVEL_CARD.height / 2,
         }),
       );
       // First neighbour on the left, second on the right: the ring order is
       // fixed by `AREAS`, so the corners never swap under the player's hand.
-      const targetX = side === 0 ? MARGIN : VIEW.width - MARGIN - CARD.width;
+      const targetX =
+        side === 0
+          ? TRAVEL_MARGIN
+          : VIEW.width - TRAVEL_MARGIN - TRAVEL_CARD.width;
       const fromX = targetX + (side === 0 ? -SLIDE : SLIDE);
-      card.position.set(fromX, VIEW.height - MARGIN - CARD.height);
+      card.position.set(
+        fromX,
+        VIEW.height - TRAVEL_MARGIN - TRAVEL_CARD.height,
+      );
       card.alpha = 0;
       this.addChild(card);
       this.cards.push(card);
@@ -118,6 +126,22 @@ export class AreaShortcuts extends Container {
   }
 
   /**
+   * Rects of the two cards, in scene pixels.
+   *
+   * The lesson note is laid out around the interface, and the corners are the
+   * cards' own: a note over one hides the door to the next water body while it
+   * explains the water the player is standing on.
+   */
+  reservedRects(): UiRect[] {
+    return this.cards.map((card) => ({
+      x: card.x,
+      y: card.y,
+      width: TRAVEL_CARD.width,
+      height: TRAVEL_CARD.height,
+    }));
+  }
+
+  /**
    * Dims and disables the cards. A fight is a one-mistake window right under
    * the player's hand, and a corner card that jumps to another lake would end
    * the round on a stray click.
@@ -136,6 +160,7 @@ class ShortcutCard extends Container {
   private readonly hoverLayer = new Graphics();
   private readonly weatherPlate = new Graphics();
   private readonly weatherArt = new Graphics();
+  private readonly tap = new TapGuard();
   private weather: WeatherId | null = null;
   private available = true;
 
@@ -148,7 +173,7 @@ class ShortcutCard extends Container {
     const label = this.locked ? TEXT.areas.closed : area.name;
 
     const frame = new Graphics();
-    drawPanel(frame, 0, 0, CARD.width, CARD.height, {
+    drawPanel(frame, 0, 0, TRAVEL_CARD.width, TRAVEL_CARD.height, {
       fill: UI.panel,
       alpha: 0.92,
       shadow: true,
@@ -158,8 +183,8 @@ class ShortcutCard extends Container {
     // The preview is a full 480×270 still, cropped to the card: the card is
     // wider than it is tall, so the still is scaled to cover and the mask takes
     // the middle band, which is the water the player recognises.
-    const viewWidth = CARD.width - THUMB_PAD * 2;
-    const viewHeight = CARD.height - FOOTER - THUMB_PAD;
+    const viewWidth = TRAVEL_CARD.width - THUMB_PAD * 2;
+    const viewHeight = TRAVEL_CARD.height - FOOTER - THUMB_PAD;
     if (this.locked) {
       this.paintSealedThumb(viewWidth, viewHeight);
     } else {
@@ -189,7 +214,7 @@ class ShortcutCard extends Container {
     // A closed location has no forecast at all: the badge is not drawn, so the
     // card carries no sky, no weather and no promise of one.
     if (!this.locked) {
-      const badgeX = CARD.width - THUMB_PAD - WEATHER_BADGE - 2;
+      const badgeX = TRAVEL_CARD.width - THUMB_PAD - WEATHER_BADGE - 2;
       const badgeY = THUMB_PAD + 2;
       this.weatherPlate.position.set(badgeX, badgeY);
       this.addChild(this.weatherPlate);
@@ -202,7 +227,12 @@ class ShortcutCard extends Container {
     // its own dark band instead of sitting straight on the still.
     const footer = new Graphics();
     footer
-      .rect(THUMB_PAD, CARD.height - FOOTER - THUMB_PAD, viewWidth, FOOTER)
+      .rect(
+        THUMB_PAD,
+        TRAVEL_CARD.height - FOOTER - THUMB_PAD,
+        viewWidth,
+        FOOTER,
+      )
       .fill({ color: UI.ink, alpha: 0.82 });
     this.addChild(footer);
 
@@ -214,7 +244,10 @@ class ShortcutCard extends Container {
       letterSpacing: 0.2,
     });
     anchorInk(name, "center");
-    name.position.set(CARD.width / 2, CARD.height - FOOTER / 2 - THUMB_PAD);
+    name.position.set(
+      TRAVEL_CARD.width / 2,
+      TRAVEL_CARD.height - FOOTER / 2 - THUMB_PAD,
+    );
     this.addChild(name);
 
     this.hoverLayer.visible = false;
@@ -222,15 +255,29 @@ class ShortcutCard extends Container {
 
     this.eventMode = "static";
     this.cursor = CURSORS.pointer;
-    this.hitArea = new Rectangle(0, 0, CARD.width, CARD.height);
-    this.on("pointerover", () => {
-      if (!this.available) return;
+    this.hitArea = new Rectangle(0, 0, TRAVEL_CARD.width, TRAVEL_CARD.height);
+    this.on("pointerover", (event) => {
+      // No hover on a finger: the frame lights while the press is down instead.
+      if (!this.available || event.pointerType === "touch") return;
       this.game.audio.hover();
       this.setHovered(true);
     });
+    this.on("pointerdown", (event) => {
+      this.tap.start(event.global.x, event.global.y);
+      if (!this.available || event.pointerType !== "touch") return;
+      // The ring is the press feedback here; the cue belongs to the click, and
+      // playing the hover one first made every tap sound like two taps.
+      this.setHovered(true);
+    });
+    this.on("pointerup", (event) => {
+      if (event.pointerType === "touch") this.setHovered(false);
+    });
     this.on("pointerout", () => this.setHovered(false));
-    this.on("pointertap", () => {
+    this.on("pointertap", (event) => {
       if (!this.available) return;
+      // The card is 68×40: a thumb that crossed it on the way to the water used
+      // to change the lake instead of casting.
+      if (!this.tap.end(event.global.x, event.global.y)) return;
       this.game.audio.click();
       onClick();
     });
@@ -302,9 +349,9 @@ class ShortcutCard extends Container {
     return (
       this.visible &&
       x >= this.x &&
-      x <= this.x + CARD.width &&
+      x <= this.x + TRAVEL_CARD.width &&
       y >= this.y &&
-      y <= this.y + CARD.height
+      y <= this.y + TRAVEL_CARD.height
     );
   }
 
@@ -325,7 +372,7 @@ class ShortcutCard extends Container {
     if (!hovered) return;
     const g = this.hoverLayer;
     g.clear();
-    g.rect(0, 0, CARD.width, CARD.height).stroke({
+    g.rect(0, 0, TRAVEL_CARD.width, TRAVEL_CARD.height).stroke({
       width: 1,
       color: UI.primary,
       alignment: 0.5,

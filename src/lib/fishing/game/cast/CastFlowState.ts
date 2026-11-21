@@ -1,20 +1,41 @@
 import {
   LUCK_BAND,
   LUCK_RELEASE_BUFFER,
+  LUCK_ZONE_SHINY,
   PASS_BY_CHANCE,
+  PEARL,
   SPOOK_HOLD,
   TIMING,
+  type FishSpecies,
 } from "../../config";
 import { TEXT } from "../../texts";
 import { clamp } from "../../utils";
 import { chance, randRange } from "../../utils";
+import {
+  formatFlaw,
+  formatPearlSize,
+  PEARL_BY_ID,
+  rollPearl,
+  type PearlCatch,
+} from "../../fish/pearls";
+import { SHELL_SPECIES, isShell } from "../../fish/shell";
+import { TIER_SHINY } from "../../fish/tiers";
 import { formatWeight, rollFishWeight, weightScale } from "../../fishWeight";
 import { UI } from "../../ui/palette";
 import { pickCastFish } from "../castPick";
 import type { MinigameResult } from "../fight";
-import type { FishSpecies } from "../../config";
 import { CastFlowInput } from "./CastFlowInput";
 import { CATCH_LABEL_GAP, HOOK_SHAKE } from "./setup";
+import type { ProgressSnapshot } from "../../types";
+
+/** Species already landed, as the roll wants them: a set it can ask once. */
+function caughtSpecies(snapshot: ProgressSnapshot): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const [id, entry] of Object.entries(snapshot.fish)) {
+    if (entry.caught > 0) ids.add(id);
+  }
+  return ids;
+}
 
 export class CastFlowState extends CastFlowInput {
   update(dt: number): void {
@@ -34,17 +55,31 @@ export class CastFlowState extends CastFlowInput {
       }
       if (this.waitTimer <= 0) this.beginBite();
     } else if (this.phaseValue === "bite") {
-      this.biteTimer -= dt;
-      if (this.biteTimer <= 0) {
-        this.failCast(TEXT.game.missedHook, this.aboveFloat());
+      if (this.pressed) {
+        // The stick was already in hand when the fish took the bait: holding it
+        // is the strike. A held control cannot produce the press the mouse
+        // makes, and a thumb that was on the stick a moment early would
+        // otherwise lose the fish without ever having done anything.
+        this.hookFish();
+      } else {
+        this.biteTimer -= dt;
+        if (this.biteTimer <= 0) {
+          this.failCast(TEXT.game.missedHook, this.aboveFloat());
+        }
       }
     } else if (this.phaseValue === "fighting") {
-      const direction = this.readPullDirection();
+      const keys = this.readPullDirection();
+      // Keys win, then the touch stick. With neither set the model falls back to
+      // the pointer, which is how a mouse aims.
+      const steering =
+        keys.x !== 0 || keys.y !== 0
+          ? keys
+          : { x: this.stickX, y: this.stickY };
       this.fight.update(dt, {
         pointerX: this.pointerX,
         pointerY: this.pointerY,
-        directionX: direction.x,
-        directionY: direction.y,
+        directionX: steering.x,
+        directionY: steering.y,
         held: this.pressed,
       });
     } else if (this.phaseValue === "resolve") {
@@ -119,11 +154,9 @@ export class CastFlowState extends CastFlowInput {
       this.game.audio.objective();
     }
     // The cursor at the moment of release is the cast's direction; the charge
-    // is how far along it the float lands.
-    this.scene.playCast(this.chargeValue, {
-      x: this.pointerX,
-      y: this.pointerY,
-    });
+    // is how far along it the float lands. On a phone there is no cursor: the
+    // spot was picked when the charge started.
+    this.scene.playCast(this.chargeValue, this.castAim());
     this.game.clock.persist();
     this.waitTimer = randRange(TIMING.waitMin, TIMING.waitMax);
     this.nibbleLead = randRange(TIMING.nibbleLeadMin, TIMING.nibbleLeadMax);
@@ -137,15 +170,28 @@ export class CastFlowState extends CastFlowInput {
       return;
     }
     const clock = this.game.clock;
-    const fish = pickCastFish({
-      areaId: this.area.id,
-      minutes: clock.minutes,
-      weather: clock.weatherFor(this.area.id),
-      weatherDef: clock.weatherDefFor(this.area.id),
-      luckZoneHit: this.luckZoneHit,
-    });
+    const snapshot = this.game.progress.snapshot;
+    // The shell can be hooked on any water body. It is a rare alternative to
+    // the area's own roster, rolled before the fish so the same bite cannot
+    // produce both.
+    const fish = chance(PEARL.shellChance)
+      ? SHELL_SPECIES
+      : pickCastFish({
+          areaId: this.area.id,
+          minutes: clock.minutes,
+          weather: clock.weatherFor(this.area.id),
+          luckZoneHit: this.luckZoneHit,
+          catchesOnLocation: snapshot.areaCatches[this.area.id] ?? 0,
+          caught: caughtSpecies(snapshot),
+        });
     this.fish = fish;
     this.fishWeightKg = rollFishWeight(fish);
+    // The colourway is rolled with the weight and only for real fish: the
+    // shell carries a pearl and has no coat to shine. The odds belong to the
+    // rarity class, and the luck zone doubles them.
+    const shinyChance =
+      TIER_SHINY[fish.tier] * (this.luckZoneHit ? LUCK_ZONE_SHINY : 1);
+    this.fishShiny = !isShell(fish.id) && chance(shinyChance);
     this.phaseValue = "bite";
     this.biteWindow = Math.max(0.62, 0.95 - fish.speed * 0.25);
     this.biteTimer = this.biteWindow;
@@ -217,36 +263,109 @@ export class CastFlowState extends CastFlowInput {
       return;
     }
 
-    const firstCatch = this.game.progress.recordCatch(
-      fish.id,
-      this.fishWeightKg,
-    );
+    // A shell is the carrier of a pearl; the pearl is rolled only after the
+    // shell is actually landed, so a torn-off shell costs the cast and nothing
+    // else. A luck-zone cast keeps the better of two flaws.
+    const pearl = isShell(fish.id)
+      ? rollPearl({ luckZoneHit: this.luckZoneHit })
+      : null;
+    const firstCatch = pearl
+      ? this.game.progress.recordPearl(pearl)
+      : this.game.progress.recordCatch(
+          this.area.id,
+          fish.id,
+          this.fishWeightKg,
+          this.fishShiny,
+        );
+    this.presentCatch(fish, firstCatch, pearl);
+  }
 
+  /**
+   * The one catch presentation, shared by a normal fish and the shell.
+   *
+   * The shell gets its own, longer hold: the opening sequence runs inside it,
+   * and the tag waits for the pearl instead of naming the shell. `firstCatch`
+   * means the first find for a pearl and the first catch for a fish.
+   */
+  private presentCatch(
+    fish: FishSpecies,
+    firstCatch: boolean,
+    pearl: PearlCatch | null,
+  ): void {
     this.phaseValue = "resolve";
-    this.resolveTimer = TIMING.resultHold;
+    this.resolveTimer = pearl ? PEARL.resultHold : TIMING.resultHold;
     this.catchShown = true;
     this.pressed = false;
     this.pullKeys.clear();
 
     this.fight.settle();
+    const texture = pearl
+      ? this.game.assets.fish.shell
+      : this.game.assets.fish[fish.id];
+    const scale = pearl ? 1.15 : 1.15 * weightScale(fish, this.fishWeightKg);
+    // The split is the moment the pearl exists; the bloom and the chime belong
+    // to it rather than to the shell that only carried it.
+    this.scene.onPearlReveal = pearl
+      ? () => {
+          const point = this.scene.bobberPosition;
+          this.juice.trigger("catch", point.x, point.y);
+          this.game.audio.objective();
+        }
+      : undefined;
     const catchTop = this.scene.catchFish(
-      this.game.assets.fish[fish.id],
-      1.15 * weightScale(fish, this.fishWeightKg),
+      texture,
+      scale,
       fish.tier,
+      pearl,
+      this.fishShiny,
     );
     const splash = this.scene.bobberPosition;
     this.juice.trigger("catch", splash.x, splash.y);
     this.game.audio.catchFish();
-    if (fish.tier === "legendary") this.game.audio.ready();
-    this.showCatchFeedback(fish, firstCatch, catchTop);
+    // One "this one is special" chime for both rarities: a mythic tier and a
+    // shiny coat. Two calls would overlap the same sample.
+    if (fish.tier === "mythic" || this.fishShiny) this.game.audio.ready();
+    if (pearl) this.showPearlFeedback(pearl, firstCatch, catchTop);
+    else this.showCatchFeedback(fish, firstCatch, catchTop, this.fishShiny);
 
     this.game.handleCatch({
+      kind: pearl ? "shell" : "fish",
       fishId: fish.id,
       areaId: this.area.id,
       weightKg: this.fishWeightKg,
       firstCatch,
+      shiny: this.fishShiny,
       at: Date.now(),
+      pearl: pearl
+        ? {
+            pearlId: pearl.id,
+            float: pearl.float,
+            seed: pearl.seed,
+            sizeMm: pearl.sizeMm,
+            grade: pearl.grade,
+            firstFind: firstCatch,
+          }
+        : undefined,
     });
+  }
+
+  /**
+   * Dev-only: runs the real shell presentation and progress path without a
+   * fight, so the reveal can be checked at a chosen flaw. Never active in a
+   * production build.
+   */
+  debugCatchPearl(float = 0.0123): boolean {
+    if (!import.meta.env.DEV || this.paused || this.phaseValue !== "idle")
+      return false;
+    const pearl = rollPearl({ float });
+    const firstFind = this.game.progress.recordPearl(pearl);
+    this.fish = SHELL_SPECIES;
+    this.fishWeightKg = rollFishWeight(SHELL_SPECIES);
+    // A shell has no colourway: the pearl is the reveal.
+    this.fishShiny = false;
+    this.scene.restoreBobber();
+    this.presentCatch(SHELL_SPECIES, firstFind, pearl);
+    return true;
   }
 
   /**
@@ -291,10 +410,12 @@ export class CastFlowState extends CastFlowInput {
 
   protected advanceCast(): void {
     this.catchShown = false;
+    this.scene.onPearlReveal = undefined;
     this.scene.restoreBobber();
     this.fight.dispose();
     this.fish = null;
     this.fishWeightKg = 0;
+    this.fishShiny = false;
     this.scene.resetCast();
     this.pullKeys.clear();
     this.chargeValue = 0;
@@ -317,8 +438,9 @@ export class CastFlowState extends CastFlowInput {
    */
   protected skipCatch(): void {
     if (this.phaseValue !== "resolve" || !this.catchShown) return;
-    const landed = TIMING.resultHold - TIMING.catchJump;
-    if (this.resolveTimer > landed) return;
+    // The landing is part of the catch; a shell adds its whole reveal to that.
+    // The scene owns the exact moment, because it is the one running it.
+    if (!this.scene.catchSkipReady) return;
     this.resolveTimer = Math.min(this.resolveTimer, TIMING.catchCrossfade);
     // The name tag fades out with the fish instead of staying at full strength
     // until the round changes under it.
@@ -344,13 +466,18 @@ export class CastFlowState extends CastFlowInput {
     fish: FishSpecies,
     firstCatch: boolean,
     catchTop: number,
+    shiny = false,
   ): void {
-    const text = TEXT.game.catchFeedback(
-      fish.name,
-      formatWeight(this.fishWeightKg),
-    );
+    const lines = [
+      TEXT.game.catchFeedback(fish.name, formatWeight(this.fishWeightKg)),
+    ];
+    if (firstCatch) lines.push(TEXT.game.newSpecies);
+    // The coat is the rarest thing about the catch, so it is named under the
+    // species rather than left to the shimmer alone: the player has to learn
+    // that the rainbow is a catch, not the light of the tier.
+    if (shiny) lines.push(TEXT.game.shinyCatch);
     this.addFloater(
-      firstCatch ? `${text}\n${TEXT.game.newSpecies}` : text,
+      lines.join("\n"),
       // Same ice-white as the "ЗАБРОС / ЛКМ" prompt: the catch label belongs to
       // the same interface voice, not to the semantic colour set.
       UI.text,
@@ -366,6 +493,36 @@ export class CastFlowState extends CastFlowInput {
       // The tag waits until the fish has finished its arc into the angler's
       // hands: during the jump the name would hang over open water.
       TIMING.catchJump,
+    );
+  }
+
+  /**
+   * Name tag for the pearl. It is queued at the catch but delayed past the
+   * reveal, so the first frame of the tag is the first frame of the pearl; the
+   * reveal's own timings set both the delay and the remaining life.
+   */
+  protected showPearlFeedback(
+    pearl: PearlCatch,
+    firstFind: boolean,
+    catchTop: number,
+  ): void {
+    const species = PEARL_BY_ID[pearl.id];
+    const body = TEXT.game.pearlFeedback(
+      species.name,
+      formatFlaw(pearl.float),
+      formatPearlSize(pearl.sizeMm),
+    );
+    this.addFloater(
+      firstFind ? `${body}\n${TEXT.game.newPearl}` : body,
+      UI.text,
+      13,
+      PEARL.resultHold - TIMING.catchJump - PEARL.revealLead,
+      0,
+      {
+        x: this.area.layout.angler.x,
+        y: catchTop - CATCH_LABEL_GAP,
+      },
+      TIMING.catchJump + PEARL.revealLead,
     );
   }
 

@@ -5,12 +5,11 @@ import { FIGHT } from "../../config";
  * The zone is a feel, and a feel can only be judged while it moves, so these
  * live here instead of as `const`s in the rules: the dev panel (`F8`) turns them
  * while the fight runs. The model *and* the view read this object every frame,
- * so a slider changes both the picture and what the fight accepts вЂ” the
+ * so a slider changes both the picture and what the fight accepts — the
  * highlight and the rule cannot drift apart.
  *
- * Nothing is persisted by the game: the panel's В«Р’ РљРћР”В» writes the whole table
- * back into this file through the dev server, so a tuned set becomes the
- * shipped default.
+ * Nothing is persisted by the game: the panel's numbers live until a reload, so
+ * a tuned set is copied into this file by hand and becomes the shipped default.
  */
 export interface ZoneTuning {
   /** Seconds for the zone to fade in when it appears; 0 is an instant cut. */
@@ -104,11 +103,68 @@ export const ZONE_DEFAULTS: ZoneTuning = {
 };
 // #endregion zone-mix
 
+/**
+ * The same table for a finger.
+ *
+ * A fingertip covers a far bigger patch of the ring than a cursor and cannot be
+ * placed as precisely, so the wedge is wider and starts closer to the edge: the
+ * gesture is «press the sector and pull», and a sector you cannot hit is a
+ * counter you cannot perform. The drag is shorter for the same reason — the
+ * hand overshoots a longer pull.
+ *
+ * Only the geometry of the gesture changes. The window (`truthTime`), the price
+ * of a miss and the escape-meter recovery stay exactly as they are on desktop,
+ * so the balance of a fight is the same game on both.
+ */
+export const ZONE_TOUCH_DEFAULTS: ZoneTuning = {
+  ...ZONE_DEFAULTS,
+  grabArc: 24.0,
+  distance: 28.0,
+  grabDepth: 28.0,
+  counterDrag: 8,
+};
+
+/** Which table is live: the one the mouse is played with, or the finger's. */
+export type ZoneProfile = "mouse" | "touch";
+
+/**
+ * Extra angular slack for the touch answer to a dash, in radians.
+ *
+ * A mouse puts its press *inside* the wedge, which is a precise thing to do
+ * with a cursor; a thumb on a small pad cannot be that precise. The control and
+ * the rules read this one number, so the sector the pad lights up and the sector
+ * the model accepts cannot drift apart.
+ */
+export const STICK_GRAB_SLACK = Math.PI / 6;
+
+let activeProfile: ZoneProfile = "mouse";
+
 /** Live values: the panel writes, the fight reads. */
 export const zoneTuning: ZoneTuning = { ...ZONE_DEFAULTS };
 
+/** Installs a profile's numbers into the live table. */
+export function applyZoneProfile(profile: ZoneProfile): void {
+  activeProfile = profile;
+  Object.assign(
+    zoneTuning,
+    profile === "touch" ? ZONE_TOUCH_DEFAULTS : ZONE_DEFAULTS,
+  );
+}
+
+/** True when the touch table is the live one. */
+export function zoneProfile(): ZoneProfile {
+  return activeProfile;
+}
+
+/**
+ * Drops the live table back to the defaults of the *active* profile, so the
+ * panel's «СБРОС» on a phone does not hand the player desktop geometry.
+ */
 export function resetZoneTuning(): void {
-  Object.assign(zoneTuning, ZONE_DEFAULTS);
+  Object.assign(
+    zoneTuning,
+    activeProfile === "touch" ? ZONE_TOUCH_DEFAULTS : ZONE_DEFAULTS,
+  );
 }
 
 /** Degrees to radians, for the angular knobs. */

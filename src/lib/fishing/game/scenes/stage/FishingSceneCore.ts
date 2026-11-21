@@ -23,7 +23,6 @@ export abstract class FishingSceneCore extends Container {
   protected readonly palette: AreaPalette;
 
   protected readonly angler = new Sprite();
-  protected readonly previewG = new Graphics();
   protected readonly line = new Graphics();
   protected readonly bobber = new Container();
   protected readonly bobberBody = new Graphics();
@@ -156,7 +155,6 @@ export abstract class FishingSceneCore extends Container {
     this.addChild(this.waterLayer);
     this.renderer.attachWater?.(this.waterLayer);
     this.addChild(this.motionG);
-    this.addChild(this.previewG);
 
     this.props.sortableChildren = true;
     this.renderer.drawScenery(this.props);

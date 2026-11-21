@@ -8,7 +8,16 @@ import type { AreaId, FishingGameOptions, NormalizedOptions } from "./types";
 export function normalizeOptions(
   options: FishingGameOptions,
 ): NormalizedOptions {
-  const base = options.assetBase ?? `${import.meta.env.BASE_URL}assets/fishing`;
+  // `BASE_URL` is relative (`./`) in a SvelteKit build, so a host that mounts
+  // the game on a nested route passes `publicBase` explicitly. Everything the
+  // engine loads — art, cursors, the frost veil — hangs off this one root.
+  const publicBase = (
+    options.publicBase ?? `${import.meta.env.BASE_URL}assets`
+  ).replace(/\/+$/, "");
+  const base = (options.assetBase ?? `${publicBase}/fishing`).replace(
+    /\/+$/,
+    "",
+  );
   const locations = { cove: true, deep: true, rapids: true } as Record<
     AreaId,
     boolean
@@ -21,8 +30,9 @@ export function normalizeOptions(
   }
   return {
     container: options.container,
-    assetBase: base.replace(/\/+$/, ""),
-    storagePrefix: options.storagePrefix ?? "quiet-cove",
+    publicBase,
+    assetBase: base,
+    storagePrefix: options.storagePrefix ?? "fishing-game",
     muted: options.muted ?? false,
     startScreen: options.startScreen ?? "menu",
     onExit: options.onExit,

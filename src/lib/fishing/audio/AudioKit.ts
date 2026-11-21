@@ -44,6 +44,9 @@ export class AudioKit extends CueBank {
       getContext: () => this.ctx,
       getBus: () => this.bus(false),
       getMix: () => this.mix,
+      // The boot screen creates the context for preloading; beds must not
+      // start looping until the resume gesture has actually happened.
+      canPlay: () => this.unlocked,
       load: (file) => this.load(file),
     });
   }

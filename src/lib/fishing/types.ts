@@ -1,6 +1,7 @@
 import type { Application } from "pixi.js";
 
-export type WeatherId = "clear" | "overcast" | "snow" | "blizzard" | "fog";
+export type WeatherId =
+  "clear" | "overcast" | "snow" | "blizzard" | "fog" | "aurora";
 
 /**
  * Fixed personality of a species. The temperament is authored per fish instead
@@ -30,11 +31,11 @@ export type AreaId = "cove" | "deep" | "rapids";
 export type WaterKind = "lake" | "sea" | "river";
 
 /**
- * Rarity class of a species. Every water body is built to roughly
- * 70% common / 20% rare / 10% legendary; rare fish bite less often and fight
- * harder, legendary ones are the narrow-window trophies.
+ * Rarity class of a species. All four classes share one weight matrix
+ * (`TIER_WEIGHTS` in `fish/tiers.ts`): commons are the bulk of every pool and
+ * mythics are the narrow-window trophies a codex is built around.
  */
-export type FishTier = "common" | "rare" | "legendary";
+export type FishTier = "common" | "uncommon" | "rare" | "mythic";
 
 /** In-game minutes from midnight; `from` inclusive, `to` exclusive. */
 export interface TimeWindow {
@@ -42,13 +43,38 @@ export interface TimeWindow {
   to: number;
 }
 
-/** Fired on every landed fish, after the progress record is updated. */
+/** One rolled pearl, without the variety that gave it its colour. */
+export interface PearlSpecimen {
+  /** Flaw index, 0 (flawless) .. 1 (chalky). */
+  float: number;
+  /** Overtone seed, 0..1. */
+  seed: number;
+  /** Physical size in millimetres. */
+  sizeMm: number;
+}
+
+/** The pearl payload of a shell catch. */
+export interface PearlCatchEvent extends PearlSpecimen {
+  pearlId: string;
+  /** Shine class that drove the shader, 1..5. */
+  grade: number;
+  /** True the first time this variety was ever found. */
+  firstFind: boolean;
+}
+
+/** Fired on every landed catch, after the progress record is updated. */
 export interface CatchEvent {
+  /** A fish keeps the old fields; a shell adds the pearl payload. */
+  kind: "fish" | "shell";
   fishId: string;
   areaId: AreaId;
   weightKg: number;
   firstCatch: boolean;
+  /** True when the landed fish wore the shiny colourway. Never for a shell. */
+  shiny: boolean;
   at: number;
+  /** Present exactly when `kind` is `shell`. */
+  pearl?: PearlCatchEvent;
 }
 
 export interface FishProgress {
@@ -56,6 +82,21 @@ export interface FishProgress {
   caught: number;
   /** Heaviest landed specimen, kg. */
   bestKg: number;
+  /**
+   * Lightest landed specimen, kg. The other end of the record: the codex marks
+   * the two extremes of the whole collection, and a light record needs a
+   * minimum as much as a heavy one needs a maximum.
+   */
+  lightestKg: number;
+  /** True once a shiny specimen of this species has been landed. */
+  shiny: boolean;
+}
+
+export interface PearlProgress {
+  /** Total catches of this pearl variety. */
+  caught: number;
+  /** Best specimen: lowest flaw, then largest size. */
+  best: PearlSpecimen;
 }
 
 /**
@@ -67,6 +108,22 @@ export interface ProgressSnapshot {
   version: number;
   selectedArea: AreaId;
   fish: Record<string, FishProgress>;
+  /** Found pearl varieties, keyed by pearl id. */
+  pearls: Record<string, PearlProgress>;
+  /**
+   * Landed fish per water body — the pity counter. A water body that keeps
+   * handing out the same species slowly raises the weight of the ones still
+   * missing from its codex. Shells do not count: a pearl is not a species.
+   */
+  areaCatches: Record<AreaId, number>;
+  /**
+   * Manual pages the player has already been shown, in the order they came up.
+   *
+   * The round opens each mechanic's note once per document: without this list
+   * a reload brought every lesson back. Ids are `HelpPageId` values from
+   * `texts.ts`, kept as plain strings because this document is a host API.
+   */
+  lessons: string[];
   updatedAt: number;
 }
 
@@ -93,7 +150,15 @@ export type StartScreen = "menu" | "game";
 export interface FishingGameOptions {
   /** Element the canvas is appended to. Required. */
   container: HTMLElement;
-  /** Base URL of the copied art/font folder. Default: `/assets/fishing`. */
+  /**
+   * Root folder of the shared art: it holds `fishing/`, `cursors/` and
+   * `ice-480.webp`. Default: `${BASE_URL}assets`. Pass an absolute URL when the
+   * art lives elsewhere (a CDN, another origin) or when the host serves the
+   * game from a nested route (a relative `BASE_URL` would otherwise resolve
+   * against the current page).
+   */
+  publicBase?: string;
+  /** Base URL of the copied art/font folder. Default: `${publicBase}/fishing`. */
   assetBase?: string;
   /** localStorage namespace so multiple games do not share progress. */
   storagePrefix?: string;
@@ -136,6 +201,7 @@ export interface FishingGameInstance {
 
 export interface NormalizedOptions {
   container: HTMLElement;
+  publicBase: string;
   assetBase: string;
   storagePrefix: string;
   muted: boolean;

@@ -1,11 +1,11 @@
-import { Container, Sprite, type Texture } from "pixi.js";
-import { makeText } from "./theme";
+import { Container, Graphics, Sprite, type Texture } from "pixi.js";
+import { drawTapIcon, makeText } from "./theme";
 import { anchorInk, inkWidth } from "./textInk";
 import { UI } from "./palette";
 import { TEXT } from "../texts";
 
 /**
- * Gap between the label and the mouse badge, in pixels.
+ * Gap between the label and the badge, in pixels.
  *
  * Four read as two separate things that happened to stand next to each other;
  * flush to zero read as one block with a seam. Two is the seam a prompt needs:
@@ -20,63 +20,49 @@ import { TEXT } from "../texts";
  * the badge look pushed away from the prompt.
  */
 const GAP = 2;
-const LABEL_SIZE = 7;
 /** Height of the idle float above and below the anchor, in scene pixels. */
 const FLOAT_RISE = 2.2;
 /** Radians per second of that float: a full rise-and-fall takes ~4 s. */
 const FLOAT_RATE = 1.55;
-/**
- * Side of the badge, in virtual pixels: eleven sixteenths of its 16 px tile.
- *
- * At 1:1 it stood taller than two lines of the prompt's capitals and pulled the
- * eye off the word it is captioning, while a half lost the lit button. Eleven is
- * the step down from the old 12: a pictogram beside a 7 px caption should not
- * reach the full height of the block the caption sits in, and the shorter badge
- * also lets the pair close up without the mouse touching the word.
- */
-const BADGE_SIZE = 11;
+/** The pictogram is drawn in this box and scaled to the requested badge. */
+const ICON_BOX = 16;
 
-let labelInk = 0;
-
-/** Ink width of the prompt word; measured once, the label never changes. */
-function labelWidth(): number {
-  if (labelInk > 0) return labelInk;
-  const label = makeText(TEXT.game.readyToCast, {
-    size: LABEL_SIZE,
-    weight: 800,
-    color: UI.text,
-    letterSpacing: 0.6,
-    outline: true,
-  });
-  labelInk = inkWidth(label);
-  label.destroy();
-  return labelInk;
+export interface CastHintOptions {
+  /** Mouse with a lit left button, for a fine pointer. */
+  mouse: Texture;
+  /** Draw a fingertip instead of the mouse: no button to press on a phone. */
+  touch: boolean;
+  /** Size of the prompt word, in virtual pixels. */
+  labelSize: number;
+  /** Side of the pictogram, in virtual pixels. */
+  badgeSize: number;
 }
 
 /**
  * Small "ready to cast" prompt above the angler. It only appears while the
- * player can start a new cast (idle), and disappears as soon as LMB is held.
+ * player can start a new cast (idle), and disappears as soon as the button or
+ * the finger goes down.
  *
  * It is drawn as outlined text plus one pictogram, with no plate: the prompt has
  * to read as a caption over the water, not as a dialog in front of it. The
- * pictogram is a single 16 px sprite from the input-prompt set — a mouse with
- * its left button lit — instead of the mouse-and-stopwatch pair the UI used to
- * draw by hand: the pack's art says "press this" with one mark, where the pair
- * needed the player to read two shapes.
+ * pictogram is a single sprite from the input-prompt set — a mouse with its left
+ * button lit — instead of the mouse-and-stopwatch pair the UI used to draw by
+ * hand: the pack's art says "press this" with one mark, where the pair needed
+ * the player to read two shapes. On a touch screen the same slot holds a drawn
+ * fingertip: there is no left button to light up, and the pack has no tap mark.
  */
 export class CastHint extends Container {
   private readonly inner = new Container();
   private time = 0;
 
-  constructor(x: number, y: number, icon: Texture) {
+  constructor(x: number, y: number, options: CastHintOptions) {
     super();
     this.eventMode = "none";
     this.interactiveChildren = false;
 
-    const ink = labelWidth();
-    const width = ink + GAP + BADGE_SIZE;
+    const { labelSize, badgeSize } = options;
     const label = makeText(TEXT.game.readyToCast, {
-      size: LABEL_SIZE,
+      size: labelSize,
       weight: 800,
       color: UI.text,
       letterSpacing: 0.6,
@@ -88,19 +74,30 @@ export class CastHint extends Container {
     });
     anchorInk(label, "left");
 
+    // Measured from the ink, not the advance box, and measured on *this* label:
+    // the touch prompt is a size up, so the width is a property of the instance.
+    const ink = inkWidth(label);
+    const width = ink + GAP + badgeSize;
     const left = -width / 2;
     label.position.set(left, 0);
     this.inner.addChild(label);
 
-    // The badge is anchored on its left edge and its middle, so it sits against
-    // the word's ink with exactly {@link GAP} between them, on the label's
-    // centre line. It is drawn at the size the layout already used, so the art
-    // and the block can never disagree. Nearest sampling keeps the pixels square.
-    const mouse = new Sprite(icon);
-    mouse.anchor.set(0, 0.5);
-    mouse.scale.set(BADGE_SIZE / icon.width);
-    mouse.position.set(left + ink + GAP, 0);
-    this.inner.addChild(mouse);
+    if (options.touch) {
+      const mark = new Graphics();
+      drawTapIcon(mark);
+      mark.scale.set(badgeSize / ICON_BOX);
+      mark.position.set(left + ink + GAP, -badgeSize / 2);
+      this.inner.addChild(mark);
+    } else {
+      // The badge is anchored on its left edge and its middle, so it sits
+      // against the word's ink with exactly {@link GAP} between them, on the
+      // label's centre line.
+      const mouse = new Sprite(options.mouse);
+      mouse.anchor.set(0, 0.5);
+      mouse.scale.set(badgeSize / Math.max(1, options.mouse.width));
+      mouse.position.set(left + ink + GAP, 0);
+      this.inner.addChild(mouse);
+    }
 
     this.addChild(this.inner);
     this.position.set(x, y);

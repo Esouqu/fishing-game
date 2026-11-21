@@ -32,8 +32,6 @@ export const ZONE_TEXT = {
   prepared: "ЗАГОТОВЛЕНО: ЗАСЧИТАЕТСЯ, КОГДА ОТКРОЕТСЯ ОКНО",
   miss: "МИМО: НАЖАТИЕ ВНЕ ПОЛОСЫ",
   late: "ПОЗДНО: РЫВОК УЖЕ КОНЧИЛСЯ",
-  saved: "ЗАПИСАНО В zoneTuning.ts — СТРАНИЦА ПЕРЕЗАГРУЗИТСЯ",
-  saveFailed: "СЕРВЕР НЕДОСТУПЕН — ЗНАЧЕНИЯ ЖИВУТ ДО ПЕРЕЗАГРУЗКИ",
 } as const;
 
 /** Every knob that is a number: the toggles are buttons, not faders. */
@@ -288,42 +286,3 @@ export const CUE_ROWS: readonly ZoneRow[] = [
     format: pixels,
   },
 ];
-
-/**
- * The current table as it should read inside `zoneTuning.ts`, for «В КОД».
- *
- * The dev server swaps exactly this between the `zone-mix` markers, so the file
- * keeps its comments and the region stays the only thing a save touches.
- */
-export function zoneMixSource(tuning: ZoneTuning): string {
-  const lines = [
-    "export const ZONE_DEFAULTS: ZoneTuning = {",
-    `  fadeIn: ${tuning.fadeIn.toFixed(2)},`,
-    `  fadeOut: ${tuning.fadeOut.toFixed(2)},`,
-    `  delay: ${tuning.delay.toFixed(2)},`,
-    `  truthTime: ${tuning.truthTime.toFixed(2)},`,
-    `  lieTime: ${tuning.lieTime.toFixed(2)},`,
-    `  greyTime: ${tuning.greyTime.toFixed(2)},`,
-    `  grabArc: ${tuning.grabArc.toFixed(1)},`,
-    `  distance: ${tuning.distance.toFixed(1)},`,
-    `  grabDepth: ${tuning.grabDepth.toFixed(1)},`,
-    `  spreadMin: ${tuning.spreadMin.toFixed(1)},`,
-    `  spreadMax: ${tuning.spreadMax.toFixed(1)},`,
-    `  dashGap: ${tuning.dashGap.toFixed(2)},`,
-    `  fill: ${tuning.fill.toFixed(2)},`,
-    `  rim: ${tuning.rim.toFixed(2)},`,
-    `  rimWidth: ${tuning.rimWidth.toFixed(1)},`,
-    `  rimOutside: ${tuning.rimOutside},`,
-    `  counterDrag: ${tuning.counterDrag.toFixed(1)},`,
-    `  counterRest: ${tuning.counterRest.toFixed(2)},`,
-    `  counterStun: ${tuning.counterStun.toFixed(2)},`,
-    `  lockTime: ${tuning.lockTime.toFixed(2)},`,
-    `  lockScale: ${tuning.lockScale.toFixed(1)},`,
-    `  lockLift: ${tuning.lockLift.toFixed(0)},`,
-    `  lockAtFloat: ${tuning.lockAtFloat},`,
-    `  cueSize: ${tuning.cueSize.toFixed(1)},`,
-    `  cueGrow: ${tuning.cueGrow.toFixed(1)},`,
-    "};",
-  ];
-  return lines.join("\n");
-}

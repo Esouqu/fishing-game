@@ -24,7 +24,7 @@
 ## Input Prompts Pixel
 
 - Author: **Kenney** (<https://www.kenney.nl>), pack «Input Prompts Pixel» (1.0).
-- Used for: the mouse-with-pressed-left-button pictogram beside the cast prompt (`src/assets/fishing/mouse-lmb.png`, taken from `Tiles/tile_0077.png` of the pack; only the outline pixels are recoloured to the interface ink `UI.ink`, so the badge sits in the UI's own 1 px line).
+- Used for: the mouse-with-pressed-left-button pictogram beside the cast prompt (`src/assets/fishing/mouse-lmb.png`, taken from `Tiles/tile_0077.png` of the pack; only the outline pixels are recoloured to the interface ink `UI.ink`, so the badge sits in the UI's own 1 px line), and the close and fullscreen marks of the HUD (`tile_0016.png` and `tile_0023.png` in `public/assets/fishing/`, recoloured to `UI.ink`, `UI.primary` and `UI.periwinklePale`).
 - License: Creative Commons Zero (CC0) — <http://creativecommons.org/publicdomain/zero/1.0/>.
 - The original pack is **not** included in this repository.
 

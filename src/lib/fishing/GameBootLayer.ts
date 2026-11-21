@@ -14,6 +14,7 @@ import { SettingsStore, WorldStore } from "./storage";
 import { mixColor, WorldClock } from "./world";
 import { AudioKit } from "./audio";
 import { mixWith } from "./audioMix";
+import { enterFullscreen } from "./fullscreen";
 import {
   LocalProgressRepository,
   ProgressTracker,
@@ -27,18 +28,37 @@ import { GameBase } from "./GameBase";
 const BOOT_MIN_MS = 1300;
 
 /** Progress rail of the boot screen; the caption row hangs off its top edge. */
-const BAR = { x: 140, y: 144, width: 200, height: 12 } as const;
+const BAR = { x: 140, y: 146, width: 200, height: 12 } as const;
 /** Gap between the caption row and the rail. */
 const ROW_GAP = 4;
-/** Gap between the rail and the asset name printed under it. */
-const FILE_GAP = 3;
-/** Longest asset name the boot line prints before it is shortened. */
-const BOOT_FILE_MAX = 34;
+/** Gap between the rail and the stage caption printed under it. */
+const STAGE_GAP = 3;
+/**
+ * Progress at which each boot stage hands over to the next.
+ *
+ * The stages are the order the loader actually works in — fonts, then the
+ * water bodies' own art, then the forty fish, then the sample pack — and these
+ * cuts follow its weights (textures are 72% of the rail, sounds 23%). They are
+ * approximate on purpose: the caption describes what the boot is doing, and a
+ * number that has to be exactly right for a phrase to appear is not a caption.
+ */
+const STAGE_CUTS = [0.15, 0.35, 0.72, 0.97] as const;
+/**
+ * The game's name: one size for the loading screen and the menu.
+ *
+ * Between the 28 px the loading screen used and the 44 px the menu grew to — the
+ * name is the biggest word in both places now, and it stays the same word.
+ */
+const TITLE = { size: 36, y: 92 } as const;
 
-/** Shortens a file name so the boot line cannot run past the rail. */
-function fitLabel(label: string, max: number): string {
-  if (label.length <= max) return label;
-  return `${label.slice(0, max - 1)}${TEXT.common.ellipsis}`;
+/** The stage caption for a point on the rail. */
+function bootStage(progress: number): string {
+  const stages = TEXT.boot.stages;
+  let index = 0;
+  while (index < STAGE_CUTS.length && progress > STAGE_CUTS[index]) {
+    index += 1;
+  }
+  return stages[Math.min(index, stages.length - 1)];
 }
 
 export abstract class GameBootLayer extends GameBase {
@@ -46,8 +66,10 @@ export abstract class GameBootLayer extends GameBase {
   private bootCaption: Text | null = null;
   /** Percentage under the progress rail. */
   private bootPercent: Text | null = null;
-  /** Name of the asset being fetched, under the rail. */
-  private bootFile: Text | null = null;
+  /** Stage caption under the rail: what the boot is doing, never a file name. */
+  private bootStageLine: Text | null = null;
+  /** The game's name over the loading rail. */
+  private bootTitle: Text | null = null;
 
   previewFor(areaId: AreaId): Texture {
     const ready = this.previews[areaId] ?? this.previews[DEFAULT_AREA_ID];
@@ -64,7 +86,7 @@ export abstract class GameBootLayer extends GameBase {
 
   /** Help screenshots are lazy: the screen paints first, the shot follows. */
   helpTexture(page: HelpPageId): Promise<Texture> {
-    return loadHelpTexture(page);
+    return loadHelpTexture(this.options.assetBase, page, this.touch);
   }
 
   protected async boot(): Promise<void> {
@@ -74,16 +96,17 @@ export abstract class GameBootLayer extends GameBase {
     // The game paints the pointer itself, so cursors are the first request of
     // the boot and the overlay is mounted the frame they land. Requesting them
     // last, as part of the art bag, left the whole loading screen without a
-    // cursor until the menu was ready.
-    const cursorsPromise = loadCursorTextures();
+    // cursor until the menu was ready. A touch screen never mounts the overlay
+    // (see `mountCursor`); the textures still ride the bag the loader expects.
+    const cursorsPromise = loadCursorTextures(this.options.publicBase);
     void cursorsPromise.then((cursors) => {
-      if (!this.destroyed) this.mountCursor(cursors);
+      if (!this.destroyed && !this.touch) this.mountCursor(cursors);
     });
 
     // Decorative frost over every screen. It is fetched alongside the rest of
     // the art but never awaited: a missing or slow ice.png must not hold the
     // boot screen, and the veil is attached whenever it arrives.
-    const veil = IceVeil.load();
+    const veil = IceVeil.load(`${this.options.publicBase}/ice-480.webp`);
 
     const repository =
       this.options.progress ??
@@ -93,26 +116,48 @@ export abstract class GameBootLayer extends GameBase {
       return null;
     });
 
-    const [bag, rawProgress] = await Promise.all([
-      loadGameAssets(
-        this.options.assetBase,
-        (progress, label) => {
-          this.setBootProgress(progress, label);
-        },
-        cursorsPromise,
-      ),
-      progressPromise,
-    ]);
-
-    this.assetBag = bag;
+    // Audio is built before the art so the whole sample pack can be fetched
+    // and decoded in parallel with the textures. The context is created
+    // suspended: browsers only allow playback after a gesture, but decoding
+    // does not need one, so every cue and bed is ready for the first cast.
     this.settingsStore = new SettingsStore(this.options.storagePrefix);
-    this.worldClock = new WorldClock(
-      new WorldStore(this.options.storagePrefix),
-    );
     this.audioKit = new AudioKit(
       this.settingsStore.muted ?? this.options.muted,
       this.options.assetBase,
       mixWith(this.settingsStore.mix),
+    );
+
+    // One rail for two independent loads: art dominates the early part, the
+    // sample pack the tail; neither may make the bar jump backwards.
+    let textureProgress = 0;
+    let soundProgress = 0;
+    const reportBoot = (): void => {
+      this.setBootProgress(
+        Math.min(0.99, 0.05 + textureProgress * 0.72 + soundProgress * 0.23),
+      );
+    };
+    const soundsPromise = this.audioKit.preloadAllSounds((loaded, total) => {
+      soundProgress = total > 0 ? loaded / total : 1;
+      reportBoot();
+    });
+    reportBoot();
+
+    const [bag, rawProgress] = await Promise.all([
+      loadGameAssets(
+        this.options.assetBase,
+        (progress) => {
+          textureProgress = progress;
+          reportBoot();
+        },
+        cursorsPromise,
+      ),
+      progressPromise,
+      soundsPromise,
+    ]);
+
+    this.assetBag = bag;
+    this.worldClock = new WorldClock(
+      new WorldStore(this.options.storagePrefix),
     );
     this.progressTracker = new ProgressTracker(
       repository,
@@ -122,8 +167,8 @@ export abstract class GameBootLayer extends GameBase {
       this.options.onProgress?.(snapshot);
 
     // Menus show a still of the selected water body, so the water bed starts
-    // with the boot instead of the first cast. Web Audio only begins on the
-    // first gesture, which `AudioKit.unlock` handles.
+    // with the boot instead of the first cast. The bed only queues here; it is
+    // applied by `AudioKit.unlock` on the first gesture.
     this.audioKit.setAmbience(this.areaId);
 
     // Only the selected water body is rendered before the menu. The other two
@@ -138,6 +183,11 @@ export abstract class GameBootLayer extends GameBase {
     this.setBootProgress(1);
     const left = BOOT_MIN_MS - (performance.now() - startedAt);
     if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
+
+    // On a phone the first tap is the gesture that may take the page fullscreen
+    // (the host asks for it on `pointerdown`) and that starts Web Audio, so the
+    // loading screen waits for it instead of handing over a silent menu.
+    if (this.touch) await this.awaitStart();
 
     this.unmountBoot();
     this.world.addChild(this.screens.layer);
@@ -160,7 +210,7 @@ export abstract class GameBootLayer extends GameBase {
     const run = (): void => {
       if (this.destroyed) return;
       for (const area of AREAS) this.buildAreaPreview(area);
-      void prefetchHelpPages();
+      void prefetchHelpPages(this.options.assetBase, this.touch);
     };
     if (typeof window.requestIdleCallback === "function") {
       window.requestIdleCallback(run, { timeout: 1500 });
@@ -225,31 +275,31 @@ export abstract class GameBootLayer extends GameBase {
       const t = y / VIEW.height;
       bg.rect(0, y, VIEW.width, 1).fill(mixColor(UI.ink, UI.night, t));
     }
-    bg.rect(BAR.x, 130, BAR.width, 1).fill({
-      color: UI.periwinkle,
-      alpha: 0.2,
-    });
 
-    // Wordmark: the same title the menu uses, so the first frame already looks
-    // like this game and not like a generic loading strip.
-    const title = makeText(TEXT.menu.title, {
-      size: 22,
+    // Wordmark: the game's own name over the loading rail. It is the only mark
+    // on the screen; the standalone build carries no host logo.
+    const wordmark = new Container();
+    this.bootTitle = makeText(TEXT.menu.title, {
+      size: TITLE.size,
       weight: 800,
       color: UI.text,
       align: "center",
       letterSpacing: 0.5,
       outline: true,
     });
-    title.position.set(VIEW.width / 2, 92);
+    this.bootTitle.position.set(VIEW.width / 2, TITLE.y);
     // The wordmark is anchored on its glyphs: the constant text box is almost
     // twice the cap height, and the top of that box pushed it down onto the
     // progress block.
-    anchorInk(title, "center", "top");
+    anchorInk(this.bootTitle, "center", "top");
+    wordmark.addChild(this.bootTitle);
 
     // The caption and the percentage are one row over the rail: the caption
     // hangs off the rail's left edge, the number off its right, so the pair
     // reads as the two ends of the bar instead of a centred caption with a
-    // stray number under it.
+    // stray number under it. No hairline above them: the rule that used to
+    // separate the wordmark from the loading block cut the screen in two and
+    // read as a second divider under the logo.
     this.bootCaption = makeText(`${TEXT.boot.loading}${TEXT.common.ellipsis}`, {
       size: 7,
       weight: 800,
@@ -276,25 +326,27 @@ export abstract class GameBootLayer extends GameBase {
 
     this.bootFill = new Graphics();
 
-    // The file being fetched, under the rail: the same line as the name of a
-    // loading asset in the reference, and the one thing that tells a player
-    // staring at a stuck bar that the game is still working.
-    this.bootFile = makeText("", {
+    // The stage of the boot, under the rail: the one thing that tells a player
+    // staring at a stuck bar that the game is still working. It names what the
+    // loader is doing — fonts, water bodies, fish, sound — instead of the file
+    // it happens to be on, which said nothing and had to be cut to fit.
+    this.bootStageLine = makeText("", {
       size: 6,
       color: UI.textMuted,
       letterSpacing: 0.4,
     });
-    anchorInk(this.bootFile, "left", "top");
-    this.bootFile.position.set(BAR.x, BAR.y + BAR.height + FILE_GAP);
+    anchorInk(this.bootStageLine, "left", "top");
+    this.bootStageLine.position.set(BAR.x, BAR.y + BAR.height + STAGE_GAP);
 
     layer.addChild(
       bg,
-      title,
+      // After the background, or the full-frame gradient paints over the mark.
+      wordmark,
       this.bootCaption,
       this.bootPercent,
       barBg,
       this.bootFill,
-      this.bootFile,
+      this.bootStageLine,
     );
     this.bootLayer = layer;
     this.world.addChild(layer);
@@ -302,7 +354,7 @@ export abstract class GameBootLayer extends GameBase {
     this.setBootProgress(0.02);
   }
 
-  protected setBootProgress(progress: number, label?: string): void {
+  protected setBootProgress(progress: number): void {
     if (!this.bootFill) return;
     const clamped = Math.max(0.02, Math.min(1, progress));
     this.bootFill.clear();
@@ -316,9 +368,69 @@ export abstract class GameBootLayer extends GameBase {
       this.bootPercent.text = `${Math.round(clamped * 100)}%`;
       realignInk(this.bootPercent);
     }
-    if (label !== undefined && this.bootFile) {
-      setText(this.bootFile, fitLabel(label, BOOT_FILE_MAX));
+    if (this.bootStageLine) {
+      // The caption describes work in progress, so a full rail has nothing to
+      // say: at 100% it goes, instead of parking its last stage under a bar
+      // that has already finished.
+      const loading = clamped < 1;
+      this.bootStageLine.visible = loading;
+      if (loading) setText(this.bootStageLine, bootStage(clamped));
     }
+  }
+
+  /**
+   * Waits for the tap that starts the session.
+   *
+   * The prompt is the point: on a phone that same gesture lets the browser go
+   * fullscreen (the host asks for it on `pointerdown`) and unlocks Web Audio,
+   * which otherwise stays silent until something is pressed. Touch only — a
+   * desktop player is not given an extra click.
+   */
+  private awaitStart(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.bootLayer) {
+        resolve();
+        return;
+      }
+      const hint = makeText(TEXT.boot.pressToStart, {
+        size: 8,
+        weight: 700,
+        color: UI.text,
+        align: "center",
+        letterSpacing: 1,
+      });
+      anchorInk(hint, "center", "top");
+      hint.position.set(VIEW.width / 2, BAR.y + BAR.height + 12);
+      this.bootLayer.addChild(hint);
+
+      const pulse = (): void => {
+        const t = this.app.ticker.lastTime / 1000;
+        hint.alpha = 0.55 + Math.sin(t * 3) * 0.45;
+      };
+      this.app.ticker.add(pulse);
+
+      const finish = (): void => {
+        this.app.ticker.remove(pulse);
+        this.app.canvas.removeEventListener("pointerdown", finish);
+        window.removeEventListener("keydown", finish);
+        hint.destroy();
+        // The tap is the gesture the context was waiting for.
+        this.audioKit?.unlock();
+        // And the gesture the browser wants before it will hide its own address
+        // bar. It has to be used inside this handler — a moment later, on the
+        // menu, it is spent and the request is refused — which is the whole
+        // reason the loading screen asks for a tap on a phone. A refusal (iOS,
+        // an iframe, a policy) is not an error: the game stays in its tab.
+        enterFullscreen();
+        // The release of that same tap lands a moment later. Handing the menu
+        // over immediately would let it hit whatever row appears under the
+        // finger — the first tap of the session would open the codex. The boot
+        // screen holds for a beat instead, and the release falls on nothing.
+        window.setTimeout(resolve, 220);
+      };
+      this.app.canvas.addEventListener("pointerdown", finish);
+      window.addEventListener("keydown", finish);
+    });
   }
 
   protected unmountBoot(): void {
@@ -329,7 +441,8 @@ export abstract class GameBootLayer extends GameBase {
     this.bootFill = null;
     this.bootPercent = null;
     this.bootCaption = null;
-    this.bootFile = null;
+    this.bootStageLine = null;
+    this.bootTitle = null;
   }
   protected abstract mountCursor(cursors: CursorTextures): void;
   abstract showMenu(): void;

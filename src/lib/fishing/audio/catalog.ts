@@ -114,6 +114,9 @@ export const WEATHER_BED: Record<WeatherId, BedDef> = {
   snow: { file: "ambFrost", rate: 0.95, level: 0.09, cutoff: 3000 },
   blizzard: { file: "ambFrost", rate: 1.08, level: 0.16 },
   fog: { file: "ambFrost", rate: 0.68, level: 0.05, cutoff: 700 },
+  // The aurora is a still, silent night: the darkest and quietest bed there is,
+  // so the ribbons are the only thing moving on screen.
+  aurora: { file: "ambFrost", rate: 0.55, level: 0.035, cutoff: 520 },
 };
 
 /**

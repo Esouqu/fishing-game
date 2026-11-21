@@ -55,6 +55,13 @@ game.setLocations({ cove: true });
 Экспортируемые методы: `restart`, `pause`, `resume`, `showMenu`, `setMuted`,
 `setLocations`, `flushProgress`.
 
+## Телефоны
+
+Контейнер должен быть растянут на весь экран или на заданную рамку: игра считает
+letterbox от его `clientWidth`/`clientHeight`. Safe-area вырезов и динамическую высоту
+(`dvh`) обеспечивает хост: в Svelte — потребитель, в standalone-странице —
+`public/style.css`. Адаптация под тач, ориентация и метрики — в [mobile.md](mobile.md).
+
 ## Прогресс в БД
 
 ```ts

@@ -7,6 +7,7 @@ import type { WorldClock } from "./world";
 import type { AreaId, CatchEvent, NormalizedOptions, WeatherId } from "./types";
 import type { HelpPageId } from "./texts";
 import type { WipePoint } from "./ui/GridWipe";
+import type { UiMetrics } from "./ui/metrics";
 
 /**
  * The narrow host contract screens, gameplay and UI use. Keeping it separate
@@ -23,6 +24,13 @@ export interface GameContext {
   readonly area: AreaDef;
   readonly areaId: AreaId;
   readonly muted: boolean;
+  /**
+   * The player is on a touch screen: no painted cursor, no hover, bigger
+   * targets, and a fight tuned for a finger. False on a mouse or a stylus.
+   */
+  readonly touch: boolean;
+  /** Sizes the screens are built with; identity table on a fine pointer. */
+  readonly ui: UiMetrics;
 
   previewFor(areaId: AreaId): Texture;
   helpTexture(page: HelpPageId): Promise<Texture>;

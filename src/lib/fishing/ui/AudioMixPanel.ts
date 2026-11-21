@@ -20,9 +20,6 @@ export interface AudioMixPanelDeps {
   audio: AudioKit;
   /** Keeps a tuning session across reloads. */
   onPersist(mix: AudioMix): void;
-  /** Writes the mix into `audioMix.ts` (dev server) or downloads it. */
-  onSave(mix: AudioMix): Promise<string>;
-  onCopy(mix: AudioMix): Promise<string>;
   isMuted(): boolean;
   onToggleMute(): void;
   onClose(): void;
@@ -34,10 +31,8 @@ export interface AudioMixPanelDeps {
  * Dev panel for the audio balance (F2).
  *
  * Every cue in the game is one fader here. Dragging writes through to the live
- * `AudioKit`, so the mix is heard while it is being built; the panel can then
- * push the result back into the code (`audioMix.ts`) through the dev server, or
- * hand the generated source to the clipboard / a download when the game runs
- * from a production build.
+ * `AudioKit`, so the mix is heard while it is being built, and the panel keeps
+ * the result on the device so a reload does not start from scratch.
  */
 export class AudioMixPanel extends Container {
   private readonly deps: AudioMixPanelDeps;
@@ -46,7 +41,6 @@ export class AudioMixPanel extends Container {
   private readonly muteButton: Button;
   private readonly blocker: Graphics;
   private open_ = false;
-  private saveButton: Button | null = null;
 
   constructor(deps: AudioMixPanelDeps) {
     super();
@@ -103,7 +97,7 @@ export class AudioMixPanel extends Container {
     const buttonY = PANEL.y + PANEL.height - 40;
     const buttonWidth = 76;
     const gap = 8;
-    const total = buttonWidth * 5 + gap * 4;
+    const total = buttonWidth * 3 + gap * 2;
     const startX = PANEL.x + (PANEL.width - total) / 2;
     const at = (index: number): number => startX + index * (buttonWidth + gap);
 
@@ -117,27 +111,6 @@ export class AudioMixPanel extends Container {
     reset.position.set(at(0), buttonY);
     this.addChild(reset);
 
-    const copy = new Button({
-      label: TEXT.devtools.copy,
-      width: buttonWidth,
-      height: 18,
-      size: 8,
-      onClick: () => void this.copy(),
-    });
-    copy.position.set(at(1), buttonY);
-    this.addChild(copy);
-
-    this.saveButton = new Button({
-      label: TEXT.devtools.save,
-      width: buttonWidth,
-      height: 18,
-      size: 8,
-      variant: "primary",
-      onClick: () => void this.save(),
-    });
-    this.saveButton.position.set(at(2), buttonY);
-    this.addChild(this.saveButton);
-
     this.muteButton = new Button({
       label: TEXT.devtools.sound,
       width: buttonWidth,
@@ -148,7 +121,7 @@ export class AudioMixPanel extends Container {
         this.refreshMute();
       },
     });
-    this.muteButton.position.set(at(3), buttonY);
+    this.muteButton.position.set(at(1), buttonY);
     this.addChild(this.muteButton);
 
     const close = new Button({
@@ -158,7 +131,7 @@ export class AudioMixPanel extends Container {
       size: 8,
       onClick: () => this.deps.onClose(),
     });
-    close.position.set(at(4), buttonY);
+    close.position.set(at(2), buttonY);
     this.addChild(close);
   }
 
@@ -253,16 +226,6 @@ export class AudioMixPanel extends Container {
     this.setStatus(TEXT.devtools.resetDone);
   }
 
-  private async copy(): Promise<void> {
-    this.setStatus(TEXT.devtools.working);
-    this.setStatus(await this.deps.onCopy(this.deps.audio.mixValues));
-  }
-
-  private async save(): Promise<void> {
-    this.setStatus(TEXT.devtools.working);
-    this.setStatus(await this.deps.onSave(this.deps.audio.mixValues));
-  }
-
   private refreshMute(): void {
     const muted = this.deps.isMuted();
     this.muteButton.setLabel(
@@ -272,7 +235,5 @@ export class AudioMixPanel extends Container {
 
   private setStatus(message: string): void {
     setText(this.statusText, message);
-    this.statusText.style.fill =
-      message === TEXT.devtools.working ? UI.textMuted : UI.text;
   }
 }
